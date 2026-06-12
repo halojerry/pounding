@@ -407,6 +407,7 @@ jobs:
           $env:npm_config_target_arch = "x64"
           $env:npm_config_disturl = "https://electronjs.org/headers"
           $env:npm_config_build_from_source = "true"
+          $env:AIONUI_HUB_SKIP = "1"
           node scripts/build-with-builder.js x64 --win --x64
           Write-Host "✓Build test passed for ${{ matrix.platform }}"
         env:
@@ -430,6 +431,7 @@ jobs:
           $env:npm_config_target_arch = "arm64"
           $env:npm_config_disturl = "https://electronjs.org/headers"
           $env:npm_config_build_from_source = "true"
+          $env:AIONUI_HUB_SKIP = "1"
           node scripts/build-with-builder.js arm64 --win --arm64
           Write-Host "✓Build test passed for ${{ matrix.platform }}"
         env:

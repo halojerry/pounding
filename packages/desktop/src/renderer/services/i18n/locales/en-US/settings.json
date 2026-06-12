@@ -974,5 +974,12 @@
   "helpCenter": "Help Center",
   "newApiQuotaTitle": "Balance",
   "newApiQuotaUnlimited": "Unlimited",
-  "newApiQuotaUnlimitedDesc": "Unlimited usage"
+  "newApiQuotaUnlimitedDesc": "Unlimited usage",
+  "envConflictBannerTitle": "Environment Conflict",
+  "envConflictBannerDesc": "Some environment variables are conflicting",
+  "envConflictBannerDismiss": "Dismiss",
+  "providerIdConflict": "Provider ID Conflict",
+  "extensionSkills": "Extension Skills",
+  "extensionSkillsBadge": "New",
+  "saveSuccess": "Settings saved successfully"
 }

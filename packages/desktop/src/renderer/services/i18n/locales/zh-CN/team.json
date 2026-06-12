@@ -43,7 +43,9 @@
     "selectFolder": "选择项目文件夹",
     "recentLabel": "最近使用",
     "chooseDifferentFolder": "选择其他目录",
-    "error": "创建团队失败"
+    "error": "创建团队失败",
+    "noSearchResults": "未找到搜索结果",
+    "searchPlaceholder": "搜索..."
   },
   "removeAgent": {
     "confirmTitle": "移除团队成员",

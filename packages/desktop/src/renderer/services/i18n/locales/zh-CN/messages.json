@@ -66,5 +66,10 @@
     "yesAlwaysAllowTool": "是，始终允许来自服务器 \"{{serverName}}\" 的工具 \"{{toolName}}\"",
     "yesAlwaysAllowServer": "是，始终允许来自服务器 \"{{serverName}}\" 的所有工具",
     "no": "否 (esc)"
+  },
+  "export": {
+    "file_nameLabel": "文件名",
+    "file_namePlaceholder": "输入文件名",
+    "conversation_idLabel": "对话 ID"
   }
 }

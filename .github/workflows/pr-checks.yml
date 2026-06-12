@@ -445,6 +445,7 @@ jobs:
           npm_config_disturl: https://electronjs.org/headers
           CI: true
           GH_TOKEN: ${{ github.token }}
+          AIONUI_HUB_SKIP: '1'
 
       - name: Verify build artifacts exist
         shell: bash

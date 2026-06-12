@@ -91,7 +91,7 @@ function copyDirectoryRecursive(src, dest) {
   }
 }
 
-function prepareManagedResources(binaryPath, targetDir, projectRoot) {
+function prepareManagedResources(binaryPath, targetDir, projectRoot, targetArch) {
   const bundleOut = path.join(targetDir, 'managed-resources');
 
   removeDirectorySafe(bundleOut);
@@ -106,7 +106,23 @@ function prepareManagedResources(binaryPath, targetDir, projectRoot) {
     return bundleOut;
   }
 
-  // 2. Fallback: run poundingcore to prepare from CDN (requires network)
+  // 2. Check for cross-architecture build (can't execute foreign binary)
+  const hostArch = process.arch;
+  if (targetArch && targetArch !== hostArch) {
+    console.warn(`  ⚠️  Cross-architecture build detected (host=${hostArch}, target=${targetArch})`);
+    console.warn(`  Skipping managed resources preparation — binary cannot be executed on this runner`);
+    console.warn(`  Managed resources will need to be prepared separately or vendored`);
+    // Create a placeholder manifest so the build doesn't fail
+    writeJson(path.join(bundleOut, 'placeholder.json'), {
+      crossArchBuild: true,
+      hostArch,
+      targetArch,
+      message: 'Managed resources not prepared due to cross-architecture build',
+    });
+    return bundleOut;
+  }
+
+  // 3. Fallback: run poundingcore to prepare from CDN (requires network)
   const dataDir = path.join(targetDir, '.prepare-data');
   removeDirectorySafe(dataDir);
   ensureDirectory(dataDir);
@@ -495,7 +511,7 @@ function preparePoundingcore(options) {
   if (sourcePath) {
     copyFileSafe(sourcePath, targetBinaryPath);
     ensureExecutableMode(targetBinaryPath);
-    const bundledManagedResourcesDir = prepareManagedResources(targetBinaryPath, targetDir, projectRoot);
+    const bundledManagedResourcesDir = prepareManagedResources(targetBinaryPath, targetDir, projectRoot, arch);
 
     // The release tag is the authoritative version — the poundingcore
     // binary does not expose a --version flag (it has --app-version which

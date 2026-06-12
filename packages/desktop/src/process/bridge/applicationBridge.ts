@@ -231,7 +231,11 @@ export function initApplicationBridge(): void {
   // Reads dealer-config.json next to the executable (same dir as PORTABLE marker).
   ipcBridge.application.getDealerConfig.provider(async () => {
     try {
-      const exeDir = path.dirname(app.getPath('exe'));
+      // Match configureChromium.ts: on macOS, the app bundle root is 3 levels up from Contents/MacOS
+      let exeDir = path.dirname(app.getPath('exe'));
+      if (process.platform === 'darwin' && exeDir.endsWith('Contents/MacOS')) {
+        exeDir = path.dirname(path.dirname(path.dirname(exeDir)));
+      }
       const configPath = path.join(exeDir, 'dealer-config.json');
       console.log('[DealerConfig] Looking for config at:', configPath);
       console.log('[DealerConfig] exe path:', app.getPath('exe'));

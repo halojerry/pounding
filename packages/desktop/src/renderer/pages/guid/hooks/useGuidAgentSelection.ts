@@ -550,7 +550,9 @@ export const useGuidAgentSelection = ({
       return {
         current_model_id: currentModelId,
         current_model_label:
-          mergedModels.find((m) => m.id === currentModelId)?.label || handshakeModels?.current_model_label || currentModelId,
+          mergedModels.find((m) => m.id === currentModelId)?.label ||
+          handshakeModels?.current_model_label ||
+          currentModelId,
         available_models: mergedModels,
       } satisfies AcpModelInfo;
     }

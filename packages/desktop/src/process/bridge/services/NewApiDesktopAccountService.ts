@@ -1059,7 +1059,6 @@ function renderHermesManagedConfig(profile: ProviderSyncProfile): string {
   );
 }
 
-
 async function writeHermesConfigForProviderSync(provider: TProviderWithModel, modelList?: string[]): Promise<void> {
   const profile = buildProviderSyncProfile(provider, modelList);
   if (!profile) return;
@@ -1549,9 +1548,7 @@ function writeCodexConfigForProviderSync(provider: TProviderWithModel, modelList
     if (fs.existsSync(ccSwitchCatalogPath)) {
       ccCatalog = JSON.parse(fs.readFileSync(ccSwitchCatalogPath, 'utf8'));
     }
-    const existingSlugs = new Set(
-      (ccCatalog.models || []).map((m) => m.slug).filter(Boolean)
-    );
+    const existingSlugs = new Set((ccCatalog.models || []).map((m) => m.slug).filter(Boolean));
     let merged = false;
     for (const obj of modelObjects) {
       if (!existingSlugs.has(obj.slug)) {

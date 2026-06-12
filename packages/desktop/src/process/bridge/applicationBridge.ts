@@ -233,16 +233,26 @@ export function initApplicationBridge(): void {
     try {
       const exeDir = path.dirname(app.getPath('exe'));
       const configPath = path.join(exeDir, 'dealer-config.json');
+      console.log('[DealerConfig] Looking for config at:', configPath);
+      console.log('[DealerConfig] exe path:', app.getPath('exe'));
+      console.log('[DealerConfig] exeDir:', exeDir);
+      console.log('[DealerConfig] File exists:', fs.existsSync(configPath));
       if (!fs.existsSync(configPath)) {
+        console.log('[DealerConfig] No dealer-config.json found');
         return { success: true };
       }
       const raw = fs.readFileSync(configPath, 'utf-8');
+      console.log('[DealerConfig] File content:', raw);
       const config = JSON.parse(raw);
+      console.log('[DealerConfig] Parsed config:', config);
       if (config && typeof config.aff === 'string' && config.aff.trim()) {
+        console.log('[DealerConfig] Found aff code:', config.aff.trim());
         return { success: true, data: { aff: config.aff.trim() } };
       }
+      console.log('[DealerConfig] No valid aff code found');
       return { success: true };
     } catch (e) {
+      console.error('[DealerConfig] Error:', e);
       return { success: false, msg: e.message || String(e) };
     }
   });

@@ -231,20 +231,35 @@ export function initApplicationBridge(): void {
   // Reads dealer-config.json next to the executable (same dir as PORTABLE marker).
   ipcBridge.application.getDealerConfig.provider(async () => {
     try {
-      // Match configureChromium.ts: on macOS, the app bundle root is 3 levels up from Contents/MacOS
+      // Build candidate paths: dev mode uses project root, packaged uses exe dir
+      const candidatePaths: string[] = [];
+      if (!app.isPackaged) {
+        // Dev mode: look in project root (where developer runs `bun run dev`)
+        candidatePaths.push(path.join(process.cwd(), 'dealer-config.json'));
+      }
+      // Packaged mode: match configureChromium.ts path calculation
       let exeDir = path.dirname(app.getPath('exe'));
       if (process.platform === 'darwin' && exeDir.endsWith('Contents/MacOS')) {
         exeDir = path.dirname(path.dirname(path.dirname(exeDir)));
       }
-      const configPath = path.join(exeDir, 'dealer-config.json');
-      console.log('[DealerConfig] Looking for config at:', configPath);
-      console.log('[DealerConfig] exe path:', app.getPath('exe'));
-      console.log('[DealerConfig] exeDir:', exeDir);
-      console.log('[DealerConfig] File exists:', fs.existsSync(configPath));
-      if (!fs.existsSync(configPath)) {
-        console.log('[DealerConfig] No dealer-config.json found');
+      candidatePaths.push(path.join(exeDir, 'dealer-config.json'));
+
+      let configPath = '';
+      for (const p of candidatePaths) {
+        if (fs.existsSync(p)) {
+          configPath = p;
+          break;
+        }
+      }
+
+      console.log('[DealerConfig] Candidate paths:', candidatePaths);
+      console.log('[DealerConfig] Using config path:', configPath || '(not found)');
+
+      if (!configPath) {
+        console.log('[DealerConfig] No dealer-config.json found in any location');
         return { success: true };
       }
+
       const raw = fs.readFileSync(configPath, 'utf-8');
       console.log('[DealerConfig] File content:', raw);
       const config = JSON.parse(raw);

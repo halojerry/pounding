@@ -231,18 +231,47 @@ export function initApplicationBridge(): void {
   // Reads dealer-config.json next to the executable (same dir as PORTABLE marker).
   ipcBridge.application.getDealerConfig.provider(async () => {
     try {
-      const exeDir = path.dirname(app.getPath('exe'));
-      const configPath = path.join(exeDir, 'dealer-config.json');
-      if (!fs.existsSync(configPath)) {
+      // Build candidate paths: dev mode uses project root, packaged uses exe dir
+      const candidatePaths: string[] = [];
+      if (!app.isPackaged) {
+        // Dev mode: look in project root (where developer runs `bun run dev`)
+        candidatePaths.push(path.join(process.cwd(), 'dealer-config.json'));
+      }
+      // Packaged mode: match configureChromium.ts path calculation
+      let exeDir = path.dirname(app.getPath('exe'));
+      if (process.platform === 'darwin' && exeDir.endsWith('Contents/MacOS')) {
+        exeDir = path.dirname(path.dirname(path.dirname(exeDir)));
+      }
+      candidatePaths.push(path.join(exeDir, 'dealer-config.json'));
+
+      let configPath = '';
+      for (const p of candidatePaths) {
+        if (fs.existsSync(p)) {
+          configPath = p;
+          break;
+        }
+      }
+
+      console.log('[DealerConfig] Candidate paths:', candidatePaths);
+      console.log('[DealerConfig] Using config path:', configPath || '(not found)');
+
+      if (!configPath) {
+        console.log('[DealerConfig] No dealer-config.json found in any location');
         return { success: true };
       }
+
       const raw = fs.readFileSync(configPath, 'utf-8');
+      console.log('[DealerConfig] File content:', raw);
       const config = JSON.parse(raw);
-      if (config && typeof config.ref === 'string' && config.ref.trim()) {
-        return { success: true, data: { ref: config.ref.trim() } };
+      console.log('[DealerConfig] Parsed config:', config);
+      if (config && typeof config.aff === 'string' && config.aff.trim()) {
+        console.log('[DealerConfig] Found aff code:', config.aff.trim());
+        return { success: true, data: { aff: config.aff.trim() } };
       }
+      console.log('[DealerConfig] No valid aff code found');
       return { success: true };
     } catch (e) {
+      console.error('[DealerConfig] Error:', e);
       return { success: false, msg: e.message || String(e) };
     }
   });

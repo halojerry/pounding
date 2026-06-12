@@ -11,7 +11,11 @@ import type { AcpModelInfo } from '@/common/types/platform/acpTypes';
 import { savePreferredModelId } from '@/renderer/pages/guid/hooks/agentSelectionUtils';
 import { DETECTED_AGENTS_SWR_KEY, fetchDetectedAgents, type AgentMetadata } from '@/renderer/utils/model/agentTypes';
 import { useProvidersQuery } from '@/renderer/hooks/agent/useModelProviderList';
-import { getManagedCliSelectableModels, resolveManagedRuntimeCliTarget, MANAGED_NEWAPI_PROVIDER_ID } from '@/common/types/agent/managedRuntimeCli';
+import {
+  getManagedCliSelectableModels,
+  resolveManagedRuntimeCliTarget,
+  MANAGED_NEWAPI_PROVIDER_ID,
+} from '@/common/types/agent/managedRuntimeCli';
 import { configService } from '@/common/config/configService';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import useSWR from 'swr';
@@ -118,6 +122,7 @@ export const useAcpModelInfo = ({
 }): UseAcpModelInfoResult => {
   const hasUserChangedModel = useRef(false);
   const prevConversationIdRef = useRef(conversation_id);
+  const prevBackendRef = useRef(backend);
   const modelInfoRef = useRef<AcpModelInfo | null>(null);
   const handshakeModelInfoRef = useRef<AcpModelInfo | null>(null);
   const scheduledReloadTimersRef = useRef<number[]>([]);
@@ -133,10 +138,27 @@ export const useAcpModelInfo = ({
     modelInfoRef.current = model_info;
   }, [model_info]);
 
+  const managedModelInfoForUpdateRef = useRef<AcpModelInfo | null>(null);
+
   const updateModelInfo = useCallback(
     (nextModelInfo: AcpModelInfo) => {
+      // Merge managed provider (POUNDING API) models into every write path.
+      // This ensures the dropdown always shows all available models regardless
+      // of which code path writes (reloadModelInfo, acp_model_info stream, etc.)
+      const managed = managedModelInfoForUpdateRef.current;
+      let merged = nextModelInfo;
+      if (managed && managed.available_models.length > 0) {
+        const existingIds = new Set(nextModelInfo.available_models.map((m) => m.id));
+        const newModels = managed.available_models.filter((m) => !existingIds.has(m.id));
+        if (newModels.length > 0) {
+          merged = {
+            ...nextModelInfo,
+            available_models: [...nextModelInfo.available_models, ...newModels],
+          };
+        }
+      }
       void mutateModelInfo((prev) => {
-        return isSameModelInfo(prev, nextModelInfo) ? prev : nextModelInfo;
+        return isSameModelInfo(prev, merged) ? prev : merged;
       }, false);
     },
     [mutateModelInfo]
@@ -175,6 +197,11 @@ export const useAcpModelInfo = ({
       available_models: models.map((id) => ({ id, label: id })),
     };
   }, [cliTarget, providers]);
+
+  // Sync managedModelInfo to ref for use in updateModelInfo
+  useEffect(() => {
+    managedModelInfoForUpdateRef.current = managedModelInfo;
+  }, [managedModelInfo]);
 
   const loadFallbackModelInfo = useCallback(
     (options?: { preserveInitialModel?: boolean }) => {
@@ -314,6 +341,13 @@ export const useAcpModelInfo = ({
       hasUserChangedModel.current = false;
       prevConversationIdRef.current = conversation_id;
     }
+    if (prevBackendRef.current !== backend) {
+      // Backend change means models come from a different CLI —
+      // reset user-changed flag so the managed fallback can populate
+      // the model selector for the new backend.
+      hasUserChangedModel.current = false;
+      prevBackendRef.current = backend;
+    }
     void reloadModelInfo({ preserveInitialModel: true }).catch(() => {});
   }, [conversation_id, backend, enabled, initialModelId, reloadModelInfo, clearScheduledReloads]);
 
@@ -325,25 +359,6 @@ export const useAcpModelInfo = ({
     if (hasUserChangedModel.current) return;
     loadFallbackModelInfo({ preserveInitialModel: true });
   }, [backend, enabled, handshakeModelInfo, isModelInfoLoading, model_info, loadFallbackModelInfo]);
-
-  // Managed runtime CLI fallback: use managed provider model info when
-  // neither the backend nor ACP handshake provide models (e.g. OpenClaw).
-  const managedModelInfoRef = useRef(managedModelInfo);
-  managedModelInfoRef.current = managedModelInfo;
-  useEffect(() => {
-    if (!enabled) return;
-    if (!managedModelInfo || managedModelInfo.available_models.length === 0) return;
-    if (model_info && model_info.available_models.length > 0) return;
-    if (isModelInfoLoading) return;
-    if (hasUserChangedModel.current) return;
-    if (handshakeModelInfo) return; // prefer handshake over managed
-    logAcpModelInfo('fallback_from_managed_provider', {
-      conversation_id,
-      backend,
-      source_model_info: summarizeModelInfo(managedModelInfo),
-    });
-    updateModelInfo(managedModelInfo);
-  }, [backend, enabled, managedModelInfo, handshakeModelInfo, isModelInfoLoading, model_info, conversation_id, updateModelInfo]);
 
   // Poll backend for model info while window has focus.
   // Originally Claude-only; now extended to all ACP backends so users
@@ -406,10 +421,14 @@ export const useAcpModelInfo = ({
       } else if (message.type === 'codex_model_info' && message.data) {
         const data = message.data as { model: string };
         if (data.model) {
+          // Preserve existing available_models — codex_model_info only provides
+          // the current model, not the full list. Wiping available_models breaks
+          // the model selector dropdown for Hermes/OpenClaw.
+          const current = modelInfoRef.current;
           updateModelInfo({
             current_model_id: data.model,
             current_model_label: data.model,
-            available_models: [],
+            available_models: current?.available_models ?? [],
           });
         }
       }
@@ -431,59 +450,119 @@ export const useAcpModelInfo = ({
 
       void (async () => {
         let confirmedModelInfo: AcpModelInfo | null = null;
-        try {
-          await prepareRuntime?.();
-          const confirmed = await ipcBridge.acpConversation.setModel.invoke({ conversation_id, model_id });
-          confirmedModelInfo = confirmed.model_info ?? null;
-          if (confirmedModelInfo) {
-            updateModelInfo(confirmedModelInfo);
+        let acpSucceeded = false;
+
+        // Step 1: Try ACP session/set_model (best-effort).
+        // Codex and OpenCode do NOT support in-session model switching — their
+        // config files are only read at process launch. For these CLIs, ACP
+        // set_model is a no-op; we skip it and go straight to disk config write
+        // + session kill so the next message rebuilds with the new model.
+        const needsProcessRestart = cliTarget === 'codex' || cliTarget === 'opencode';
+
+        if (!needsProcessRestart) {
+          try {
+            await prepareRuntime?.();
+            const confirmed = await ipcBridge.acpConversation.setModel.invoke({ conversation_id, model_id });
+            confirmedModelInfo = confirmed.model_info ?? null;
+            if (confirmedModelInfo) {
+              updateModelInfo(confirmedModelInfo);
+            }
+            acpSucceeded = true;
+            logAcpModelInfo('select_model_acp_confirmed', {
+              conversation_id,
+              backend,
+              model_id,
+              confirmed_model_info: summarizeModelInfo(confirmedModelInfo),
+            });
+          } catch (error) {
+            logAcpModelInfo('select_model_acp_failed_best_effort', {
+              conversation_id,
+              backend,
+              requested_model_id: model_id,
+              error: error instanceof Error ? error.message : String(error),
+            });
+            // Best-effort: continue to disk config write even if ACP fails.
           }
-        } catch (error) {
-          hasUserChangedModel.current = false;
-          logAcpModelInfo('select_model_failed', {
+        } else {
+          logAcpModelInfo('select_model_skipping_acp_needs_restart', {
             conversation_id,
             backend,
+            cli_target: cliTarget,
             requested_model_id: model_id,
-            error: error instanceof Error ? error.message : String(error),
           });
-          console.error('[useAcpModelInfo] Failed to set model:', error);
-          if (previousModelInfo) {
-            updateModelInfo(previousModelInfo);
-          } else {
-            void mutateModelInfo(null, false);
-          }
-          onSelectModelFailed?.(model_id, error);
-          void reloadModelInfo().catch(() => {});
-          return;
         }
 
-        logAcpModelInfo('select_model_confirmed', {
-          conversation_id,
-          backend,
-          requested_model_id: model_id,
-          confirmed_model_info: summarizeModelInfo(confirmedModelInfo),
-        });
-        const refreshed = await reloadModelInfo().catch(() => false);
-        logAcpModelInfo('select_model_refresh_completed', {
-          conversation_id,
-          backend,
-          requested_model_id: model_id,
-          refreshed,
-        });
+        // Step 2: Determine the confirmed model ID.
+        // When ACP succeeded, use its confirmed value (which may be slot-normalized
+        // for Claude). When ACP was skipped or failed, use the raw user-selected ID.
+        const confirmedModelId = acpSucceeded
+          ? confirmedModelInfo?.current_model_id || modelInfoRef.current?.current_model_id || model_id
+          : model_id;
 
-        const confirmedModelId =
-          confirmedModelInfo?.current_model_id || modelInfoRef.current?.current_model_id || model_id;
         onSelectModelSuccess?.(confirmedModelId);
 
-        // Persist only after the active ACP session accepts the model switch.
+        // Step 3: Persist to acp.config preferences.
         if (backend) {
           void savePreferredModelId(backend, confirmedModelId);
         }
-        logAcpModelInfo('select_model_preference_save_queued', {
+
+        // Step 4: Write disk config and reconcile managed CLI runtime.
+        // This is the critical path that ensures the CLI config files on disk
+        // (settings.json, config.toml, opencode.json, etc.) reflect the new model.
+        if (cliTarget) {
+          try {
+            const prefs = (configService.get('newApi.desktop.cliModelPrefs') ?? {}) as Record<string, string>;
+            await configService.set('newApi.desktop.cliModelPrefs', { ...prefs, [cliTarget]: confirmedModelId });
+            await ipcBridge.newApiAccount.reconcileModel.invoke({ cliTarget, modelId: confirmedModelId });
+            logAcpModelInfo('select_model_cli_prefs_updated', {
+              conversation_id,
+              backend,
+              cli_target: cliTarget,
+              confirmed_model_id: confirmedModelId,
+            });
+          } catch (error) {
+            logAcpModelInfo('select_model_cli_prefs_update_failed', {
+              conversation_id,
+              backend,
+              cli_target: cliTarget,
+              confirmed_model_id: confirmedModelId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        }
+
+        // Step 5: For CLIs that require process restart (Codex, OpenCode),
+        // kill the current session so the next message rebuilds with new config.
+        if (needsProcessRestart) {
+          try {
+            await ipcBridge.conversation.stop.invoke({ conversation_id });
+            logAcpModelInfo('select_model_session_killed_for_restart', {
+              conversation_id,
+              backend,
+              cli_target: cliTarget,
+            });
+          } catch (error) {
+            logAcpModelInfo('select_model_session_kill_failed', {
+              conversation_id,
+              backend,
+              cli_target: cliTarget,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        }
+
+        // Step 6: Refresh model info from backend.
+        if (acpSucceeded) {
+          void reloadModelInfo().catch(() => {});
+        }
+
+        logAcpModelInfo('select_model_complete', {
           conversation_id,
           backend,
           requested_model_id: model_id,
           confirmed_model_id: confirmedModelId,
+          acp_succeeded: acpSucceeded,
+          needs_restart: needsProcessRestart,
         });
       })().catch((error) => {
         console.error('[useAcpModelInfo] Failed to finalize model selection:', error);
@@ -493,8 +572,8 @@ export const useAcpModelInfo = ({
       backend,
       conversation_id,
       enabled,
+      cliTarget,
       model_info,
-      mutateModelInfo,
       onSelectModelFailed,
       onSelectModelSuccess,
       prepareRuntime,

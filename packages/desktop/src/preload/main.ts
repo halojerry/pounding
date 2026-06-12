@@ -45,6 +45,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   collectFeedbackLogs: () => ipcRenderer.invoke('feedback:collect-logs'),
   // Feedback: capture a screenshot of the current window
   captureFeedbackScreenshot: () => ipcRenderer.invoke('feedback:capture-screenshot'),
+  // Feedback: submit to Sentry via the main process (has real DSN + proper error handling)
+  submitFeedback: (payload: {
+    module: string;
+    summary: string;
+    description: string;
+    logs?: { filename: string; data: number[] } | null;
+    screenshots?: Array<{ filename: string; data: number[]; contentType: string }>;
+  }) => ipcRenderer.invoke('feedback:submit', payload),
 });
 
 // Synchronously fetch the poundingcore port and expose it to the renderer
@@ -52,6 +60,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 const backendPort = ipcRenderer.sendSync('get-backend-port') as number;
 const backendStartupFailed = ipcRenderer.sendSync('get-backend-startup-failed') as boolean;
 const backendStartupFailure = ipcRenderer.sendSync('get-backend-startup-failure') as unknown;
+console.log('[preload] IPC results:', { backendPort, backendStartupFailed, backendStartupFailure });
 contextBridge.exposeInMainWorld('__backendPort', backendPort > 0 ? backendPort : 0);
 contextBridge.exposeInMainWorld('__backendStartupFailed', backendStartupFailed === true);
 contextBridge.exposeInMainWorld('__backendStartupFailure', backendStartupFailure ?? null);

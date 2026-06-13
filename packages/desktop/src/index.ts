@@ -30,6 +30,7 @@ import { mcpService } from '@/common/adapter/ipcBridge';
 import type { IMcpServer, IMcpServerTransportStdio } from '@/common/config/storage';
 import { initializeProcess } from './process';
 import { startBackendOrExit } from './process/startup/backendStartup';
+import { assertStartupArchitectureCompatible } from './process/startup/architectureCompatibility';
 import { classifyBackendStartupFailure } from './process/startup/backendStartupFailure';
 import { installQuitCleanup } from './process/startup/quitCleanup';
 import { ProcessConfig } from './process/utils/initStorage';
@@ -283,11 +284,16 @@ let disposeCronResumeListener: (() => void) | null = null;
 let backendStartedOk = false;
 let backendStartupFailed = false;
 let backendStartupFailureInfo: BackendStartupFailureInfo | null = null;
+let rendererInitialLanguage: string | null = null;
 let backendMigrationsScheduled = false;
 let ensureAdminUserPromise: Promise<void> | null = null;
 
 ipcMain.on('get-backend-port', (event) => {
   event.returnValue = backendManager.port;
+});
+
+ipcMain.on('get-initial-language', (event) => {
+  event.returnValue = rendererInitialLanguage;
 });
 
 ipcMain.on('get-backend-startup-failed', (event) => {
@@ -494,6 +500,9 @@ const createWindow = ({ showOnReady = true }: { showOnReady?: boolean } = {}): v
         // Create status broadcast callback that emits via ipcBridge (pure emitter, no window binding)
         const statusBroadcast = createAutoUpdateStatusBroadcast();
         autoUpdaterService.initialize(statusBroadcast);
+        autoUpdaterService.setBeforeQuitAndInstall(async () => {
+          await backendManager.stop();
+        });
         // Check for updates after 3 seconds delay
         // 3秒后检查更新
         setTimeout(() => {
@@ -640,6 +649,7 @@ const handleAppReady = async (): Promise<void> => {
 
   try {
     await initializeProcess();
+    rendererInitialLanguage = ProcessConfig.getSync('language') ?? null;
     mark('initializeProcess');
   } catch (error) {
     console.error('Failed to initialize process:', error);
@@ -652,6 +662,11 @@ const handleAppReady = async (): Promise<void> => {
   // close it before the backend touches the same file.
   const backendStartup = await startBackendOrExit({
     startBackend: async () => {
+      assertStartupArchitectureCompatible({
+        arch: process.arch,
+        isPackaged: app.isPackaged,
+        platform: process.platform,
+      });
       const { getDataPath } = await import('./process/utils/utils');
       const { getSystemDir } = await import('./process/utils/initStorage');
       const sysDir = getSystemDir();

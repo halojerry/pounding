@@ -11,6 +11,7 @@ import {
   mergeAcpToolCallContent,
   mergeTextMessageContent,
   normalizeAgentStreamError,
+  normalizeTextMessageContent,
   preferTextMessageVersion,
 } from '@/common/chat/chatLib';
 import { useCallback, useEffect, useRef } from 'react';
@@ -425,7 +426,7 @@ const parseJsonRecord = (value: unknown): Record<string, unknown> | undefined =>
 };
 
 const normalizeTipType = (value: unknown, fallback: IMessageTips['content']['type']) =>
-  value === 'success' || value === 'warning' || value === 'error' ? value : fallback;
+  value === 'success' || value === 'warning' || value === 'error' || value === 'info' ? value : fallback;
 
 const normalizePersistedWorkspaceRuntimeError = (
   parsed: Record<string, unknown>,
@@ -537,10 +538,24 @@ const normalizeDbTipsMessage = (msg: TMessage): TMessage => {
 
   const existingContent = isRecord(msg.content) ? msg.content : undefined;
   const fallbackType =
-    existingContent?.type === 'success' || existingContent?.type === 'warning' || existingContent?.type === 'error'
+    existingContent?.type === 'success' ||
+    existingContent?.type === 'warning' ||
+    existingContent?.type === 'error' ||
+    existingContent?.type === 'info'
       ? existingContent.type
       : 'error';
   const tipType = normalizeTipType(parsed.type, fallbackType);
+  const code =
+    typeof parsed.code === 'string'
+      ? parsed.code
+      : typeof existingContent?.code === 'string'
+        ? existingContent.code
+        : undefined;
+  const params = isRecord(parsed.params)
+    ? parsed.params
+    : isRecord(existingContent?.params)
+      ? existingContent.params
+      : undefined;
   const structuredError =
     tipType === 'error'
       ? (normalizePersistedWorkspaceRuntimeError(parsed, parsed.content) ??
@@ -554,36 +569,24 @@ const normalizeDbTipsMessage = (msg: TMessage): TMessage => {
     content: {
       content: parsed.content,
       type: tipType,
+      ...(tipType !== 'error' && code ? { code } : {}),
+      ...(tipType !== 'error' && params ? { params } : {}),
       ...(structuredError ? { error: structuredError } : {}),
     },
   } as IMessageTips;
 };
 
 /**
- * Normalize a message loaded from backend DB: if `content` is a JSON string,
- * parse it and map stored fields to renderer message content.
+ * Normalize a message loaded from backend DB into renderer runtime shape.
  */
 export function normalizeDbMessage(msg: TMessage): TMessage {
   if (msg.type === 'tips') return normalizeDbTipsMessage(msg);
   if (msg.type !== 'text') return msg;
-  const raw = msg.content as unknown;
-  if (typeof raw !== 'string') return msg;
-  try {
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
-    if (typeof parsed.content !== 'string') return msg;
-    return {
-      ...msg,
-      content: {
-        content: parsed.content as string,
-        ...(parsed.teammate_message ? { teammateMessage: true } : {}),
-        ...(parsed.sender_name ? { senderName: parsed.sender_name as string } : {}),
-        ...(parsed.sender_backend ? { senderAgentType: parsed.sender_backend as string } : {}),
-        ...(parsed.sender_conversation_id ? { senderConversationId: parsed.sender_conversation_id as string } : {}),
-      },
-    };
-  } catch {
-    return msg;
-  }
+
+  return {
+    ...msg,
+    content: normalizeTextMessageContent((msg as IMessageText).content),
+  };
 }
 
 export const useMessageLstCache = (key: string) => {

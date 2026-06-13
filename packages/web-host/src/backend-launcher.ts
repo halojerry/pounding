@@ -55,10 +55,16 @@ type HealthCheckResult = {
   diagnostics: HealthCheckDiagnostics;
 };
 
+type ParsedBackendBoundaryError = {
+  code: string;
+  stage?: string;
+};
+
 type SpawnConfig = {
   port: number;
   dbPath: string;
   local: boolean;
+  parentPid?: number;
   logDir?: string;
   workDir?: string;
   appVersion: string;
@@ -103,6 +109,8 @@ export type BackendStartupErrorDetails = {
   exitCode?: number;
   signal?: NodeJS.Signals | string;
   causeMessage?: string;
+  backendBoundaryCode?: string;
+  backendBoundaryStage?: string;
   stdoutTail?: string;
   stderrTail?: string;
   resourcesPath?: string;
@@ -178,6 +186,7 @@ export function buildSpawnArgs(config: SpawnConfig): string[] {
     String(config.port),
     '--data-dir',
     config.dbPath,
+    ...(typeof config.parentPid === 'number' ? ['--parent-pid', String(config.parentPid)] : []),
     '--log-level',
     logLevel,
     '--app-version',
@@ -302,6 +311,18 @@ function getErrorCause(error: unknown): unknown {
   return (error as { cause?: unknown }).cause;
 }
 
+function parseBackendBoundaryError(text: string): ParsedBackendBoundaryError | undefined {
+  const lines = text.split(/\r?\n/).filter(Boolean);
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    const line = lines[i];
+    const match = /^(BOOTSTRAP_[A-Z0-9_]+|CLI_[A-Z0-9_]+|MCP_[A-Z0-9_]+)\b(?:[^\n]*?\bstage=([^:\s]+))?/.exec(line);
+    if (match) {
+      return { code: match[1], stage: match[2] };
+    }
+  }
+  return undefined;
+}
+
 function applyHealthCheckErrorDiagnostics(diagnostics: HealthCheckDiagnostics, error: unknown): void {
   const cause = getErrorCause(error);
   diagnostics.healthCheckLastError = getErrorMessage(error);
@@ -336,8 +357,26 @@ function getResolveDiagnostics(error: unknown): Partial<BackendStartupErrorDetai
   return diagnostics as Partial<BackendStartupErrorDetails>;
 }
 
-function killBackendProcessTree(childProcess: ChildProcess | null, signal: 'SIGTERM' | 'SIGKILL'): void {
-  if (!childProcess?.pid) return;
+function waitForChildProcessEnd(childProcess: ChildProcess): Promise<void> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      childProcess.removeListener('error', finish);
+      childProcess.removeListener('exit', finish);
+      childProcess.removeListener('close', finish);
+      resolve();
+    };
+
+    childProcess.once('error', finish);
+    childProcess.once('exit', finish);
+    childProcess.once('close', finish);
+  });
+}
+
+function killBackendProcessTree(childProcess: ChildProcess | null, signal: 'SIGTERM' | 'SIGKILL'): Promise<void> {
+  if (!childProcess?.pid) return Promise.resolve();
 
   if (process.platform === 'win32') {
     const args = ['/PID', String(childProcess.pid), '/T'];
@@ -345,14 +384,16 @@ function killBackendProcessTree(childProcess: ChildProcess | null, signal: 'SIGT
       args.unshift('/F');
     }
     try {
-      spawn('taskkill', args, {
+      const taskkillProcess = spawn('taskkill', args, {
         stdio: 'ignore',
         windowsHide: true,
-      }).unref();
+      });
+      taskkillProcess.unref();
+      return waitForChildProcessEnd(taskkillProcess);
     } catch {
       /* best-effort tree kill */
     }
-    return;
+    return Promise.resolve();
   }
 
   try {
@@ -364,6 +405,7 @@ function killBackendProcessTree(childProcess: ChildProcess | null, signal: 'SIGT
       /* already exited */
     }
   }
+  return Promise.resolve();
 }
 
 async function probeHealthCheckTcpConnect(port: number, timeoutMs = 1_000): Promise<Partial<HealthCheckDiagnostics>> {
@@ -485,8 +527,9 @@ export class BackendLifecycleManager {
       message: string,
       cause?: unknown,
       extra?: Partial<BackendStartupErrorDetails>
-    ) =>
-      new BackendStartupError(
+    ) => {
+      const boundary = parseBackendBoundaryError(stderrTail);
+      return new BackendStartupError(
         message,
         {
           stage,
@@ -499,6 +542,8 @@ export class BackendLifecycleManager {
           workDir: dirs?.workDir,
           backendPid,
           causeMessage: getErrorMessage(cause),
+          backendBoundaryCode: boundary?.code,
+          backendBoundaryStage: boundary?.stage,
           stdoutTail: stdoutTail || undefined,
           stderrTail: stderrTail || undefined,
           serverListeningObserved,
@@ -508,11 +553,13 @@ export class BackendLifecycleManager {
         },
         cause
       );
+    };
 
     const args = buildSpawnArgs({
       port: this._port,
       dbPath,
       local: true,
+      parentPid: process.pid,
       logDir,
       workDir: dirs?.workDir,
       appVersion,
@@ -536,48 +583,76 @@ export class BackendLifecycleManager {
     backendPid = this.childProcess.pid;
     const pid = backendPid;
     const killOnExit = () => {
-      if (pid) killBackendProcessTree(this.childProcess, 'SIGKILL');
+      if (pid) void killBackendProcessTree(this.childProcess, 'SIGKILL');
     };
     process.on('exit', killOnExit);
 
     const startupFailure = new Promise<never>((_resolve, reject) => {
+      let failureSettled = false;
+      let pendingStartupExit:
+        | {
+            code: number | null;
+            signal: NodeJS.Signals | null;
+            startupSettledAtExit: boolean;
+            statusAtExit: BackendStatus;
+          }
+        | undefined;
+      const rejectOnce = (error: unknown) => {
+        if (failureSettled) return;
+        failureSettled = true;
+        reject(error);
+      };
+
       this.childProcess?.once('error', (error) => {
         if (startupSettled) return;
         this._status = 'error';
-        reject(makeStartupError('spawn_error', 'poundingcore process emitted an error before startup', error));
+        rejectOnce(makeStartupError('spawn_error', 'aioncore process emitted an error before startup', error));
       });
 
       this.childProcess?.once('exit', (code, signal) => {
         process.removeListener('exit', killOnExit);
-        if (!startupSettled) {
-          if (this._status === 'stopped') {
-            reject(new BackendStartupCancelledError('poundingcore startup cancelled before health check passed'));
+        if (this._status === 'running') {
+          this.handleCrash(code, signal);
+          return;
+        }
+        pendingStartupExit = {
+          code,
+          signal,
+          startupSettledAtExit: startupSettled,
+          statusAtExit: this._status,
+        };
+        if (this._status !== 'stopped') this._status = 'error';
+      });
+
+      this.childProcess?.once('close', (code, signal) => {
+        if (!pendingStartupExit) return;
+        const exitCode = pendingStartupExit.code ?? code;
+        const exitSignal = pendingStartupExit.signal ?? signal;
+        if (!pendingStartupExit.startupSettledAtExit) {
+          if (pendingStartupExit.statusAtExit === 'stopped') {
+            rejectOnce(new BackendStartupCancelledError('aioncore startup cancelled before health check passed'));
             return;
           }
-          this._status = 'error';
-          reject(
-            makeStartupError('early_exit', 'poundingcore exited before health check passed', undefined, {
-              exitCode: code ?? undefined,
-              signal: signal ?? undefined,
+          rejectOnce(
+            makeStartupError('early_exit', 'aioncore exited before health check passed', undefined, {
+              exitCode: exitCode ?? undefined,
+              signal: exitSignal ?? undefined,
             })
           );
           return;
         }
-        if (this._status === 'starting') {
-          this._status = 'error';
+        if (pendingStartupExit.statusAtExit === 'starting') {
           void Promise.resolve(
             options?.onPendingExit?.(
-              makeStartupError('early_exit', 'poundingcore exited after startup health timeout', undefined, {
-                exitCode: code ?? undefined,
-                signal: signal ?? undefined,
+              makeStartupError('early_exit', 'aioncore exited after startup health timeout', undefined, {
+                exitCode: exitCode ?? undefined,
+                signal: exitSignal ?? undefined,
               })
             )
           ).catch((error) => {
             console.error('[poundingcore] pending exit handler failed:', error);
           });
-          return;
         }
-        if (this._status === 'running') this.handleCrash(code, signal);
       });
     });
 
@@ -644,7 +719,7 @@ export class BackendLifecycleManager {
     } catch (error) {
       if (error instanceof BackendStartupError && error.details.stage === 'listen_timeout') {
         startupSettled = true;
-        killBackendProcessTree(this.childProcess, 'SIGKILL');
+        await killBackendProcessTree(this.childProcess, 'SIGKILL');
         this.childProcess = null;
         this._status = 'error';
       }
@@ -670,7 +745,7 @@ export class BackendLifecycleManager {
         return this._port;
       }
       startupSettled = true;
-      killBackendProcessTree(this.childProcess, 'SIGKILL');
+      await killBackendProcessTree(this.childProcess, 'SIGKILL');
       this.childProcess = null;
       this._status = 'error';
       throw healthTimeoutError;
@@ -691,15 +766,14 @@ export class BackendLifecycleManager {
     this._status = 'stopped';
     const dataDir = this._lastDbPath;
 
-    killBackendProcessTree(childProcess, 'SIGTERM');
+    const gracefulKill = killBackendProcessTree(childProcess, 'SIGTERM');
     await new Promise<void>((resolve) => {
       const timeout = setTimeout(() => {
-        killBackendProcessTree(childProcess, 'SIGKILL');
-        resolve();
+        void killBackendProcessTree(childProcess, 'SIGKILL').finally(resolve);
       }, 5000);
       childProcess.on('exit', () => {
         clearTimeout(timeout);
-        resolve();
+        void gracefulKill.finally(resolve);
       });
     });
     await cleanupRegisteredAgentProcesses(dataDir);

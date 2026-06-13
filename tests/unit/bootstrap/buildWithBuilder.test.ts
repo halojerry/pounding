@@ -13,6 +13,16 @@ import { describe, expect, it } from 'vitest';
 const repoRoot = resolve(__dirname, '../../..');
 
 describe('build-with-builder', () => {
+  it.each(['x64', 'arm64'])('uses exact app process checks in the Windows %s NSIS include', (arch) => {
+    const script = readFileSync(resolve(repoRoot, `resources/windows-installer-${arch}.nsh`), 'utf8');
+
+    expect(script).toContain('!macro customCheckAppRunning');
+    expect(script).toContain('${AIONUI_APP_EXECUTABLE_FILENAME}');
+    expect(script).toContain('Join-Path $$instDir');
+    expect(script).toContain('[System.IO.Path]::GetFullPath($$path)');
+    expect(script).not.toContain("StartsWith('$INSTDIR'");
+  });
+
   it.each([
     {
       args: ['arm64', '--win', '--arm64'],
@@ -61,13 +71,22 @@ Module._load = function patchedLoad(request, parent, isMain) {
   return originalLoad.call(this, request, parent, isMain);
 };
 
+// Satisfy build-with-builder's output checks without clobbering real build
+// artifacts: out/ lives in the actual repo (the script resolves it from its
+// own __dirname), so only create empty placeholders when nothing is there.
+function ensurePlaceholder(relativePath) {
+  const target = path.join(process.cwd(), relativePath);
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  if (!fs.existsSync(target)) {
+    fs.writeFileSync(target, '');
+  }
+}
+
 childProcess.execSync = function mockedExecSync(command) {
   const commandText = String(command);
   if (commandText.includes('electron-vite build')) {
-    fs.mkdirSync(path.join(process.cwd(), 'out/main'), { recursive: true });
-    fs.mkdirSync(path.join(process.cwd(), 'out/renderer'), { recursive: true });
-    fs.writeFileSync(path.join(process.cwd(), 'out/main/index.js'), '');
-    fs.writeFileSync(path.join(process.cwd(), 'out/renderer/index.html'), '');
+    ensurePlaceholder('out/main/index.js');
+    ensurePlaceholder('out/renderer/index.html');
   }
   return Buffer.from('');
 };

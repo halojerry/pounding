@@ -13,6 +13,7 @@
  */
 
 import type { IConfirmation } from '@/common/chat/chatLib';
+import type { AcpSlashCommandApiItem } from '@/common/chat/slash/types';
 import { bridge } from '@office-ai/platform';
 import type { OpenDialogOptions } from 'electron';
 import type {
@@ -21,10 +22,12 @@ import type {
   IProvider,
   ISessionMcpServer,
   TChatConversation,
+  TConversationRuntimeSummary,
   TProviderWithModel,
 } from '../config/storage';
 import type {
   Assistant,
+  AssistantDetail,
   CreateAssistantRequest,
   ImportAssistantsRequest,
   ImportAssistantsResult,
@@ -52,14 +55,25 @@ import type {
   ProviderHealthCheckResponse,
   UpdateProviderRequest,
 } from '../types/provider/providerApi';
-import type { SpeechToTextRequest, SpeechToTextResult } from '../types/provider/speech';
 import type {
   ITeamAgentRemovedEvent,
   ITeamAgentRenamedEvent,
   ITeamAgentSpawnedEvent,
   ITeamAgentStatusEvent,
+  ITeamChildTurnEvent,
   ITeamCreatedEvent,
   ITeamListChangedEvent,
+  ITeamMcpStatusEvent,
+  ITeamRemovedEvent,
+  ITeamRenamedEvent,
+  ITeamRunAck,
+  ITeamRunEvent,
+  ITeamSessionChangedEvent,
+  ITeamTaskChangedEvent,
+  ICancelTeamChildTurnParams,
+  ICancelTeamRunParams,
+  ISendTeamAgentMessageParams,
+  ISendTeamMessageParams,
   ITeamTeammateMessageEvent,
   TTeam,
   TeamAgent,
@@ -72,6 +86,7 @@ import type {
   UpdateDownloadRequest,
   UpdateDownloadResult,
 } from '../update/updateTypes';
+import type { Theme } from '@/common/theme/types';
 import type { ProtocolDetectionRequest, ProtocolDetectionResponse } from '../utils/protocolDetector';
 import { fromApiConversation, fromApiPaginatedConversations, toApiModelOptional } from './apiModelMapper';
 import {
@@ -123,6 +138,10 @@ export const shell = {
 
 export const assistants = {
   list: httpGet<Assistant[], void>('/api/assistants'),
+  get: httpGet<AssistantDetail, { id: string; locale?: string }>(
+    ({ id, locale }) =>
+      `/api/assistants/${encodeURIComponent(id)}${locale ? `?locale=${encodeURIComponent(locale)}` : ''}`
+  ),
   create: httpPost<Assistant, CreateAssistantRequest>('/api/assistants'),
   update: httpPut<Assistant, UpdateAssistantRequest>((p) => `/api/assistants/${p.id}`),
   delete: httpDelete<void, { id: string }>((p) => `/api/assistants/${p.id}`),
@@ -150,6 +169,7 @@ export const conversation = {
         type: p.type,
         id: p.id,
         name: p.name,
+        assistant: p.assistant,
         extra: p.extra,
       };
       if (isAionrs) {
@@ -207,7 +227,10 @@ export const conversation = {
   ),
   reset: httpPost<void, IResetConversationParams>((p) => `/api/conversations/${p.id}/reset`),
   warmup: httpPost<void, { conversation_id: string }>((p) => `/api/conversations/${p.conversation_id}/warmup`),
-  stop: httpPost<void, { conversation_id: string }>((p) => `/api/conversations/${p.conversation_id}/cancel`),
+  stop: httpPost<{ runtime: TConversationRuntimeSummary }, { conversation_id: string; turn_id: string }>(
+    (p) => `/api/conversations/${p.conversation_id}/cancel`,
+    (p) => ({ turn_id: p.turn_id })
+  ),
   activeCount: httpGet<{ count: number }>('/api/conversations/active-count'),
   sendMessage: httpPost<ISendMessageResult, ISendMessageParams>(
     (p) => `/api/conversations/${p.conversation_id}/messages`,
@@ -218,7 +241,7 @@ export const conversation = {
       inject_skills: p.inject_skills,
     })
   ),
-  getSlashCommands: httpGet<Array<{ command: string; description: string }>, { conversation_id: string }>(
+  getSlashCommands: httpGet<AcpSlashCommandApiItem[], { conversation_id: string }>(
     (p) => `/api/conversations/${p.conversation_id}/slash-commands`
   ),
   askSideQuestion: httpPost<ConversationSideQuestionResult, { conversation_id: string; question: string }>(
@@ -274,6 +297,7 @@ export const conversation = {
         rawRuntime.taskStatus) as IConversationTurnCompletedEvent['runtime']['task_status'],
       is_processing: (rawRuntime.is_processing ?? rawRuntime.isProcessing ?? false) as boolean,
       pending_confirmations: (rawRuntime.pending_confirmations ?? rawRuntime.pendingConfirmations ?? 0) as number,
+      turn_id: (rawRuntime.turn_id ?? rawRuntime.turnId ?? null) as string | null,
     };
     const rawModel = (r.model ?? {}) as Record<string, unknown>;
     const model: IConversationTurnCompletedEvent['model'] = {
@@ -283,6 +307,7 @@ export const conversation = {
     };
     return {
       session_id: (r.session_id ?? r.sessionId ?? r.conversation_id ?? '') as string,
+      turn_id: (r.turn_id ?? r.turnId ?? runtime.turn_id ?? '') as string,
       status: (r.status ?? 'finished') as IConversationTurnCompletedEvent['status'],
       state: (r.state ??
         (r.status === 'finished' ? 'ai_waiting_input' : 'unknown')) as IConversationTurnCompletedEvent['state'],
@@ -371,6 +396,8 @@ export type RuntimeFailureKind =
   | 'checksum_mismatch'
   | 'validation_failed'
   | 'unsupported_platform'
+  | 'bundled_resource_missing'
+  | 'bundled_resource_invalid'
   | 'unknown';
 
 export interface IRuntimeStatusScope {
@@ -407,6 +434,12 @@ export interface IGpuStatus {
   lastCrashAt: number | null;
 }
 
+export interface IAppRestartResult {
+  restarted: boolean;
+  manualRestartRequired: boolean;
+  reason?: 'dev-mode';
+}
+
 export type IRendererLogLevel = 'info' | 'warn' | 'error';
 
 export interface IRendererLogEntry {
@@ -421,7 +454,7 @@ export interface IRendererLogEntry {
 // ---------------------------------------------------------------------------
 
 export const application = {
-  restart: bridge.buildProvider<void, void>('restart-app'),
+  restart: bridge.buildProvider<IAppRestartResult, void>('restart-app'),
   openDevTools: bridge.buildProvider<boolean, void>('open-dev-tools'),
   isDevToolsOpened: bridge.buildProvider<boolean, void>('is-dev-tools-opened'),
   systemInfo: withResponseMap(
@@ -439,7 +472,9 @@ export const application = {
   getPath: bridge.buildProvider<string, { name: 'desktop' | 'home' | 'downloads' }>('app.get-path'),
   // Electron-local: copies cache dir + persists to ProcessEnv, paired with restart.
   // The backend reads AIONUI_*_DIR env vars on boot, so it does not own this config.
-  updateSystemInfo: bridge.buildProvider<void, { cacheDir: string; workDir: string }>('update-system-info'),
+  updateSystemInfo: bridge.buildProvider<void, { cacheDir: string; workDir: string; logDir?: string }>(
+    'update-system-info'
+  ),
   getZoomFactor: bridge.buildProvider<number, void>('app.get-zoom-factor'),
   setZoomFactor: bridge.buildProvider<number, { factor: number }>('app.set-zoom-factor'),
   getCdpStatus: bridge.buildProvider<IBridgeResponse<ICdpStatus>, void>('app.get-cdp-status'),
@@ -556,13 +591,6 @@ export const fs = {
   deleteAssistantRule: httpDelete<boolean, { assistant_id: string }>(
     (p) => `/api/skills/assistant-rule/${p.assistant_id}`
   ),
-  readAssistantSkill: httpPost<string, { assistant_id: string; locale?: string }>('/api/skills/assistant-skill/read'),
-  writeAssistantSkill: httpPost<boolean, { assistant_id: string; content: string; locale?: string }>(
-    '/api/skills/assistant-skill/write'
-  ),
-  deleteAssistantSkill: httpDelete<boolean, { assistant_id: string }>(
-    (p) => `/api/skills/assistant-skill/${p.assistant_id}`
-  ),
   listAvailableSkills: httpGet<
     Array<{
       name: string;
@@ -608,14 +636,6 @@ export const fs = {
   ),
   enableSkillsMarket: httpPost<void, void>('/api/skills/market/enable'),
   disableSkillsMarket: httpPost<void, void>('/api/skills/market/disable'),
-};
-
-// ---------------------------------------------------------------------------
-// Speech to Text — routed to backend
-// ---------------------------------------------------------------------------
-
-export const speechToText = {
-  transcribe: httpPost<SpeechToTextResult, SpeechToTextRequest>('/api/stt'),
 };
 
 // ---------------------------------------------------------------------------
@@ -1112,6 +1132,19 @@ export const windowControls = {
 };
 
 // ---------------------------------------------------------------------------
+// Theme — stays IPC (main process owns the resolved-theme cache)
+// ---------------------------------------------------------------------------
+
+export const theme = {
+  // main → all renderers: the resolved active theme changed
+  changed: bridge.buildEmitter<Theme>('theme:changed'),
+  // renderer → main: publish a newly resolved theme (main caches + re-emits `changed`)
+  setActive: bridge.buildProvider<void, Theme>('theme:set-active'),
+  // any window → main: pull the currently cached resolved theme on load (null if none yet)
+  requestCurrent: bridge.buildProvider<Theme | null, void>('theme:request-current'),
+};
+
+// ---------------------------------------------------------------------------
 // System Settings — routed to /api/settings/* unless they need Electron-native side effects.
 // ---------------------------------------------------------------------------
 
@@ -1379,6 +1412,8 @@ interface ISendMessageParams {
 // local state aligns with DB rows and WebSocket stream events.
 export interface ISendMessageResult {
   msg_id: string;
+  turn_id: string;
+  runtime: TConversationRuntimeSummary;
 }
 
 export interface IConfirmMessageParams {
@@ -1389,10 +1424,21 @@ export interface IConfirmMessageParams {
 }
 
 export interface ICreateConversationParams {
-  type: 'acp' | 'codex' | 'openclaw-gateway' | 'nanobot' | 'remote' | 'aionrs';
+  type: 'acp' | 'aionrs';
   id?: string;
   name?: string;
   model: TProviderWithModel;
+  assistant?: {
+    id: string;
+    locale?: string;
+    conversation_overrides?: {
+      model?: string;
+      permission?: string;
+      skill_ids?: string[];
+      disabled_builtin_skill_ids?: string[];
+      mcp_ids?: string[];
+    };
+  };
   extra: {
     workspace?: string;
     custom_workspace?: boolean;
@@ -1420,14 +1466,10 @@ export interface ICreateConversationParams {
     /** Transient: auto-inject skills the user opted out of on the Guid page.
      *  Consumed by backend create handler and stripped before persistence. */
     exclude_auto_inject_skills?: string[];
-    /** Transient: MCP server ids selected on the Guid page. Consumed by the
-     *  backend create handler and snapshotted into conversation.extra. */
-    selected_mcp_server_ids?: string[];
-    /** Transient: session-scoped MCP server configs that are not stored in the
-     *  backend catalog (currently built-in MCP servers). */
-    selected_session_mcp_servers?: ISessionMcpServer[];
     preset_context?: string;
     preset_assistant_id?: string;
+    selected_mcp_server_ids?: string[];
+    selected_session_mcp_servers?: ISessionMcpServer[];
     session_mode?: string;
     codex_model?: string;
     current_model_id?: string;
@@ -1482,9 +1524,12 @@ export interface IResponseMessage {
   type: string;
   data: unknown;
   msg_id: string;
+  turn_id?: string;
   conversation_id: string;
   created_at?: number;
   hidden?: boolean;
+  position?: 'left' | 'right' | 'center' | 'pop';
+  status?: 'finish' | 'pending' | 'error' | 'work';
   /** Replace accumulated text for the same msg_id instead of appending. */
   replace?: boolean;
 }
@@ -1530,6 +1575,7 @@ export type IConversationArtifact = ICronTriggerArtifact | ISkillSuggestArtifact
 
 export interface IConversationTurnCompletedEvent {
   session_id: string;
+  turn_id: string;
   status: 'pending' | 'running' | 'finished';
   state:
     | 'ai_generating'
@@ -1542,12 +1588,13 @@ export interface IConversationTurnCompletedEvent {
   detail: string;
   can_send_message: boolean;
   runtime: {
-    state: 'idle' | 'starting' | 'running' | 'waiting_confirmation';
+    state: 'idle' | 'starting' | 'running' | 'cancelling' | 'waiting_confirmation';
     can_send_message: boolean;
     has_task: boolean;
     task_status?: 'pending' | 'running' | 'finished';
     is_processing: boolean;
     pending_confirmations: number;
+    turn_id: string | null;
   };
   workspace: string;
   model: {
@@ -1837,15 +1884,56 @@ export const team = {
   ),
   setSessionMode: httpPost<void, { team_id: string; session_mode: string }>(
     (p) => `/api/teams/${p.team_id}/session-mode`,
-    (p) => ({ session_mode: p.session_mode })
+    (p) => ({ mode: p.session_mode })
   ),
-  agentStatusChanged: wsEmitter<ITeamAgentStatusEvent>('team.agent.status'),
-  agentSpawned: wsEmitter<ITeamAgentSpawnedEvent>('team.agent.spawned'),
-  agentRemoved: wsEmitter<ITeamAgentRemovedEvent>('team.agent.removed'),
-  agentRenamed: wsEmitter<ITeamAgentRenamedEvent>('team.agent.renamed'),
-  listChanged: wsEmitter<ITeamListChangedEvent>('team.list-changed'),
+  sendMessage: httpPost<ITeamRunAck, ISendTeamMessageParams>(
+    (p) => `/api/teams/${p.team_id}/messages`,
+    (p) => ({
+      content: p.input,
+      files: p.files,
+    })
+  ),
+  sendMessageToAgent: httpPost<ITeamRunAck, ISendTeamAgentMessageParams>(
+    (p) => `/api/teams/${p.team_id}/agents/${p.slot_id}/messages`,
+    (p) => ({
+      content: p.input,
+      files: p.files,
+    })
+  ),
+  cancelRun: httpPost<void, ICancelTeamRunParams>(
+    (p) => `/api/teams/${p.team_id}/runs/${p.team_run_id}/cancel`,
+    (p) => ({
+      target_slot_id: p.target_slot_id,
+      reason: p.reason,
+    })
+  ),
+  cancelChildTurn: httpPost<void, ICancelTeamChildTurnParams>(
+    (p) => `/api/teams/${p.team_id}/runs/${p.team_run_id}/agents/${p.slot_id}/cancel`,
+    (p) => ({
+      reason: p.reason,
+    })
+  ),
+  agentStatusChanged: wsEmitter<ITeamAgentStatusEvent>('team.agentStatusChanged'),
+  agentSpawned: wsEmitter<ITeamAgentSpawnedEvent>('team.agentSpawned'),
+  agentRemoved: wsEmitter<ITeamAgentRemovedEvent>('team.agentRemoved'),
+  agentRenamed: wsEmitter<ITeamAgentRenamedEvent>('team.agentRenamed'),
+  listChanged: wsEmitter<ITeamListChangedEvent>('team.listChanged'),
   created: wsEmitter<ITeamCreatedEvent>('team.created'),
-  teammateMessage: wsEmitter<ITeamTeammateMessageEvent>('team.teammate.message'),
+  removed: wsEmitter<ITeamRemovedEvent>('team.removed'),
+  renamed: wsEmitter<ITeamRenamedEvent>('team.renamed'),
+  teammateMessage: wsEmitter<ITeamTeammateMessageEvent>('team.teammateMessage'),
+  mcpStatus: wsEmitter<ITeamMcpStatusEvent>('team.mcpStatus'),
+  taskChanged: wsEmitter<ITeamTaskChangedEvent>('team.taskChanged'),
+  sessionChanged: wsEmitter<ITeamSessionChangedEvent>('team.sessionChanged'),
+  runAccepted: wsEmitter<ITeamRunEvent>('team.runAccepted'),
+  runStarted: wsEmitter<ITeamRunEvent>('team.runStarted'),
+  runUpdated: wsEmitter<ITeamRunEvent>('team.runUpdated'),
+  runCompleted: wsEmitter<ITeamRunEvent>('team.runCompleted'),
+  runCancelled: wsEmitter<ITeamRunEvent>('team.runCancelled'),
+  runFailed: wsEmitter<ITeamRunEvent>('team.runFailed'),
+  childTurnStarted: wsEmitter<ITeamChildTurnEvent>('team.childTurnStarted'),
+  childTurnCompleted: wsEmitter<ITeamChildTurnEvent>('team.childTurnCompleted'),
+  childTurnCancelled: wsEmitter<ITeamChildTurnEvent>('team.childTurnCancelled'),
 };
 
 // ---------------------------------------------------------------------------

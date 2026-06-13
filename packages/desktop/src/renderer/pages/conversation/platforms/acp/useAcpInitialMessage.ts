@@ -6,6 +6,7 @@
 
 import { ipcBridge } from '@/common';
 import type { TMessage } from '@/common/chat/chatLib';
+import type { TConversationRuntimeSummary } from '@/common/config/storage';
 import { parseError, uuid } from '@/common/utils';
 import { emitter } from '@/renderer/utils/emitter';
 import { buildDisplayMessage } from '@/renderer/utils/file/messageFiles';
@@ -20,6 +21,9 @@ type UseAcpInitialMessageParams = {
   workspacePath?: string;
   setAiProcessing: (value: boolean) => void;
   resetState: () => void;
+  markSendStarted?: () => void;
+  markSendAccepted?: (turn_id: string, runtime: TConversationRuntimeSummary, msg_id?: string) => void;
+  markSendFailed?: (reason: string) => void;
   checkAndUpdateTitle: (conversation_id: string, input: string) => void;
   addOrUpdateMessage: (message: TMessage, prepend?: boolean) => void;
 };
@@ -34,6 +38,9 @@ export const useAcpInitialMessage = ({
   workspacePath,
   setAiProcessing,
   resetState,
+  markSendStarted,
+  markSendAccepted,
+  markSendFailed,
   checkAndUpdateTitle,
   addOrUpdateMessage,
 }: UseAcpInitialMessageParams): void => {
@@ -55,20 +62,23 @@ export const useAcpInitialMessage = ({
         const files = Array.isArray(initialMessage.files) ? initialMessage.files : [];
         const displayMessage = buildDisplayMessage(input, files, workspacePath || '');
 
+        markSendStarted?.();
         setAiProcessing(true);
 
         void checkAndUpdateTitle(conversation_id, input);
-        await ipcBridge.acpConversation.sendMessage.invoke({
+        const result = await ipcBridge.acpConversation.sendMessage.invoke({
           input: displayMessage,
           conversation_id: conversation_id,
           files,
         });
+        markSendAccepted?.(result.turn_id, result.runtime, result.msg_id);
 
         // Initial message sent successfully
         emitter.emit('chat.history.refresh');
       } catch (error) {
         const errorMessageText =
           getConversationRuntimeWorkspaceErrorMessage(error, t) || parseError(error) || t('common.unknownError');
+        markSendFailed?.(errorMessageText);
         console.error('[useAcpInitialMessage] Error sending initial message:', error);
         console.error('[useAcpInitialMessage] Error details:', {
           name: (error as Error)?.name,
@@ -103,6 +113,9 @@ export const useAcpInitialMessage = ({
     backend,
     checkAndUpdateTitle,
     conversation_id,
+    markSendAccepted,
+    markSendFailed,
+    markSendStarted,
     resetState,
     setAiProcessing,
     t,

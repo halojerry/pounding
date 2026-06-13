@@ -28,7 +28,7 @@ export interface ConversationContextValue {
    * Conversation type
    * 会话类型
    */
-  type: 'acp' | 'codex' | 'openclaw-gateway' | 'nanobot' | 'remote' | 'aionrs';
+  type: 'acp' | 'codex' | 'aionrs';
 
   /**
    * Cron job ID (if this conversation was created by a scheduled task)
@@ -57,6 +57,11 @@ export interface ConversationContextValue {
    * conversation.extra.mcp_statuses).
    */
   loadedMcpStatuses?: IConversationMcpStatus[];
+
+  /**
+   * Assistant id bound to this conversation snapshot, if any.
+   */
+  assistantId?: string;
 }
 
 /**

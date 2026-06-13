@@ -43,9 +43,8 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: release-distribute-${{ github.ref_name }}
-  cancel-in-progress: true
+env:
+  S3_RELEASE_PREFIX: releases
 
 jobs:
   distribute:
@@ -102,28 +101,19 @@ jobs:
         run: |
           set -euo pipefail
 
-          coscli_cmd() {
-            ./coscli "$@" \
-              -e "cos.${COS_REGION}.myqcloud.com" \
-              -i "$COS_SECRET_ID" \
-              -k "$COS_SECRET_KEY" \
-              --init-skip=true \
-              --disable-log=true
-          }
-
-          VERSION_PATH="cos://${COS_BUCKET}/pounding/releases/download/${VERSION}/"
-          EXISTING_COUNT=$(coscli_cmd ls "$VERSION_PATH" -r --limit -1 2>/dev/null | grep -c . || true)
-
-          if [ "$EXISTING_COUNT" -gt 0 ]; then
-            if [ "$GITHUB_EVENT_NAME" = 'workflow_dispatch' ] && [ "$CLEANUP_EXISTING" = 'true' ]; then
-              echo "Manual redistribution requested; removing $EXISTING_COUNT existing version object(s) before retry."
-              coscli_cmd rm "$VERSION_PATH" -r -f
-            else
-              echo "::error::Version directory already contains $EXISTING_COUNT file(s). Refusing to overwrite."
-              echo "::error::Same-version re-publish is not allowed (downstream caches would serve stale files). Release a new version instead."
-              coscli_cmd ls "$VERSION_PATH" -r --limit -1 || true
-              exit 1
-            fi
+          PREFIX="${S3_RELEASE_PREFIX}/${VERSION}/"
+          DEST="s3://${S3_BUCKET}/${PREFIX}"
+          COUNT=$(aws s3api list-objects-v2 \
+            --bucket "$S3_BUCKET" \
+            --prefix "$PREFIX" \
+            --no-paginate \
+            --query 'KeyCount' \
+            --output text)
+          if [ "$COUNT" -gt 0 ]; then
+            echo "::error::Version directory already contains $COUNT file(s). Refusing to overwrite."
+            echo "::error::Same-version re-publish is not allowed (downstream caches would serve stale files). Release a new version instead."
+            aws s3 ls "$DEST"
+            exit 1
           fi
 
       - name: Download release assets from GitHub
@@ -131,28 +121,58 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN || github.token }}
         run: |
           set -euo pipefail
+
           mkdir -p dist
-          gh api "repos/${{ github.repository }}/releases" --paginate \
-            --jq '.[] | select(.tag_name == "${{ steps.version.outputs.tag }}") | .assets[] | [.name, .url] | @tsv' \
-            | while IFS=$'\t' read -r name url; do
-                case "$name" in
-                  *.dmg|*.exe|*.msi|*.deb|*.zip|*.yml|*.blockmap|*.tar.gz|*.sha256|install-web.sh)
-                    echo "Downloading $name"
-                    gh api --header "Accept: application/octet-stream" "$url" > "dist/$name"
-                    ;;
-                  *)
-                    echo "Skipping $name"
-                    ;;
-                esac
-              done
-          test -n "$(find dist -maxdepth 1 -type f -print -quit)" || {
-            echo "::error::No release assets were downloaded for tag ${{ steps.version.outputs.tag }}"
-            exit 1
-          }
+          gh release download "${{ steps.version.outputs.tag }}" \
+            --repo "${{ github.repository }}" \
+            --dir dist \
+            --pattern "*.dmg" \
+            --pattern "*.exe" \
+            --pattern "*.msi" \
+            --pattern "*.deb" \
+            --pattern "*.zip" \
+            --pattern "latest*.yml"
           echo "Downloaded files:"
           ls -la dist
 
-      - name: Upload assets to versioned and latest prefixes
+      - name: Validate updater metadata
+        id: metadata
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          metadata_files=(
+            dist/latest.yml
+            dist/latest-win-arm64.yml
+            dist/latest-mac.yml
+            dist/latest-arm64-mac.yml
+            dist/latest-linux.yml
+            dist/latest-linux-arm64.yml
+          )
+
+          for file in "${metadata_files[@]}"; do
+            if [ ! -f "$file" ]; then
+              echo "::error::Missing updater metadata file: $file."
+              exit 1
+            fi
+
+            metadata_version=$(grep -E "^version:" "$file" | head -n 1 | sed -E "s/^version:[[:space:]]*['\"]?([^'\"]+).*/\1/")
+            if [ "$metadata_version" != "$VERSION" ]; then
+              echo "::error::$file version is $metadata_version, expected $VERSION."
+              exit 1
+            fi
+          done
+
+          {
+            echo "files<<EOF"
+            for file in "${metadata_files[@]}"; do
+              basename "$file"
+            done
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Upload assets
         env:
           COS_BUCKET: ${{ secrets.TENCENT_COS_BUCKET }}
           COS_REGION: ${{ secrets.TENCENT_COS_REGION }}
@@ -164,63 +184,29 @@ jobs:
         run: |
           set -euo pipefail
 
-          coscli_cmd() {
-            ./coscli "$@" \
-              -e "cos.${COS_REGION}.myqcloud.com" \
-              -i "$COS_SECRET_ID" \
-              -k "$COS_SECRET_KEY" \
-              --init-skip=true \
-              --disable-log=true
-          }
+          aws s3 cp dist/ "s3://${S3_BUCKET}/${S3_RELEASE_PREFIX}/${VERSION}/" \
+            --recursive
+          echo "Uploaded release ${VERSION}"
 
-          VERSION_PATH="cos://${COS_BUCKET}/pounding/releases/download/${VERSION}/"
-          LATEST_PATH="cos://${COS_BUCKET}/pounding/releases/latest/"
-
-          if [ "$GITHUB_EVENT_NAME" = 'workflow_dispatch' ] && [ "$CLEANUP_EXISTING" = 'true' ]; then
-            coscli_cmd rm "$LATEST_PATH" -r -f || true
-          fi
-
-          coscli_cmd cp dist/ "$VERSION_PATH" -r
-          coscli_cmd cp dist/ "$LATEST_PATH" -r
-
-          find dist -maxdepth 1 -type f \( -name '*.yml' -o -name '*.blockmap' \) | sort | while read -r file; do
-            name="$(basename "$file")"
-            coscli_cmd cp \
-              "$file" \
-              "${LATEST_PATH}${name}" \
-              --meta 'Cache-Control:no-cache, no-store, must-revalidate, max-age=0'
-          done
-
-          echo "Uploaded release ${VERSION} to COS"
-
-      - name: Verify public distribution endpoints
+      - name: Upload updater metadata
         env:
-          VERSION: ${{ steps.version.outputs.version }}
-          COS_BUCKET: ${{ secrets.TENCENT_COS_BUCKET }}
-          COS_REGION: ${{ secrets.TENCENT_COS_REGION }}
-          PUBLIC_BASE: ${{ secrets.POUNDING_UPDATE_PUBLIC_BASE }}
+          S3_BUCKET: ${{ secrets.AWS_S3_BUCKET }}
         run: |
           set -euo pipefail
 
-          BASE="${PUBLIC_BASE:-https://${COS_BUCKET}.cos.${COS_REGION}.myqcloud.com/pounding}"
-          URLS=(
-            "${BASE}/releases/latest/latest.yml"
-            "${BASE}/releases/latest/latest-mac.yml"
-            "${BASE}/releases/download/${VERSION}/POUNDING-${VERSION}-win-x64.exe"
-          )
-
-          for url in "${URLS[@]}"; do
-            echo "Verifying ${url}"
-            curl -fI --retry 5 --retry-delay 2 --retry-connrefused "$url"
-          done
+          aws s3 cp dist/ "s3://${S3_BUCKET}/${S3_RELEASE_PREFIX}/" \
+            --recursive \
+            --exclude "*" \
+            --include "latest*.yml" \
+            --content-type "text/yaml" \
+            --cache-control "public, max-age=60"
+          echo "Uploaded updater metadata"
 
       - name: Summary
         env:
           VERSION: ${{ steps.version.outputs.version }}
           TAG: ${{ steps.version.outputs.tag }}
-          COS_BUCKET: ${{ secrets.TENCENT_COS_BUCKET }}
-          COS_REGION: ${{ secrets.TENCENT_COS_REGION }}
-          PUBLIC_BASE: ${{ secrets.POUNDING_UPDATE_PUBLIC_BASE }}
+          FILES: ${{ steps.metadata.outputs.files }}
         run: |
           BASE="${PUBLIC_BASE:-https://${COS_BUCKET}.cos.${COS_REGION}.myqcloud.com/pounding}"
           {
@@ -228,6 +214,11 @@ jobs:
             echo ""
             echo "- Tag: \`${TAG}\`"
             echo "- Version: \`${VERSION}\`"
-            echo "- Versioned assets: \`${BASE}/releases/download/${VERSION}/\`"
-            echo "- Auto-update feed: \`${BASE}/releases/latest/\`"
-          } >> "$GITHUB_STEP_SUMMARY"
+            echo "- Asset prefix: \`${S3_RELEASE_PREFIX}/${VERSION}/\`"
+            echo "- Metadata prefix: \`${S3_RELEASE_PREFIX}/\`"
+            echo ""
+            echo "Uploaded metadata:"
+            while IFS= read -r file; do
+              [ -n "$file" ] && echo "- \`${S3_RELEASE_PREFIX}/$file\`"
+            done <<< "$FILES"
+          } >> $GITHUB_STEP_SUMMARY

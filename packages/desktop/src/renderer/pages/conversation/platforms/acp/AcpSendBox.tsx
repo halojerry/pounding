@@ -32,9 +32,11 @@ import {
   type ConversationCommandQueueItem,
 } from '@/renderer/pages/conversation/platforms/useConversationCommandQueue';
 import { usePreviewContext } from '@/renderer/pages/conversation/Preview';
+import { useConversationRuntimeView } from '@/renderer/pages/conversation/runtime/useConversationRuntimeView';
 import { getConversationRuntimeWorkspaceErrorMessage } from '@/renderer/pages/conversation/utils/conversationCreateError';
 import { warmupConversation } from '@/renderer/pages/conversation/utils/warmupConversation';
 import { useTeamPermission } from '@/renderer/pages/team/hooks/TeamPermissionContext';
+import type { TeamSendBoxRuntime } from '@/renderer/pages/team/components/teamSendRuntime';
 import { allSupportedExts } from '@/renderer/services/FileService';
 import { iconColors } from '@/renderer/styles/colors';
 import { emitter, useAddEventListener } from '@/renderer/utils/emitter';
@@ -97,17 +99,20 @@ const AcpSendBox: React.FC<{
   agent_name?: string;
   workspacePath?: string;
   messageState: UseAcpMessageReturn;
-}> = ({ conversation_id, backend, session_mode, agent_name, workspacePath, messageState }) => {
-  const {
-    running,
-    hasHydratedRunningState,
-    aiProcessing,
-    setAiProcessing,
-    resetState,
-    hasThinkingMessage,
-    slashCommands,
-    fetchSlashCommands,
-  } = messageState;
+  teamSendMessage?: (payload: { input: string; files: string[] }) => Promise<void>;
+  teamRuntime?: TeamSendBoxRuntime;
+}> = ({
+  conversation_id,
+  backend,
+  session_mode,
+  agent_name,
+  workspacePath,
+  messageState,
+  teamSendMessage,
+  teamRuntime,
+}) => {
+  const { aiProcessing, setAiProcessing, resetState, hasThinkingMessage, slashCommands, fetchSlashCommands } =
+    messageState;
   const { t } = useTranslation();
   const teamPermission = useTeamPermission();
   // In team mode, all agents show the permission mode selector (members don't propagate)
@@ -119,6 +124,7 @@ const AcpSendBox: React.FC<{
   const isMobile = Boolean(layout?.isMobile);
   const conversationContext = useConversationContextSafe();
   const loadedSkills = conversationContext?.loadedSkills ?? [];
+  const assistantId = conversationContext?.assistantId;
   const loadedMcpStatuses =
     conversationContext?.loadedMcpStatuses ??
     (conversationContext?.loadedMcpServers ?? []).map<IConversationMcpStatus>((name) => ({
@@ -145,6 +151,7 @@ const AcpSendBox: React.FC<{
     backend,
     prepareRuntime: prepareRuntimeSync,
     enabled: isMobile,
+    persistGlobalPreference: !assistantId,
     onSelectModelSuccess: () => Message.success(t('agent.model.switchSuccess')),
     onSelectModelFailed: () => Message.error(t('agent.model.switchFailed')),
   });
@@ -177,7 +184,7 @@ const AcpSendBox: React.FC<{
         const confirmed = await ipcBridge.acpConversation.setMode.invoke({ conversation_id, mode });
         const confirmedMode = confirmed.mode || mode;
         setCurrentMode(confirmedMode);
-        if (backend) void savePreferredMode(backend, confirmedMode);
+        if (backend && !assistantId) void savePreferredMode(backend, confirmedMode);
         if (isLeaderInTeam) teamPermission?.propagateMode?.(confirmedMode);
         Message.success(t('agentMode.switchSuccess'));
       } catch (error) {
@@ -185,7 +192,7 @@ const AcpSendBox: React.FC<{
         Message.error(t('agentMode.switchFailed'));
       }
     },
-    [backend, conversation_id, currentMode, isLeaderInTeam, prepareRuntimeSync, t, teamPermission]
+    [assistantId, backend, conversation_id, currentMode, isLeaderInTeam, prepareRuntimeSync, t, teamPermission]
   );
 
   // In team mode, warmup the agent then fetch slash commands
@@ -218,6 +225,7 @@ const AcpSendBox: React.FC<{
 
   const addOrUpdateMessage = useAddOrUpdateMessage(); // Move this here so it's available in useEffect
   const addOrUpdateMessageRef = useLatestRef(addOrUpdateMessage);
+  const runtimeView = useConversationRuntimeView(conversation_id);
 
   // Shared file handling logic
   const { handleFilesAdded, clearFiles } = useSendBoxFiles({
@@ -226,7 +234,13 @@ const AcpSendBox: React.FC<{
     setAtPath,
     setUploadFile,
   });
-  const isBusy = running || aiProcessing;
+  const commandQueueRuntimeGate = teamRuntime?.runtimeGate ?? {
+    hydrated: runtimeView.hydrated,
+    canSendMessage: runtimeView.canSendMessage,
+    isProcessing: runtimeView.isProcessing,
+  };
+  const isCancelling = runtimeView.state === 'cancelling';
+  const isBusy = isCancelling || commandQueueRuntimeGate.isProcessing || !commandQueueRuntimeGate.canSendMessage;
 
   // Register handler for adding text from preview panel to sendbox
   useEffect(() => {
@@ -255,28 +269,42 @@ const AcpSendBox: React.FC<{
     workspacePath,
     setAiProcessing,
     resetState,
+    markSendStarted: runtimeView.markSendStarted,
+    markSendAccepted: runtimeView.markSendAccepted,
+    markSendFailed: runtimeView.markSendFailed,
     checkAndUpdateTitle,
     addOrUpdateMessage: addOrUpdateMessageRef.current,
   });
 
   const executeCommand = useCallback(
     async ({ input, files }: Pick<ConversationCommandQueueItem, 'input' | 'files'>) => {
-      if (teamPermission) await teamPermission.warmupSession();
       const displayMessage = buildDisplayMessage(input, files, workspacePath || '');
 
-      setAiProcessing(true);
-
       try {
+        if (teamPermission) await teamPermission.warmupSession();
         void checkAndUpdateTitle(conversation_id, input);
-        await ipcBridge.acpConversation.sendMessage.invoke({
+        if (teamSendMessage) {
+          await teamSendMessage({ input: displayMessage, files });
+          emitter.emit('chat.history.refresh');
+          if (files.length > 0) {
+            emitter.emit('acp.workspace.refresh');
+          }
+          return;
+        }
+
+        runtimeView.markSendStarted();
+        setAiProcessing(true);
+        const result = await ipcBridge.acpConversation.sendMessage.invoke({
           input: displayMessage,
           conversation_id,
           files,
         });
+        runtimeView.markSendAccepted(result.turn_id, result.runtime, result.msg_id);
         emitter.emit('chat.history.refresh');
       } catch (error: unknown) {
         const errorMsg =
           getConversationRuntimeWorkspaceErrorMessage(error, t) || parseError(error) || t('common.unknownError');
+        runtimeView.markSendFailed(errorMsg);
 
         // Archived conversation (e.g. legacy Gemini). Backend signals this
         // via HTTP 410 + code='CONVERSATION_ARCHIVED' — identified by code,
@@ -298,6 +326,7 @@ const AcpSendBox: React.FC<{
           const errorMessage = {
             id: uuid(),
             msg_id: uuid(),
+            turn_id: '',
             conversation_id,
             type: 'error',
             data: t('acp.auth.failed', {
@@ -340,7 +369,18 @@ Please check your local CLI tool authentication status`,
         emitter.emit('acp.workspace.refresh');
       }
     },
-    [backend, checkAndUpdateTitle, conversation_id, resetState, setAiProcessing, t, workspacePath]
+    [
+      backend,
+      checkAndUpdateTitle,
+      conversation_id,
+      resetState,
+      runtimeView,
+      setAiProcessing,
+      t,
+      teamPermission,
+      teamSendMessage,
+      workspacePath,
+    ]
   );
 
   const {
@@ -361,7 +401,7 @@ Please check your local CLI tool authentication status`,
     conversation_id: conversation_id,
     enabled: true,
     isBusy,
-    isHydrated: hasHydratedRunningState,
+    runtimeGate: commandQueueRuntimeGate,
     onExecute: executeCommand,
   });
 
@@ -549,15 +589,25 @@ Please check your local CLI tool authentication status`,
     // Cancelling is best-effort: swallow errors (e.g. backend WS not yet
     // connected → 409) so they don't bubble up as unhandled rejections.
     // UI state is still reset via finally.
+    const turnId = runtimeView.activeTurnId;
+    if (!turnId) {
+      resetState();
+      resetActiveExecution('stop');
+      return;
+    }
+    runtimeView.markStopRequested(turnId);
     try {
-      await ipcBridge.conversation.stop.invoke({ conversation_id });
+      const result = await ipcBridge.conversation.stop.invoke({ conversation_id, turn_id: turnId });
+      runtimeView.markStopAcknowledged(turnId, result.runtime);
     } catch (error) {
       console.warn('[AcpSendBox] stop request failed', error);
+      runtimeView.resetLocalGate('stop_failed');
     } finally {
       resetState();
       resetActiveExecution('stop');
     }
   };
+  const effectiveHandleStop = teamRuntime?.onStop ?? handleStop;
 
   return (
     <div className='max-w-800px w-full mx-auto flex flex-col mt-auto mb-16px'>
@@ -574,7 +624,10 @@ Please check your local CLI tool authentication status`,
         onRemove={remove}
         onClear={clear}
       />
-      <ThoughtDisplay running={aiProcessing && !hasThinkingMessage} onStop={handleStop} />
+      <ThoughtDisplay
+        running={teamRuntime?.loading ?? (aiProcessing && !hasThinkingMessage)}
+        onStop={effectiveHandleStop}
+      />
 
       <SendBox
         onMobilePlusClick={isMobile ? () => setIsMobileSheetOpen(true) : undefined}
@@ -585,13 +638,13 @@ Please check your local CLI tool authentication status`,
           emitter.emit('acp.selected.file', items);
           setAtPath(items);
         }}
-        loading={isBusy}
+        loading={teamRuntime?.loading ?? isBusy}
         disabled={false}
         placeholder={t('acp.sendbox.placeholder', {
           backend: agent_name || backend,
           defaultValue: `Send message to {{backend}}...`,
         })}
-        onStop={handleStop}
+        onStop={effectiveHandleStop}
         className='z-10'
         onFilesAdded={handleFilesAdded}
         hasPendingAttachments={uploadFile.length > 0 || atPath.length > 0}
@@ -619,6 +672,7 @@ Please check your local CLI tool authentication status`,
               hideCompactLabelPrefixOnMobile
               onModeChanged={isLeaderInTeam ? teamPermission?.propagateMode : undefined}
               beforeRuntimeSync={prepareRuntimeSync}
+              persistGlobalPreference={!assistantId}
             />
           ) : undefined
         }

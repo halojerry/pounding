@@ -19,6 +19,7 @@ import { usePendingConfirmationsRecovery } from '@renderer/pages/conversation/Me
 import HOC from '@renderer/utils/ui/HOC';
 import React, { useEffect, useMemo } from 'react';
 import LocalImageView from '@renderer/components/media/LocalImageView';
+import type { TeamSendBoxRuntime } from '@/renderer/pages/team/components/teamSendRuntime';
 import AionrsSendBox from './AionrsSendBox';
 import type { AionrsModelSelection } from './useAionrsModelSelection';
 
@@ -33,6 +34,9 @@ const AionrsChat: React.FC<{
   loadedMcpServers?: string[];
   loadedMcpStatuses?: IConversationMcpStatus[];
   agent_name?: string;
+  teamSendMessage?: (payload: { input: string; files: string[] }) => Promise<void>;
+  teamRuntime?: TeamSendBoxRuntime;
+  assistantId?: string;
 }> = ({
   conversation_id,
   workspace,
@@ -44,6 +48,9 @@ const AionrsChat: React.FC<{
   loadedMcpServers,
   loadedMcpStatuses,
   agent_name,
+  teamSendMessage,
+  teamRuntime,
+  assistantId,
 }) => {
   useMessageLstCache(conversation_id);
   usePendingConfirmationsRecovery(conversation_id);
@@ -60,8 +67,9 @@ const AionrsChat: React.FC<{
       loadedSkills,
       loadedMcpServers,
       loadedMcpStatuses,
+      assistantId,
     };
-  }, [conversation_id, workspace, cron_job_id, loadedSkills, loadedMcpServers, loadedMcpStatuses]);
+  }, [conversation_id, workspace, cron_job_id, loadedSkills, loadedMcpServers, loadedMcpStatuses, assistantId]);
 
   return (
     <ConversationProvider value={conversationValue}>
@@ -75,6 +83,8 @@ const AionrsChat: React.FC<{
             modelSelection={modelSelection}
             session_mode={session_mode}
             agent_name={agent_name}
+            teamSendMessage={teamSendMessage}
+            teamRuntime={teamRuntime}
           />
         </div>
       </ConversationArtifactProvider>

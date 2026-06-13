@@ -44,11 +44,11 @@ export function getBuiltinSettingsNavItems(isDesktop: boolean, t: TranslateFn): 
       icon: <Lightning theme='outline' size='16' />,
       path: 'capabilities',
     },
-    display: {
-      id: 'display',
-      label: t('settings.display'),
-      icon: <img src={ozonPng} alt='Display' style={{ width: 16, height: 16 }} />,
-      path: 'display',
+    appearance: {
+      id: 'appearance',
+      label: t('settings.appearancePanel'),
+      icon: <Computer theme='outline' size='16' />,
+      path: 'appearance',
     },
     webui: {
       id: 'webui',

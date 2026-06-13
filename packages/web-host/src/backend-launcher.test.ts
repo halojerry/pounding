@@ -75,6 +75,12 @@ function makeFakeChild(): ChildProcess {
   return child as ChildProcess;
 }
 
+function makeFakeTaskkillChild(): ChildProcess {
+  const child = new EventEmitter() as EventEmitter & Partial<ChildProcess>;
+  child.unref = vi.fn() as unknown as ChildProcess['unref'];
+  return child as ChildProcess;
+}
+
 function emitListening(child: ChildProcess, port: number): void {
   child.stdout?.emit('data', Buffer.from(`AIONCORE_LISTENING {"host":"127.0.0.1","port":${port}}\n`));
 }
@@ -266,6 +272,8 @@ describe('BackendLifecycleManager.start (success path)', () => {
       '0',
       '--data-dir',
       '/db/path',
+      '--parent-pid',
+      String(process.pid),
       '--log-level',
       'info',
       '--app-version',
@@ -316,6 +324,8 @@ describe('BackendLifecycleManager.start (success path)', () => {
         '0',
         '--data-dir',
         '/db/path',
+        '--parent-pid',
+        String(process.pid),
         '--log-level',
         'info',
         '--app-version',
@@ -344,6 +354,74 @@ describe('BackendLifecycleManager.start (success path)', () => {
 });
 
 describe('BackendLifecycleManager.start (health timeout)', () => {
+  it('captures backend boundary code and stage from early-exit stderr', async () => {
+    vi.useFakeTimers();
+    vi.mocked(createServer).mockImplementation(
+      () => makeSyncFakeServer(33337) as unknown as ReturnType<typeof createServer>
+    );
+    const child = makeFakeChild();
+    vi.mocked(spawn).mockReturnValue(child as unknown as ChildProcess);
+
+    const mgr = new BackendLifecycleManager(APP_META_PACKAGED, () => '/abs/path/aioncore');
+    const startPromise = mgr.start('/db/path', '/log/dir', {
+      cacheDir: '/cache',
+      workDir: '/work',
+      logDir: '/log',
+    });
+
+    await Promise.resolve();
+    child.stderr?.emit(
+      'data',
+      Buffer.from(
+        'BOOTSTRAP_DATA_INIT_FAILED stage=database.open databasePath=/db/path/aionui-backend.db: failed to initialize application data\n'
+      )
+    );
+    child.emit('exit', 1, null);
+    child.emit('close', 1, null);
+
+    await expect(startPromise).rejects.toMatchObject({
+      name: 'BackendStartupError',
+      details: expect.objectContaining({
+        backendBoundaryCode: 'BOOTSTRAP_DATA_INIT_FAILED',
+        backendBoundaryStage: 'database.open',
+      }),
+    });
+  });
+
+  it('captures backend boundary code when stderr drains after exit but before close', async () => {
+    vi.useFakeTimers();
+    vi.mocked(createServer).mockImplementation(
+      () => makeSyncFakeServer(33337) as unknown as ReturnType<typeof createServer>
+    );
+    const child = makeFakeChild();
+    vi.mocked(spawn).mockReturnValue(child as unknown as ChildProcess);
+
+    const mgr = new BackendLifecycleManager(APP_META_PACKAGED, () => '/abs/path/aioncore');
+    const startPromise = mgr.start('/db/path', '/log/dir', {
+      cacheDir: '/cache',
+      workDir: '/work',
+      logDir: '/log',
+    });
+
+    await Promise.resolve();
+    child.emit('exit', 1, null);
+    child.stderr?.emit(
+      'data',
+      Buffer.from(
+        'BOOTSTRAP_DATA_INIT_FAILED stage=database.migration databasePath=/db/path/aionui-backend.db: failed to initialize application data\n'
+      )
+    );
+    child.emit('close', 1, null);
+
+    await expect(startPromise).rejects.toMatchObject({
+      name: 'BackendStartupError',
+      details: expect.objectContaining({
+        backendBoundaryCode: 'BOOTSTRAP_DATA_INIT_FAILED',
+        backendBoundaryStage: 'database.migration',
+      }),
+    });
+  });
+
   it('kills child and reports listen_timeout when aioncore never reports a port', async () => {
     vi.useFakeTimers();
     const child = makeFakeChild();
@@ -716,6 +794,7 @@ describe('BackendLifecycleManager.stop', () => {
     await Promise.resolve();
     const stopPromise = mgr.stop();
     (child as unknown as EventEmitter).emit('exit', null, 'SIGTERM');
+    (child as unknown as EventEmitter).emit('close', null, 'SIGTERM');
     await stopPromise;
 
     await expect(startPromise).rejects.toMatchObject({
@@ -787,6 +866,90 @@ describe('BackendLifecycleManager.stop', () => {
     fetchSpy.mockRestore();
     killSpy.mockRestore();
   }, 7_000);
+
+  it('waits for Windows taskkill to finish before cleaning registered agent processes', async () => {
+    const platformSpy = vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+    vi.mocked(createServer).mockImplementation(
+      () => makeFakeServer(22224) as unknown as ReturnType<typeof createServer>
+    );
+    const child = makeFakeChild();
+    const taskkillChild = makeFakeTaskkillChild();
+    vi.mocked(spawn)
+      .mockReturnValueOnce(child as unknown as ChildProcess)
+      .mockReturnValueOnce(taskkillChild as unknown as ChildProcess);
+
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('ok', { status: 200 }) as unknown as Response);
+
+    const mgr = new BackendLifecycleManager(APP_META, () => '/x');
+    const startPromise = mgr.start('/db');
+    await Promise.resolve();
+    emitListening(child, 22224);
+    await startPromise;
+
+    const stopPromise = mgr.stop();
+    child.emit('exit', 0);
+    await Promise.resolve();
+
+    expect(cleanupRegisteredAgentProcesses).not.toHaveBeenCalledWith('/db');
+
+    taskkillChild.emit('close', 0);
+    await stopPromise;
+
+    expect(spawn).toHaveBeenLastCalledWith('taskkill', ['/PID', '99999', '/T'], {
+      stdio: 'ignore',
+      windowsHide: true,
+    });
+    expect(cleanupRegisteredAgentProcesses).toHaveBeenCalledWith('/db');
+
+    fetchSpy.mockRestore();
+    platformSpy.mockRestore();
+  });
+
+  it('waits for forced Windows taskkill before cleanup when graceful stop times out', async () => {
+    vi.useFakeTimers();
+    const platformSpy = vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+    vi.mocked(createServer).mockImplementation(
+      () => makeSyncFakeServer(22225) as unknown as ReturnType<typeof createServer>
+    );
+    const child = makeFakeChild();
+    const gracefulTaskkillChild = makeFakeTaskkillChild();
+    const forcedTaskkillChild = makeFakeTaskkillChild();
+    vi.mocked(spawn)
+      .mockReturnValueOnce(child as unknown as ChildProcess)
+      .mockReturnValueOnce(gracefulTaskkillChild as unknown as ChildProcess)
+      .mockReturnValueOnce(forcedTaskkillChild as unknown as ChildProcess);
+
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('ok', { status: 200 }) as unknown as Response);
+
+    const mgr = new BackendLifecycleManager(APP_META, () => '/x');
+    const startPromise = mgr.start('/db');
+    await Promise.resolve();
+    emitListening(child, 22225);
+    await startPromise;
+
+    const stopPromise = mgr.stop();
+    gracefulTaskkillChild.emit('close', 0);
+    await vi.advanceTimersByTimeAsync(5_000);
+    await Promise.resolve();
+
+    expect(cleanupRegisteredAgentProcesses).not.toHaveBeenCalledWith('/db');
+
+    forcedTaskkillChild.emit('close', 0);
+    await stopPromise;
+
+    expect(spawn).toHaveBeenLastCalledWith('taskkill', ['/F', '/PID', '99999', '/T'], {
+      stdio: 'ignore',
+      windowsHide: true,
+    });
+    expect(cleanupRegisteredAgentProcesses).toHaveBeenCalledWith('/db');
+
+    fetchSpy.mockRestore();
+    platformSpy.mockRestore();
+  });
 });
 
 describe('BackendLifecycleManager crash restart', () => {

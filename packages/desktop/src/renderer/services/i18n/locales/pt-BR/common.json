@@ -59,7 +59,8 @@
   "historyBack": "Voltar",
   "more": "Mais",
   "refresh": "Atualizar",
-  "tray.showWindow": "Mostrar POUNDING",
+  "readOnly": "Somente leitura",
+  "tray.showWindow": "Mostrar AionUi",
   "tray.newChat": "Novo Chat",
   "tray.closeToTray": "Ocultar na Bandeja",
   "tray.about": "Sobre o POUNDING",
@@ -80,7 +81,12 @@
       "title": "A instalação do POUNDING está incompleta",
       "description": "Esta instalação está faltando recursos locais necessários, portanto o poundingcore não pode ser iniciado. Por favor, baixe e reinstale a versão mais recente do POUNDING.",
       "downloadLatest": "Baixar mais recente",
-      "sendDiagnostics": "Enviar diagnósticos"
+      "sendDiagnostics": "Enviar diagnósticos",
+      "runtimeComponentDescription": "This installation is missing required bundled runtime components, so {{resource}} cannot start. Reinstall the latest AionUi package. If it still happens after reinstalling, check whether security or antivirus software quarantined AionUi components."
+    },
+    "packageArchitectureMismatch": {
+      "title": "AionUi package architecture mismatch",
+      "description": "This AionUi package is for {{packageArch}}, but this Mac is {{deviceArch}}. You may have downloaded the wrong package. Please download and install the {{expectedArch}} package."
     }
   },
   "fileAttach.addFiles": "Adicionar arquivos",

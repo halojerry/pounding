@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAcpMessage } from '@/renderer/pages/conversation/platforms/acp/useAcpMessage';
 import { getConversationOrNull } from '@/renderer/pages/conversation/utils/conversationCache';
@@ -165,6 +165,100 @@ describe('useAcpMessage', () => {
       expect.objectContaining({
         type: 'text',
         msg_id: 'msg-1',
+      })
+    );
+  });
+
+  it('preserves slash-command metadata from available_commands stream updates', async () => {
+    vi.mocked(getConversationOrNull).mockResolvedValue(null);
+
+    const { result } = renderHook(() => useAcpMessage('conv-1'));
+
+    act(() => {
+      responseStreamHandlerRef.current?.({
+        type: 'available_commands',
+        data: {
+          commands: [
+            {
+              name: 'review',
+              description: 'Review the current diff',
+              input: {
+                hint: '⌘R',
+              },
+              _meta: {
+                completion_behavior: 'neutral_tip_on_empty',
+                empty_turn_tip_code: 'acp.empty_turn.choose_command',
+                empty_turn_tip_params: {
+                  command_count: 1,
+                },
+              },
+            },
+          ],
+        },
+        msg_id: 'cmd-1',
+        conversation_id: 'conv-1',
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.slashCommands).toEqual([
+        {
+          name: 'review',
+          description: 'Review the current diff',
+          hint: '⌘R',
+          kind: 'template',
+          source: 'acp',
+          selectionBehavior: 'insert',
+          completionBehavior: 'neutral_tip_on_empty',
+          emptyTurnTipCode: 'acp.empty_turn.choose_command',
+          emptyTurnTipParams: {
+            command_count: 1,
+          },
+        },
+      ]);
+    });
+  });
+
+  it('normalizes team teammate messages before inserting them into the message list', async () => {
+    vi.mocked(getConversationOrNull).mockResolvedValue(null);
+
+    renderHook(() => useAcpMessage('leader-conversation-1'));
+
+    act(() => {
+      responseStreamHandlerRef.current?.({
+        type: 'teammate_message',
+        data: {
+          id: 'projected-message-1',
+          type: 'text',
+          msg_id: 'projected-message-1',
+          conversation_id: 'leader-conversation-1',
+          position: 'left',
+          status: 'finish',
+          content: {
+            content: '[Codex Assistant] idle',
+            teammate_message: true,
+            sender_name: 'Codex Assistant',
+            sender_backend: 'codex',
+            sender_conversation_id: 'teammate-conversation-1',
+          },
+        },
+        msg_id: 'projected-message-1',
+        conversation_id: 'leader-conversation-1',
+      } as unknown as IResponseMessage);
+    });
+
+    expect(addOrUpdateMessageMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'text',
+        msg_id: 'projected-message-1',
+        conversation_id: 'leader-conversation-1',
+        content: {
+          content: '[Codex Assistant] idle',
+          teammateMessage: true,
+          senderName: 'Codex Assistant',
+          senderAgentType: 'codex',
+          senderConversationId: 'teammate-conversation-1',
+        },
       })
     );
   });

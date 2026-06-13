@@ -8,6 +8,7 @@ const {
   verifyModuleBinary,
   getModulesToRebuild,
 } = require('./rebuildNativeModules');
+const { verifyBundledAioncoreResources } = require('../packages/shared-scripts/src/verify-bundled-aioncore-resources');
 
 /**
  * afterPack hook for electron-builder
@@ -21,59 +22,19 @@ function resolveResourcesDir(electronPlatformName, appOutDir, packager) {
   return path.join(appOutDir, `${appName}.app`, 'Contents', 'Resources');
 }
 
-function getBackendBinaryName(electronPlatformName) {
-  return electronPlatformName === 'win32' ? 'poundingcore.exe' : 'poundingcore';
-}
-
-function requirePackagedResource(resourcesDir, relativePath, missing) {
-  const absolutePath = path.join(resourcesDir, relativePath);
-  if (!fs.existsSync(absolutePath)) {
-    missing.push(relativePath);
-  }
-}
-
 function verifyBundledResources(resourcesDir, electronPlatformName, targetArch) {
-  const runtimeKey = `${electronPlatformName}-${targetArch}`;
-  const missing = [];
-
-  requirePackagedResource(
+  const result = verifyBundledAioncoreResources({
     resourcesDir,
-    path.join('bundled-poundingcore', runtimeKey, getBackendBinaryName(electronPlatformName)),
-    missing
-  );
-  requirePackagedResource(resourcesDir, path.join('bundled-poundingcore', runtimeKey, 'manifest.json'), missing);
-  requirePackagedResource(resourcesDir, path.join('bundled-poundingcore', runtimeKey, 'managed-resources'), missing);
+    electronPlatformName,
+    targetArch,
+  });
 
-  if (missing.length > 0) {
-    throw new Error(`Packaged app is missing required resource(s): ${missing.join(', ')}`);
+  if (result.missing.length > 0) {
+    console.error(`   Missing bundled resources: ${result.missing.join(', ')}`);
+    throw new Error(`Packaged app is missing required bundled resource(s): ${result.missing.join(', ')}`);
   }
 
-  console.log(`   ✓ Bundled resources verified for ${runtimeKey}`);
-
-  // Check for CLI bundles in managed-resources
-  const managedResourcesDir = path.join(resourcesDir, 'bundled-poundingcore', runtimeKey, 'managed-resources');
-
-  // Verify CLI bundles (optional — will fallback to network install if missing)
-  const cliTargets = ['claude', 'codex', 'opencode', 'openclaw'];
-  for (const cli of cliTargets) {
-    const cliDir = path.join(managedResourcesDir, 'cli', cli);
-    if (fs.existsSync(cliDir)) {
-      console.log(`   ✓ CLI bundle present: ${cli}`);
-    } else {
-      console.warn(`   ⚠️  CLI bundle missing: ${cli} (will fallback to network install)`);
-    }
-  }
-
-  // Verify runtime resources
-  const runtimeTargets = ['uv', 'python', 'hermes'];
-  for (const runtime of runtimeTargets) {
-    const runtimeDir = path.join(managedResourcesDir, 'runtimes', runtime);
-    if (fs.existsSync(runtimeDir)) {
-      console.log(`   ✓ Runtime bundle present: ${runtime}`);
-    } else {
-      console.warn(`   ⚠️  Runtime bundle missing: ${runtime}`);
-    }
-  }
+  console.log(`   ✓ Bundled resources verified for ${result.runtimeKey} (${result.checked.length} checks)`);
 }
 
 module.exports = async function afterPack(context) {

@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -146,6 +146,11 @@ if (isWebUI || isResetPassword) {
     app.commandLine.appendSwitch('ozone-platform', 'headless');
     app.commandLine.appendSwitch('disable-gpu');
     app.commandLine.appendSwitch('disable-software-rasterizer');
+  }
+
+  // macOS: disable GPU sandbox to prevent GPU process from being killed (SIGTERM)
+  if (process.platform === 'darwin') {
+    app.commandLine.appendSwitch('disable-gpu-sandbox');
   }
 
   // For root user, disable sandbox to prevent crash

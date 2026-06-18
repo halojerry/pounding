@@ -1056,5 +1056,6 @@
   },
   "cdP": {
     "title": "CDP (Chrome DevTools Protocol)"
-  }
+  },
+  "display": "Tela"
 }

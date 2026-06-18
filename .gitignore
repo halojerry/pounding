@@ -202,8 +202,10 @@ worktrees/
 .superpowers/
 docs/superpowers/
 resources/bundled-bun
-resources/bundled-poundingcore
-data/
+resources/bundled-poundingcore/
+resources/bundled-aionui-backend/
+data/runtime/
+vendor/
 resources/hub
 
 # Server build output

@@ -59,7 +59,6 @@
   "historyBack": "Back",
   "more": "More",
   "refresh": "Refresh",
-  "readOnly": "Read only",
   "tray.showWindow": "Show POUNDING",
   "tray.newChat": "New Chat",
   "tray.closeToTray": "Hide to Tray",
@@ -81,12 +80,7 @@
       "title": "POUNDING installation is incomplete",
       "description": "This installation is missing required local resources, so AionCore cannot start. Please download and reinstall the latest POUNDING.",
       "downloadLatest": "Download latest",
-      "sendDiagnostics": "Send diagnostics",
-      "runtimeComponentDescription": "This installation is missing required bundled runtime components, so {{resource}} cannot start. Reinstall the latest POUNDING package. If it still happens after reinstalling, check whether security or antivirus software quarantined POUNDING components."
-    },
-    "packageArchitectureMismatch": {
-      "title": "POUNDING package architecture mismatch",
-      "description": "This POUNDING package is for {{packageArch}}, but this Mac is {{deviceArch}}. You may have downloaded the wrong package. Please download and install the {{expectedArch}} package."
+      "sendDiagnostics": "Send diagnostics"
     }
   },
   "fileAttach.addFiles": "Add files",

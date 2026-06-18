@@ -14,8 +14,6 @@ import { Message } from '@arco-design/web-react';
 import { useCallback, useRef } from 'react';
 import { type TFunction } from 'i18next';
 import type { NavigateFunction } from 'react-router-dom';
-import { mutate as swrMutate } from 'swr';
-import { getConversationCreateErrorMessage } from '@/renderer/pages/conversation/utils/conversationCreateError';
 import type { AcpModelInfo, AvailableAgent, EffectiveAgentInfo } from '../types';
 
 export type GuidSendDeps = {
@@ -44,6 +42,9 @@ export type GuidSendDeps = {
   getEffectiveAgentType: (
     agentInfo: { agent_type: string; backend?: string; custom_agent_id?: string } | undefined
   ) => EffectiveAgentInfo;
+  resolvePresetRulesAndSkills: (
+    agentInfo: { agent_type: string; backend?: string; custom_agent_id?: string; context?: string } | undefined
+  ) => Promise<{ rules?: string; skills?: string }>;
   resolveEnabledSkills: (
     agentInfo: { agent_type: string; backend?: string; custom_agent_id?: string } | undefined
   ) => string[] | undefined;
@@ -52,11 +53,8 @@ export type GuidSendDeps = {
   ) => string[] | undefined;
   guidDisabledBuiltinSkills: string[] | undefined;
   guidEnabledSkills: string[] | undefined;
-  assistantDefaultSkillIds?: string[];
-  assistantDefaultDisabledBuiltinSkillIds?: string[];
   availableMcpServers: IMcpServer[];
   selectedMcpServerIds: string[] | undefined;
-  assistantDefaultMcpIds?: string[];
   currentEffectiveAgentInfo: EffectiveAgentInfo;
   isGoogleAuth: boolean;
 
@@ -69,7 +67,6 @@ export type GuidSendDeps = {
   // Navigation
   navigate: NavigateFunction;
   t: TFunction;
-  localeKey: string;
 };
 
 export type GuidSendResult = {
@@ -79,7 +76,7 @@ export type GuidSendResult = {
 };
 
 /**
- * Hook that manages the send logic for ACP and Aion CLI conversations.
+ * Hook that manages the send logic for all conversation types (openclaw/nanobot/acp).
  */
 export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
   const {
@@ -101,15 +98,13 @@ export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
     current_model,
     findAgentByKey,
     getEffectiveAgentType,
+    resolvePresetRulesAndSkills,
     resolveEnabledSkills,
     resolveDisabledBuiltinSkills,
     guidDisabledBuiltinSkills,
     guidEnabledSkills,
-    assistantDefaultSkillIds,
-    assistantDefaultDisabledBuiltinSkillIds,
     availableMcpServers,
     selectedMcpServerIds,
-    assistantDefaultMcpIds,
     currentEffectiveAgentInfo: _currentEffectiveAgentInfo,
     isGoogleAuth,
     setMentionOpen,
@@ -118,7 +113,6 @@ export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
     setMentionActiveIndex,
     navigate,
     t,
-    localeKey,
   } = deps;
   const sendingRef = useRef(false);
 
@@ -132,24 +126,21 @@ export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
 
     const { agent_type: effectiveAgentType } = getEffectiveAgentType(agentInfo);
 
+    const { rules: preset_rules } = await resolvePresetRulesAndSkills(agentInfo);
     // Guid page's per-conversation skill overrides take precedence over the
     // assistant's saved defaults. The combined skills menu lets the user pick
     // any custom skill — not just preset-declared ones — so for non-preset
     // agents we still forward the user's selection (the backend accepts
     // `preset_enabled_skills` regardless of `is_preset`).
     const presetEnabledSkillsDefault = resolveEnabledSkills(agentInfo);
-    const enabled_skills =
-      guidEnabledSkills ?? (is_presetAgent ? assistantDefaultSkillIds : presetEnabledSkillsDefault);
+    const enabled_skills = guidEnabledSkills ?? presetEnabledSkillsDefault;
     const enabled_skills_to_send = is_presetAgent
       ? enabled_skills
       : guidEnabledSkills?.length
         ? guidEnabledSkills
         : undefined;
-    const excludeBuiltinSkills =
-      guidDisabledBuiltinSkills ??
-      (is_presetAgent ? assistantDefaultDisabledBuiltinSkillIds : resolveDisabledBuiltinSkills(agentInfo));
-    const selectedAllMcpServerIds = selectedMcpServerIds ?? [];
-    const selectedMcpServerIdSet = new Set(selectedAllMcpServerIds);
+    const excludeBuiltinSkills = guidDisabledBuiltinSkills ?? resolveDisabledBuiltinSkills(agentInfo);
+    const selectedMcpServerIdSet = new Set(selectedMcpServerIds ?? []);
     const selectedUserMcpServerIds = availableMcpServers
       .filter((server) => selectedMcpServerIdSet.has(server.id) && server.builtin !== true)
       .map((server) => server.id);
@@ -159,31 +150,113 @@ export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
     const selectedSessionMcpServers = availableMcpServers
       .filter((server) => selectedMcpServerIdSet.has(server.id) && server.builtin === true)
       .map((server) => toSessionMcpServer(server));
-    const defaultSelectedMcpServerIds = assistantDefaultMcpIds;
-    const defaultSelectedUserMcpServerIds = availableMcpServers
-      .filter((server) => (defaultSelectedMcpServerIds ?? []).includes(server.id) && server.builtin !== true)
-      .map((server) => server.id);
-    const assistantOverrideMcpIds =
-      selectedMcpServerIds !== undefined ? selectedAllMcpServerIds : defaultSelectedMcpServerIds;
-    const selectedUserMcpServerIdsToSend =
-      selectedMcpServerIds !== undefined ? selectedUserMcpServerIds : defaultSelectedUserMcpServerIds;
-    const selectedSessionMcpServersToSend =
-      selectedMcpServerIds !== undefined
-        ? selectedAllSessionMcpServers
-        : availableMcpServers
-            .filter((server) => (defaultSelectedMcpServerIds ?? []).includes(server.id))
-            .map((server) => toSessionMcpServer(server));
 
     const finalEffectiveAgentType = effectiveAgentType;
-    const assistantOverrideModel =
-      selectedAcpModel || currentAcpCachedModelInfo?.current_model_id || current_model?.use_model || undefined;
-    const assistantOverrides = {
-      model: assistantOverrideModel,
-      permission: selectedMode || undefined,
-      skill_ids: enabled_skills_to_send,
-      disabled_builtin_skill_ids: excludeBuiltinSkills,
-      mcp_ids: assistantOverrideMcpIds,
-    };
+
+    // OpenClaw Gateway path
+    if (selectedAgent === 'openclaw-gateway') {
+      const openclawAgentInfo = agentInfo || findAgentByKey(selectedAgentKey);
+      const openclawConversationParams = buildAgentConversationParams({
+        backend: openclawAgentInfo?.backend || 'openclaw-gateway',
+        name: input,
+        agent_name: openclawAgentInfo?.name,
+        preset_assistant_id,
+        workspace: finalWorkspace,
+        model: current_model!,
+        cli_path: openclawAgentInfo?.cli_path,
+        custom_agent_id: openclawAgentInfo?.custom_agent_id,
+        custom_workspace: isCustomWorkspace,
+        extra: {
+          default_files: files,
+          runtime_validation: {
+            expected_workspace: finalWorkspace,
+            expected_backend: openclawAgentInfo?.backend,
+            expected_agent_name: openclawAgentInfo?.name,
+            expected_cli_path: openclawAgentInfo?.cli_path,
+            expected_model: current_model?.use_model,
+            switched_at: Date.now(),
+          },
+          preset_enabled_skills: enabled_skills_to_send,
+          exclude_auto_inject_skills: excludeBuiltinSkills,
+        },
+      });
+
+      try {
+        const conversation = await ipcBridge.conversation.create.invoke(openclawConversationParams);
+
+        if (!conversation || !conversation.id) {
+          alert('Failed to create OpenClaw conversation. Please ensure the OpenClaw Gateway is running.');
+          return;
+        }
+
+        if (isCustomWorkspace) {
+          updateWorkspaceTime(finalWorkspace);
+        }
+
+        emitter.emit('chat.history.refresh');
+
+        const initialMessage = {
+          input,
+          files: files.length > 0 ? files : undefined,
+        };
+        sessionStorage.setItem(`openclaw_initial_message_${conversation.id}`, JSON.stringify(initialMessage));
+
+        await navigate(`/conversation/${conversation.id}`);
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        alert(`Failed to create OpenClaw conversation: ${errorMessage}`);
+        throw error;
+      }
+      return;
+    }
+
+    // Nanobot path
+    if (selectedAgent === 'nanobot') {
+      const nanobotAgentInfo = agentInfo || findAgentByKey(selectedAgentKey);
+      const nanobotConversationParams = buildAgentConversationParams({
+        backend: nanobotAgentInfo?.backend || 'nanobot',
+        name: input,
+        agent_name: nanobotAgentInfo?.name,
+        preset_assistant_id,
+        workspace: finalWorkspace,
+        model: current_model!,
+        custom_agent_id: nanobotAgentInfo?.custom_agent_id,
+        custom_workspace: isCustomWorkspace,
+        extra: {
+          default_files: files,
+          preset_enabled_skills: enabled_skills_to_send,
+          exclude_auto_inject_skills: excludeBuiltinSkills,
+        },
+      });
+
+      try {
+        const conversation = await ipcBridge.conversation.create.invoke(nanobotConversationParams);
+
+        if (!conversation || !conversation.id) {
+          alert('Failed to create Nanobot conversation. Please ensure nanobot is installed.');
+          return;
+        }
+
+        if (isCustomWorkspace) {
+          updateWorkspaceTime(finalWorkspace);
+        }
+
+        emitter.emit('chat.history.refresh');
+
+        const initialMessage = {
+          input,
+          files: files.length > 0 ? files : undefined,
+        };
+        sessionStorage.setItem(`nanobot_initial_message_${conversation.id}`, JSON.stringify(initialMessage));
+
+        await navigate(`/conversation/${conversation.id}`);
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        alert(`Failed to create Nanobot conversation: ${errorMessage}`);
+        throw error;
+      }
+      return;
+    }
 
     // Aionrs path (direct selection or preset assistant with aionrs as main agent)
     if (selectedAgent === 'aionrs' || (is_preset && finalEffectiveAgentType === 'aionrs')) {
@@ -196,21 +269,19 @@ export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
           type: 'aionrs',
           name: input,
           model: current_model,
-          assistant:
-            preset_assistant_id && is_preset
-              ? {
-                  id: preset_assistant_id,
-                  locale: localeKey,
-                  conversation_overrides: assistantOverrides,
-                }
-              : undefined,
           extra: {
             default_files: files,
             workspace: finalWorkspace,
             custom_workspace: isCustomWorkspace,
+            preset_rules: is_preset ? preset_rules : undefined,
+            preset_enabled_skills: enabled_skills_to_send,
+            exclude_auto_inject_skills: excludeBuiltinSkills,
+            selected_mcp_server_ids: selectedUserMcpServerIds,
+            // aionrs should consume the authoritative session snapshot, just
+            // like team MCP does, instead of reloading only user servers from
+            // the global MCP repository at runtime.
+            selected_session_mcp_servers: selectedAllSessionMcpServers,
             preset_assistant_id,
-            selected_mcp_server_ids: selectedUserMcpServerIdsToSend,
-            selected_session_mcp_servers: selectedSessionMcpServersToSend,
             session_mode: selectedMode,
           },
         });
@@ -222,13 +293,6 @@ export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
 
         if (isCustomWorkspace) {
           updateWorkspaceTime(finalWorkspace);
-        }
-
-        if (preset_assistant_id) {
-          await Promise.all([
-            swrMutate(`guid.assistant.detail.${preset_assistant_id}.${localeKey}`),
-            swrMutate('assistants.list'),
-          ]);
         }
 
         emitter.emit('chat.history.refresh');
@@ -285,15 +349,24 @@ export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
         custom_workspace: isCustomWorkspace,
         is_preset,
         preset_agent_type: finalEffectiveAgentType,
+        preset_resources: is_preset
+          ? {
+              rules: preset_rules,
+              enabled_skills,
+              exclude_auto_inject_skills: excludeBuiltinSkills,
+            }
+          : undefined,
         session_mode: selectedMode,
         current_model_id: selectedAcpModel || currentAcpCachedModelInfo?.current_model_id || undefined,
-        assistant_locale: localeKey,
-        assistant_conversation_overrides: assistantOverrides,
         extra: {
           default_files: files,
-          selected_mcp_server_ids: selectedUserMcpServerIdsToSend,
-          selected_session_mcp_servers:
-            selectedMcpServerIds !== undefined ? selectedSessionMcpServers : selectedSessionMcpServersToSend,
+          exclude_auto_inject_skills: excludeBuiltinSkills,
+          selected_mcp_server_ids: selectedUserMcpServerIds,
+          selected_session_mcp_servers: selectedSessionMcpServers,
+          // Non-preset agents still forward user-selected custom skills via the
+          // shared backend slot. For preset assistants this is already wired
+          // through `preset_resources.enabled_skills` above.
+          ...(is_preset ? {} : guidEnabledSkills?.length ? { preset_enabled_skills: guidEnabledSkills } : {}),
         },
       });
 
@@ -306,13 +379,6 @@ export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
 
         if (isCustomWorkspace) {
           updateWorkspaceTime(finalWorkspace);
-        }
-
-        if (preset_assistant_id) {
-          await Promise.all([
-            swrMutate(`guid.assistant.detail.${preset_assistant_id}.${localeKey}`),
-            swrMutate('assistants.list'),
-          ]);
         }
 
         emitter.emit('chat.history.refresh');
@@ -343,18 +409,14 @@ export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
     current_model,
     findAgentByKey,
     getEffectiveAgentType,
+    resolvePresetRulesAndSkills,
     resolveEnabledSkills,
     resolveDisabledBuiltinSkills,
     guidDisabledBuiltinSkills,
-    guidEnabledSkills,
-    assistantDefaultSkillIds,
-    assistantDefaultDisabledBuiltinSkillIds,
     availableMcpServers,
     selectedMcpServerIds,
-    assistantDefaultMcpIds,
     navigate,
     t,
-    localeKey,
   ]);
 
   const sendMessageHandler = useCallback(() => {

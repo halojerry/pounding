@@ -954,13 +954,7 @@
     "step4": "授权成功后，即可通过企业微信与 AI 助手对话",
     "waitingConnection": "请确保 WebUI 已运行，以便企微能访问回调地址",
     "agent": "对话 Agent",
-    "agentDesc": "用于企业微信对话",
-    "botId": "机器人 ID",
-    "botIdDesc": "WeCom 机器人 ID",
-    "secret": "密钥",
-    "secretDesc": "WeCom 机器人密钥",
-    "wsHint": "WebSocket 连接提示",
-    "wsTitle": "WebSocket 设置"
+    "agentDesc": "用于企业微信对话"
   },
   "addAssistant": "添加助手",
   "agentManagement": {
@@ -1049,13 +1043,5 @@
   "newApiQuotaTitle": "余额",
   "newApiQuotaUnlimited": "无限配额",
   "newApiQuotaUnlimitedDesc": "不限量使用",
-  "aionrs": {
-    "available": "可用",
-    "managedCliModelsDesc": "管理 CLI 模型",
-    "managedCliModelsTitle": "CLI 模型",
-    "noManagedModels": "没有管理的模型",
-    "notFound": "未找到",
-    "providerNote": "提供商说明",
-    "version": "版本"
-  }
+  "display": "显示"
 }

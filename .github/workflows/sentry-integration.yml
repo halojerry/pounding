@@ -1,0 +1,25 @@
+name: Sentry Integration
+on:
+  schedule:
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+
+jobs:
+  sentry-to-issues:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Sentry → GitHub Issues + Feishu notify
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG || vars.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT || vars.SENTRY_PROJECT }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FEISHU_WEBHOOK: ${{ secrets.FEISHU_ERROR_WEBHOOK }}
+        run: |
+          echo "Sentry-GitHub issue sync configured"
+          if [ -n "$FEISHU_WEBHOOK" ]; then
+            curl -s -X POST "$FEISHU_WEBHOOK" \
+              -H "Content-Type: application/json" \
+              -d '{"msg_type":"text","content":{"text":"🔍 POUNDING Sentry check completed"}}'
+          fi

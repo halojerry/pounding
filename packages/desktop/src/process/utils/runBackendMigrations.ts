@@ -5,18 +5,18 @@
  */
 
 import { execFile } from 'node:child_process';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { migrateConfigStorage, migrateLegacyMcpConfigToDb, migrateProviders } from '@/common/config/configMigration';
 import { httpRequest } from '@/common/adapter/httpBridge';
 import { mcpService } from '@/common/adapter/ipcBridge';
 import type { ConfigKeyMap } from '@/common/config/configKeys';
 import {
-  IMAGE_GEN_ENV_KEYS,
   removeImageGenerationEnvKeys,
   resolveImageGenerationMcpEnv,
   type ImageGenerationMcpEnvResolveResult,
 } from '@/common/config/imageGenerationMcpEnv';
 import { BUILTIN_IMAGE_GEN_NAME, type IMcpServer, type IProvider } from '@/common/config/storage';
-import { IMAGE_NAME_PATTERN } from '@/common/utils/imageModelAllowlist';
 import { getBuiltinMcpScriptPath, type ProcessConfig as ProcessConfigType } from './initStorage';
 import { migrateAssistantsToBackend } from './migrateAssistants';
 
@@ -162,10 +162,43 @@ function isSameStdioTransport(left: IMcpServer['transport'], right: IMcpServer['
   );
 }
 
+function resolveManagedNodeRoot(): string {
+  // Uses the same managed node runtime as AionCore — probed via 'node' binary
+  // in the managed runtime directory. Falls back to system node.
+  const homedir = require('os').homedir();
+  const managedRoot = path.join(homedir, '.pounding-dev', 'runtime', 'node');
+  if (fs.existsSync(managedRoot)) {
+    const versions = fs.readdirSync(managedRoot).filter((d) => d.startsWith('node-v'));
+    if (versions.length > 0) {
+      return path.join(managedRoot, versions[0]);
+    }
+  }
+  return ''; // fall back to system PATH
+}
+
+function resolveManagedNodeCommand(): string {
+  const root = resolveManagedNodeRoot();
+  return root ? path.join(root, 'bin', 'node') : 'node';
+}
+
+function resolveManagedNodeModule(pkgName: string, entry: string): string {
+  const root = resolveManagedNodeRoot();
+  if (root) {
+    const pkgPath = path.join(root, 'lib', 'node_modules', pkgName, entry);
+    if (fs.existsSync(pkgPath)) return pkgPath;
+  }
+  // Fallback: let npx download it
+  return '';
+}
+
 function buildDefaultMcpServers(): McpImportServer[] {
   const chromeConfig = {
-    command: 'npx',
-    args: ['-y', 'chrome-devtools-mcp@latest', '--browser-url=http://127.0.0.1:9230'],
+    // Use managed node binary with locally-installed chrome-devtools-mcp
+    command: resolveManagedNodeCommand(),
+    args: [
+      resolveManagedNodeModule('chrome-devtools-mcp', 'build/src/index.js'),
+      '--browser-url=http://127.0.0.1:9230',
+    ],
   };
 
   const imageGenConfig = {
@@ -283,57 +316,8 @@ async function ensureBootstrapMcpServersInDb(configFile: ConfigFile): Promise<vo
   const existingImageServer = existingByName.get(BUILTIN_IMAGE_GEN_NAME);
   const existingImageEnv =
     existingImageServer?.transport.type === 'stdio' ? existingImageServer.transport.env : undefined;
-  let imageEnvResolution = resolveImageGenerationMcpEnv(imageConfig, providers, existingImageEnv);
+  const imageEnvResolution = resolveImageGenerationMcpEnv(imageConfig, providers, existingImageEnv);
   logImageGenerationEnvResolution(imageEnvResolution, 'bootstrap');
-
-  // Auto-configure image generation from POUNDING API provider when resolved env is empty
-  if (!imageEnvResolution.ok && providers.length > 0) {
-    const poundingProvider = providers.find((p) => p.platform === 'new-api' || p.platform === 'pounding-api');
-    if (poundingProvider && Array.isArray(poundingProvider.models) && poundingProvider.models.length > 0) {
-      const imageModels = poundingProvider.models.filter((m) => IMAGE_NAME_PATTERN.test(m));
-      if (imageModels.length > 0) {
-        const imageModel = imageModels.find((m) => m === 'gpt-image-2') || imageModels[0];
-        const autoEnv: Record<string, string> = {
-          [IMAGE_GEN_ENV_KEYS.providerId]: poundingProvider.id,
-          [IMAGE_GEN_ENV_KEYS.platform]: poundingProvider.platform,
-          [IMAGE_GEN_ENV_KEYS.baseUrl]: poundingProvider.base_url,
-          [IMAGE_GEN_ENV_KEYS.apiKey]: poundingProvider.api_key,
-          [IMAGE_GEN_ENV_KEYS.model]: imageModel,
-        };
-        imageEnvResolution = {
-          ok: true,
-          source: 'provider-id' as const,
-          provider: poundingProvider,
-          model: imageModel,
-          env: autoEnv,
-        };
-        logImageGenerationEnvResolution(imageEnvResolution, 'bootstrap');
-
-        // Persist auto-selected model to config if not already set
-        if (!imageConfig) {
-          const autoConfig: ConfigKeyMap['tools.imageGenerationModel'] = {
-            id: poundingProvider.id,
-            name: poundingProvider.name,
-            platform: poundingProvider.platform,
-            base_url: '',
-            api_key: '',
-            use_model: imageModel,
-          };
-          configFile.set('tools.imageGenerationModel', autoConfig).catch((err: unknown) => {
-            console.warn('[Migration] Failed to persist auto-configured image generation model', err);
-          });
-        }
-      } else {
-        console.warn(
-          '[Migration] POUNDING API provider found but has no image-generation models matching allowlist. Provider id: %s, models: %s',
-          poundingProvider.id,
-          poundingProvider.models.join(',')
-        );
-      }
-    } else {
-      console.warn('[Migration] No POUNDING API provider found for image generation auto-configuration');
-    }
-  }
   const imageServer = buildBuiltinImageGenerationServer(imageEnvResolution, imageConfig);
   const defaultServers = buildDefaultMcpServers();
   const missing = [...defaultServers, imageServer].filter((server) => !existingByName.has(server.name));
@@ -345,7 +329,14 @@ async function ensureBootstrapMcpServersInDb(configFile: ConfigFile): Promise<vo
 
   // Ensure existing builtin MCP servers are enabled (in case they were
   // previously created with enabled=false by an older migration).
-  for (const server of [...defaultServers, imageServer]) {
+  // Deduplicate — image-gen may appear in both defaultServers and imageServer.
+  const seen = new Set<string>();
+  const uniqueServers = [...defaultServers, imageServer].filter((server) => {
+    if (seen.has(server.name)) return false;
+    seen.add(server.name);
+    return true;
+  });
+  for (const server of uniqueServers) {
     const existing = existingByName.get(server.name);
     if (existing && !existing.enabled) {
       await mcpService.toggleServer.invoke({ id: existing.id });
@@ -480,7 +471,7 @@ async function syncBuiltinMcpConfig(configFile: ConfigFile): Promise<void> {
 
   await httpRequest<void>('PUT', '/api/settings/client', { 'mcp.config': mergedMcpConfig });
   console.info(
-    '[AionUi] Synced builtin MCP config to backend settings (%d builtin servers)',
+    '[POUNDING] Synced builtin MCP config to backend settings (%d builtin servers)',
     localBuiltinServers.length
   );
 }
@@ -491,9 +482,9 @@ export async function runBackendMigrations(configFile: ConfigFile): Promise<void
     const start = Date.now();
     try {
       await step.run();
-      console.info(`[AionUi] Backend migration step completed: ${step.name} (${Date.now() - start}ms)`);
+      console.info(`[POUNDING] Backend migration step completed: ${step.name} (${Date.now() - start}ms)`);
     } catch (error) {
-      console.error(`[AionUi] Backend migration step failed: ${step.name} (${Date.now() - start}ms)`, error);
+      console.error(`[POUNDING] Backend migration step failed: ${step.name} (${Date.now() - start}ms)`, error);
     }
   }, Promise.resolve());
 
@@ -504,21 +495,24 @@ export async function runBackendMigrations(configFile: ConfigFile): Promise<void
       const completed = await step.run(configFile);
       const elapsed = Date.now() - start;
       if (!completed) {
-        console.warn(`[AionUi] Backend migration step incomplete: ${step.name} (${elapsed}ms)`);
+        console.warn(`[POUNDING] Backend migration step incomplete: ${step.name} (${elapsed}ms)`);
         return;
       }
-      console.info(`[AionUi] Backend migration step completed: ${step.name} (${elapsed}ms)`);
+      console.info(`[POUNDING] Backend migration step completed: ${step.name} (${elapsed}ms)`);
     } catch (error) {
       const elapsed = Date.now() - start;
-      console.error(`[AionUi] Backend migration step failed: ${step.name} (${elapsed}ms)`, error);
+      console.error(`[POUNDING] Backend migration step failed: ${step.name} (${elapsed}ms)`, error);
     }
   }, Promise.resolve());
 
   const syncStart = Date.now();
   try {
     await syncBuiltinMcpConfig(configFile);
-    console.info(`[AionUi] Backend migration step completed: syncBuiltinMcpConfig (${Date.now() - syncStart}ms)`);
+    console.info(`[POUNDING] Backend migration step completed: syncBuiltinMcpConfig (${Date.now() - syncStart}ms)`);
   } catch (error) {
-    console.error(`[AionUi] Backend migration step failed: syncBuiltinMcpConfig (${Date.now() - syncStart}ms)`, error);
+    console.error(
+      `[POUNDING] Backend migration step failed: syncBuiltinMcpConfig (${Date.now() - syncStart}ms)`,
+      error
+    );
   }
 }

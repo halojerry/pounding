@@ -23,15 +23,10 @@ on:
         description: 'Only upload primary installers (exe/msi/dmg/deb), skip zip/yml/blockmap'
         type: boolean
         default: false
-      aioncore_run_id:
-        description: 'Optional AionCore Manual Build workflow run id to bundle instead of the pinned release'
-        type: string
-        default: ''
 
 env:
   BUN_INSTALL_REGISTRY: 'https://registry.npmjs.org/'
-  AIONUI_HUB_TAG: 'dist-ebc6a2b'
-  AIONUI_HUB_SKIP: '1'
+  # HUB is skipped in POUNDING builds (downloaded via preparePoundingcore.js instead)
 
 jobs:
   code-quality:
@@ -53,7 +48,7 @@ jobs:
       - name: Setup bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.3.13
+          bun-version: latest
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -63,9 +58,6 @@ jobs:
 
       - name: Run ESLint
         run: bun run lint
-
-      - name: Auto-format code (oxfmt write)
-        run: bun run format || true
 
       - name: Check Prettier formatting
         run: bun run format:check
@@ -111,7 +103,7 @@ jobs:
       - name: Setup bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.3.13
+          bun-version: latest
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -313,37 +305,17 @@ jobs:
           MSVS_VERSION: 2022
           GYP_MSVS_VERSION: 2022
 
-      - name: Verify vendored managed resources (offline build gate)
-        shell: bash
-        run: |
-          VENDOR_DIR="vendor/managed-resources"
-          echo "Checking vendored managed resources..."
-          if [ ! -d "$VENDOR_DIR" ]; then
-            echo "::warning::vendor/managed-resources/ is MISSING — will fall back to CDN download."
-            echo ""
-            echo "  For fully offline builds, run once:"
-            echo "    bash scripts/vendor-managed-resources.sh"
-            echo "  Then commit the vendor/ directory with Git LFS."
-            echo ""
-          else
-            echo "  vendor/managed-resources/ found (offline build)"
-            echo "  Contents:"
-            find "$VENDOR_DIR" -maxdepth 3 -type d | sort | while read d; do
-              local_size=$(du -sh "$d" 2>/dev/null | cut -f1)
-            echo "    ${d#vendor/} ($local_size)"
-          done
-          fi
-
       - name: Prepare packaged backend binary
         shell: bash
         run: node scripts/preparePoundingcore.js
         env:
-          # Version is pinned in repo-root package.json (aioncoreVersion).
-          # Set AIONUI_BACKEND_VERSION here only to override for ad-hoc builds.
-          AIONUI_BACKEND_RUN_ID: ${{ inputs.aioncore_run_id }}
-          AIONUI_BACKEND_ARCH: ${{ matrix.arch }}
+          # Version is pinned in repo-root package.json (prefer aioncoreVersion, fallback aionuiBackendVersion).
+          # Override POUNDINGCORE_VERSION for ad-hoc builds.
+          # POUNDINGCORE_GITHUB_OWNER/REPO point to our private backend fork.
+          POUNDINGCORE_GITHUB_OWNER: halojerry
+          POUNDINGCORE_GITHUB_REPO: poundingcore
           GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Build with electron-builder (Windows)
         if: startsWith(matrix.platform, 'windows')
@@ -371,7 +343,6 @@ jobs:
           }
         env:
           WINDOWS_BUILD_COMMAND: ${{ matrix.command }}
-          AIONUI_BACKEND_RUN_ID: ${{ inputs.aioncore_run_id }}
           # Node.js memory limit for vite bundling (prevents OOM during build)
           # Node.js 内存限制，防止 vite 打包时内存不足
           NODE_OPTIONS: '--max-old-space-size=8192'
@@ -406,7 +377,6 @@ jobs:
           # CI flag & GitHub token / CI 标识与 GitHub Token
           CI: true
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # Clean up any stale disk images before DMG creation (macOS only)
       # 清理可能残留的磁盘镜像，避免 hdiutil "Device not configured" 错误
@@ -474,7 +444,6 @@ jobs:
           exit 1
         env:
           NODE_OPTIONS: '--max-old-space-size=8192'
-          AIONUI_BACKEND_RUN_ID: ${{ inputs.aioncore_run_id }}
           npm_config_arch: ${{ matrix.arch }}
           APP_ID: ${{ secrets.APP_ID }}
           appleId: ${{ secrets.APPLE_ID }}
@@ -498,7 +467,6 @@ jobs:
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT != '' && secrets.SENTRY_PROJECT || vars.SENTRY_PROJECT }}
           CI: true
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # Linux: Standard build without special error handling
       # Linux: 标准构建，无特殊错误处理
@@ -512,7 +480,6 @@ jobs:
           command: ${{ matrix.command }}
         env:
           NODE_OPTIONS: '--max-old-space-size=8192'
-          AIONUI_BACKEND_RUN_ID: ${{ inputs.aioncore_run_id }}
           npm_config_arch: ${{ matrix.arch }}
           npm_config_cache: ${{ runner.temp }}/.npm
           ELECTRON_CACHE: ${{ runner.temp }}/.cache/electron
@@ -529,7 +496,6 @@ jobs:
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT != '' && secrets.SENTRY_PROJECT || vars.SENTRY_PROJECT }}
           CI: true
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # macOS 钥匙串清理
       - name: Clean up keychain (macOS only)

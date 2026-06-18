@@ -59,7 +59,6 @@
   "historyBack": "Geri",
   "more": "Daha Fazla",
   "refresh": "Yenile",
-  "readOnly": "Salt okunur",
   "tray.showWindow": "POUNDING'yi Göster",
   "tray.newChat": "Yeni Sohbet",
   "tray.closeToTray": "Tepsiye Gizle",
@@ -81,12 +80,7 @@
       "title": "POUNDING kurulumu eksik",
       "description": "Bu kurulumda gerekli yerel kaynaklar eksik, bu yüzden AionCore başlatılamıyor. Lütfen en son POUNDING sürümünü indirip yeniden kurun.",
       "downloadLatest": "Son sürümü indir",
-      "sendDiagnostics": "Tanı raporu gönder",
-      "runtimeComponentDescription": "This installation is missing required bundled runtime components, so {{resource}} cannot start. Reinstall the latest POUNDING package. If it still happens after reinstalling, check whether security or antivirus software quarantined POUNDING components."
-    },
-    "packageArchitectureMismatch": {
-      "title": "POUNDING package architecture mismatch",
-      "description": "This POUNDING package is for {{packageArch}}, but this Mac is {{deviceArch}}. You may have downloaded the wrong package. Please download and install the {{expectedArch}} package."
+      "sendDiagnostics": "Tanı raporu gönder"
     }
   },
   "fileAttach.addFiles": "Dosya ekle",
@@ -104,9 +98,5 @@
   "import": "İçe Aktar",
   "processing": "İşleniyor...",
   "optional": "(isteğe bağlı)",
-  "clear": "Temizle",
-  "unit": {
-    "minute_short": "dk",
-    "second_short": "sn"
-  }
+  "clear": "Temizle"
 }

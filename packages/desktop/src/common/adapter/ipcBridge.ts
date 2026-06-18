@@ -35,7 +35,11 @@ import type {
   UpdateAssistantRequest,
 } from '../types/agent/assistantTypes';
 import type { PreviewHistoryTarget, PreviewSnapshotInfo } from '../types/office/preview';
-import type { AcpModelInfo } from '../types/platform/acpTypes';
+import type {
+  GetConfigOptionsResponse,
+  SetConfigOptionRequest,
+  SetConfigOptionResponse,
+} from '../types/platform/acpTypes';
 import type {
   ManagedRuntimeCliTarget,
   NewApiAccountStatus,
@@ -782,6 +786,14 @@ export const acpConversation = {
   sendMessage: conversation.sendMessage,
   responseStream: conversation.responseStream,
   getAvailableAgents: httpGet<AgentMetadata[], void>('/api/agents'),
+  /**
+   * Management view of `/api/agents` (`?include_disabled=true`). Returns the
+   * picker-safe list plus agents hidden solely because the user disabled
+   * them (still installed). Used only by the Agent settings screen so a
+   * disabled custom agent stays listed with a working re-enable toggle.
+   * Pickers must keep using `getAvailableAgents` (default filtered view).
+   */
+  getManagedAgents: httpGet<AgentMetadata[], void>('/api/agents?include_disabled=true'),
   refreshCustomAgents: httpPost<void, void>('/api/agents/refresh'),
   testCustomAgent: httpPost<
     { step: 'success' } | { step: 'fail_cli'; error: string } | { step: 'fail_acp'; error: string },
@@ -837,26 +849,13 @@ export const acpConversation = {
   checkProviderHealth: httpPost<ProviderHealthCheckResponse, ProviderHealthCheckRequest>(
     '/api/agents/provider-health-check'
   ),
-  setMode: httpPut<{ mode: string; initialized: boolean }, { conversation_id: string; mode: string }>(
-    (p) => `/api/conversations/${p.conversation_id}/mode`,
-    (p) => ({ mode: p.mode })
-  ),
-  // 404 is the expected pre-warmup response from `/api/conversations/:id/mode`
-  // and `/api/conversations/:id/model` — the agent has not attached yet, so
-  // we have nothing to read. AcpModeSelector / AcpModelSelector both fall back
-  // to handshake metadata in that case. Silence the bridge log so this
-  // ordinary state doesn't pollute Sentry breadcrumbs (ELECTRON-1BT).
-  getMode: httpGet<{ mode: string; initialized: boolean }, { conversation_id: string }>(
-    (p) => `/api/conversations/${p.conversation_id}/mode`,
+  getConfigOptions: httpGet<GetConfigOptionsResponse, { conversation_id: string }>(
+    (p) => `/api/conversations/${p.conversation_id}/config-options`,
     { silentStatuses: [404] }
   ),
-  getModel: httpGet<{ model_info: AcpModelInfo | null }, { conversation_id: string }>(
-    (p) => `/api/conversations/${p.conversation_id}/model`,
-    { silentStatuses: [404] }
-  ),
-  setModel: httpPut<{ model_info: AcpModelInfo | null }, { conversation_id: string; model_id: string }>(
-    (p) => `/api/conversations/${p.conversation_id}/model`,
-    (p) => ({ model_id: p.model_id })
+  setConfigOption: httpPut<SetConfigOptionResponse, { conversation_id: string; option_id: string; value: string }>(
+    (p) => `/api/conversations/${p.conversation_id}/config-options/${encodeURIComponent(p.option_id)}`,
+    (p): SetConfigOptionRequest => ({ value: p.value })
   ),
 };
 
@@ -1473,6 +1472,7 @@ export interface ICreateConversationParams {
     session_mode?: string;
     codex_model?: string;
     current_model_id?: string;
+    thought_level?: string;
     cached_config_options?: import('../types/platform/acpTypes').AcpSessionConfigOption[];
     pending_config_options?: Record<string, string>;
     runtime_validation?: {

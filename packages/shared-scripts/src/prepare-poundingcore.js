@@ -205,6 +205,7 @@ function extractArchive(archivePath, outputDir, platform) {
 }
 
 function findBinaryInDir(dir, binaryName) {
+  // Search for the expected binary name first
   const entries = fs.readdirSync(dir, { withFileTypes: true });
   for (const entry of entries) {
     const fullPath = path.join(dir, entry.name);
@@ -214,6 +215,28 @@ function findBinaryInDir(dir, binaryName) {
       if (found) return found;
     }
   }
+  return null;
+}
+
+/**
+ * Search extracted directory for the binary, trying poundingcore first,
+ * then aioncore as fallback (old releases have aioncore binary name).
+ */
+function findBinaryWithFallback(dir, platform) {
+  const primaryName = getBinaryName(platform);
+  const primary = findBinaryInDir(dir, primaryName);
+  if (primary) return primary;
+
+  // Fallback: old releases (v0.1.22-Pounding and earlier) contain aioncore binary
+  const fallbackName = platform === 'win32' ? 'aioncore.exe' : 'aioncore';
+  const fallback = findBinaryInDir(dir, fallbackName);
+  if (fallback) {
+    // Rename to the expected name
+    const renamed = path.join(path.dirname(fallback), primaryName);
+    fs.renameSync(fallback, renamed);
+    return renamed;
+  }
+
   return null;
 }
 
@@ -412,10 +435,9 @@ function downloadAndExtract(platform, arch, tag) {
 
   extractArchive(archivePath, extractDir, platform);
 
-  const binaryName = getBinaryName(platform);
-  const binaryPath = findBinaryInDir(extractDir, binaryName);
+  const binaryPath = findBinaryWithFallback(extractDir, platform);
   if (!binaryPath) {
-    throw new Error(`Binary ${binaryName} not found in downloaded archive`);
+    throw new Error(`Binary ${getBinaryName(platform)} not found in downloaded archive`);
   }
 
   return { binaryPath, tempDir };

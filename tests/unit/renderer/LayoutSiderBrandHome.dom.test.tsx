@@ -38,7 +38,53 @@ vi.mock('@/common', () => ({
 // Trim Layout's collaborators to keep this a focused brand-behaviour test.
 vi.mock('@/common/config/constants', () => ({ TEAM_MODE_ENABLED: false }));
 vi.mock('@/renderer/components/layout/PwaPullToRefresh', () => ({ default: () => null }));
-vi.mock('@/renderer/components/layout/Titlebar', () => ({ default: () => null }));
+
+// Titlebar mock: render the back-to-chat button (in settings routes) and the logo icon for the easter egg.
+// These elements were originally in Layout's sider header — they now live in Titlebar.
+let devToolsClickCount = 0;
+vi.mock('@/renderer/components/layout/Titlebar', () => ({
+  default: () => {
+    const isSettings = currentPathname.startsWith('/settings');
+
+    const handleBackToChat = () => {
+      const stored = sessionStorage.getItem('aion:last-non-settings-path');
+      if (stored && !stored.startsWith('/settings')) {
+        navigate(stored);
+      } else {
+        navigate('/guid');
+      }
+    };
+
+    const handleIconClick = () => {
+      devToolsClickCount++;
+      if (devToolsClickCount >= 4) {
+        openDevTools();
+        devToolsClickCount = 0;
+      }
+    };
+
+    return (
+      <div>
+        {isSettings && (
+          <button
+            type='button'
+            aria-label='common.back'
+            onClick={handleBackToChat}
+            onKeyDown={(e: React.KeyboardEvent) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                handleBackToChat();
+              }
+            }}
+          />
+        )}
+        {/* Logo icon wrapper — easter-egg target, separate from the wordmark */}
+        <div className='bg-black' onClick={handleIconClick} />
+      </div>
+    );
+  },
+}));
+
 vi.mock('@/renderer/components/settings/UpdateModal', () => ({ default: () => null }));
 vi.mock('@renderer/hooks/system/useDeepLink', () => ({ useDeepLink: () => {} }));
 vi.mock('@renderer/hooks/system/useNotificationClick', () => ({ useNotificationClick: () => {} }));
@@ -48,6 +94,52 @@ vi.mock('@renderer/hooks/file/useDirectorySelection', () => ({
 vi.mock('@renderer/utils/ui/siderTooltip', () => ({ cleanupSiderTooltips: () => {} }));
 vi.mock('@renderer/hooks/ui/useConversationShortcuts', () => ({ useConversationShortcuts: () => {} }));
 vi.mock('@renderer/utils/platform', () => ({ isElectronDesktop: () => false }));
+
+// Layout uses Arco's Layout component for the shell.
+vi.mock('@arco-design/web-react', () => {
+  const ArcoSider = ({ children, ...props }: { children?: React.ReactNode }) => (
+    <aside {...props}>{children}</aside>
+  );
+  const ArcoHeader = ({ children, ...props }: { children?: React.ReactNode }) => (
+    <header {...props}>{children}</header>
+  );
+  const ArcoContent = ({ children, ...props }: { children?: React.ReactNode }) => (
+    <main {...props}>{children}</main>
+  );
+  const ArcoLayout = Object.assign(
+    ({ children, className }: { children?: React.ReactNode; className?: string }) => (
+      <div className={className}>{children}</div>
+    ),
+    { Sider: ArcoSider, Header: ArcoHeader, Content: ArcoContent }
+  );
+  return {
+    Layout: ArcoLayout,
+    Button: ({ children, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement>) => (
+      <button type='button' {...props}>{children}</button>
+    ),
+    Spin: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
+    Trigger: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
+  };
+});
+
+vi.mock('@icon-park/react', () => ({
+  MenuFold: () => <span aria-hidden='true' />,
+  MenuUnfold: () => <span aria-hidden='true' />,
+}));
+
+vi.mock('@/renderer/hooks/context/NewApiAccountContext', () => ({
+  useNewApiAccount: () => ({
+    ready: true,
+    isLoggedIn: true,
+    status: { envConflicts: [] },
+  }),
+}));
+
+vi.mock('@renderer/components/layout/DesktopLoginGate', () => ({ default: () => null }));
+vi.mock('@renderer/components/settings/EnvConflictBanner', () => ({ default: () => null }));
+vi.mock('@renderer/hooks/context/NavigationHistoryContext', () => ({
+  NavigationHistoryProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}));
 
 import Layout from '@renderer/components/layout/Layout';
 
@@ -72,6 +164,7 @@ describe('Layout sider brand Home button', () => {
     });
     navigate.mockClear();
     openDevTools.mockClear();
+    devToolsClickCount = 0;
     sessionStorage.clear();
     currentPathname = '/guid';
   });

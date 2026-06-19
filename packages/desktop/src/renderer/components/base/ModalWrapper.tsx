@@ -23,7 +23,7 @@ const ModalWrapper: React.FC<ModalWrapperProps> = ({
         {showCustomClose && title && (
           <div className='aionui-modal-header'>
             <h3 className='aionui-modal-title'>{title}</h3>
-            <button onClick={onCancel} className='aionui-modal-close-btn'>
+            <button onClick={onCancel} className='pounding-modal-close-btn'>
               <Close size={20} fill='#86909c' />
             </button>
           </div>

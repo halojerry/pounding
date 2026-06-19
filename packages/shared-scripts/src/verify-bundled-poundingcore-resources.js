@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 
 function backendBinaryName(platform) {
-  return platform === 'win32' ? 'aioncore.exe' : 'aioncore';
+  return platform === 'win32' ? 'poundingcore.exe' : 'poundingcore';
 }
 
 function nodeBinaryName(platform) {
@@ -18,7 +18,7 @@ function normalize(relativePath) {
 }
 
 function bundledPath(runtimeKey, ...parts) {
-  return normalize(path.join('bundled-aioncore', runtimeKey, ...parts));
+  return normalize(path.join('bundled-poundingcore', runtimeKey, ...parts));
 }
 
 function requireRelativePath(baseDir, runtimeKey, parts, checked, missing) {
@@ -131,9 +131,9 @@ function requireManagedAcpTool(baseDir, runtimeKey, toolId, checked, missing) {
   }
 }
 
-function verifyBundledAioncoreResources({ resourcesDir, electronPlatformName, targetArch }) {
+function verifyBundledPoundingcoreResources({ resourcesDir, electronPlatformName, targetArch }) {
   const runtimeKey = `${electronPlatformName}-${targetArch}`;
-  const baseDir = path.join(resourcesDir, 'bundled-aioncore', runtimeKey);
+  const baseDir = path.join(resourcesDir, 'bundled-poundingcore', runtimeKey);
   const checked = [];
   const missing = [];
 
@@ -148,5 +148,5 @@ function verifyBundledAioncoreResources({ resourcesDir, electronPlatformName, ta
 }
 
 module.exports = {
-  verifyBundledAioncoreResources,
+  verifyBundledPoundingcoreResources,
 };

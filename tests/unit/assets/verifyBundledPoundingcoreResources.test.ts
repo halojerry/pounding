@@ -4,10 +4,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const {
-  verifyBundledAioncoreResources,
+  verifyBundledPoundingcoreResources,
 } = require('../../../packages/shared-scripts/src/verify-bundled-poundingcore-resources');
 
-describe('verifyBundledAioncoreResources', () => {
+describe('verifyBundledPoundingcoreResources', () => {
   let tmp: string;
   let resourcesDir: string;
   let managedResourcesDir: string;
@@ -48,7 +48,7 @@ describe('verifyBundledAioncoreResources', () => {
   });
 
   it('passes when node and managed ACP entrypoints exist', () => {
-    const result = verifyBundledAioncoreResources({
+    const result = verifyBundledPoundingcoreResources({
       resourcesDir,
       electronPlatformName: 'win32',
       targetArch: 'x64',
@@ -61,7 +61,7 @@ describe('verifyBundledAioncoreResources', () => {
   it('reports missing managed node runtime executable', () => {
     rmSync(join(managedResourcesDir, 'node', 'node-v24.11.0-win-x64', 'node.exe'));
 
-    const result = verifyBundledAioncoreResources({
+    const result = verifyBundledPoundingcoreResources({
       resourcesDir,
       electronPlatformName: 'win32',
       targetArch: 'x64',
@@ -98,7 +98,7 @@ describe('verifyBundledAioncoreResources', () => {
     });
     writeFileSync(join(darwinClaudeRoot, 'claude-agent-acp'), '', { flush: true });
 
-    const result = verifyBundledAioncoreResources({
+    const result = verifyBundledPoundingcoreResources({
       resourcesDir: darwinResourcesDir,
       electronPlatformName: 'darwin',
       targetArch: 'arm64',
@@ -117,7 +117,7 @@ describe('verifyBundledAioncoreResources', () => {
     writeFileSync(join(linuxResourcesDir, 'bundled-poundingcore', 'linux-x64', 'manifest.json'), '{}', { flush: true });
     mkdirSync(join(linuxManagedResourcesDir, 'node', 'node-v24.11.0-linux-x64'), { recursive: true });
 
-    const result = verifyBundledAioncoreResources({
+    const result = verifyBundledPoundingcoreResources({
       resourcesDir: linuxResourcesDir,
       electronPlatformName: 'linux',
       targetArch: 'x64',
@@ -129,7 +129,7 @@ describe('verifyBundledAioncoreResources', () => {
   it('reports missing managed ACP manifest', () => {
     rmSync(join(codexRoot, 'manifest.json'));
 
-    const result = verifyBundledAioncoreResources({
+    const result = verifyBundledPoundingcoreResources({
       resourcesDir,
       electronPlatformName: 'win32',
       targetArch: 'x64',
@@ -143,7 +143,7 @@ describe('verifyBundledAioncoreResources', () => {
   it('reports missing managed ACP entrypoint declared by manifest', () => {
     rmSync(join(codexRoot, 'codex-acp.exe'));
 
-    const result = verifyBundledAioncoreResources({
+    const result = verifyBundledPoundingcoreResources({
       resourcesDir,
       electronPlatformName: 'win32',
       targetArch: 'x64',

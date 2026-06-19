@@ -76,6 +76,7 @@ const createDeps = (): GuidSendDeps => ({
   })),
   resolveEnabledSkills: vi.fn(() => ['skill-a']),
   resolveDisabledBuiltinSkills: vi.fn(() => ['skill-b']),
+  resolvePresetRulesAndSkills: vi.fn().mockResolvedValue({ rules: [] }),
   guidDisabledBuiltinSkills: undefined,
   guidEnabledSkills: undefined,
   assistantDefaultSkillIds: undefined,

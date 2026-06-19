@@ -118,6 +118,9 @@ function resolveLatestTag() {
  *
  * Expected asset naming convention:
  *   poundingcore-v0.1.0-aarch64-apple-darwin.tar.gz
+ *
+ * Also tries aioncore-* fallback for older releases
+ *   aioncore-v0.1.0-aarch64-apple-darwin.tar.gz
  */
 function getAssetName(platform, arch, tag) {
   const archMap = { x64: 'x86_64', arm64: 'aarch64' };
@@ -131,6 +134,33 @@ function getAssetName(platform, arch, tag) {
   if (!normalizedArch || !normalizedPlatform) return null;
   const ext = platform === 'win32' ? '.zip' : '.tar.gz';
   return `poundingcore-${tag}-${normalizedArch}-${normalizedPlatform}${ext}`;
+}
+
+/**
+ * Build the fallback (old aioncore-*) asset name for older releases.
+ * v0.1.22-Pounding and earlier used aioncore-* naming.
+ */
+function getFallbackAssetName(platform, arch, tag) {
+  const archMap = { x64: 'x86_64', arm64: 'aarch64' };
+  const platformMap = {
+    darwin: 'apple-darwin',
+    linux: 'unknown-linux-gnu',
+    win32: 'pc-windows-msvc',
+  };
+  const normalizedArch = archMap[arch];
+  const normalizedPlatform = platformMap[platform];
+  if (!normalizedArch || !normalizedPlatform) return null;
+  const ext = platform === 'win32' ? '.zip' : '.tar.gz';
+  return `aioncore-${tag}-${normalizedArch}-${normalizedPlatform}${ext}`;
+}
+
+/**
+ * Resolve asset name, trying poundingcore first, then aioncore fallback.
+ */
+function resolveAssetName(platform, arch, tag) {
+  const primary = getAssetName(platform, arch, tag);
+  const fallback = getFallbackAssetName(platform, arch, tag);
+  return { primary, fallback };
 }
 
 function getDownloadUrl(assetName, tag) {
@@ -322,31 +352,62 @@ function downloadAssetById(assetId, outputPath) {
   }
 }
 
+function tryDownload(assetName, tag, archivePath, tempDir) {
+  // 1. Try gh CLI first (handles auth for private repos natively)
+  if (downloadAssetViaGhCli(assetName, tag, archivePath)) {
+    return true;
+  }
+
+  // 2. Try API-based download (curl with token)
+  const assetId = findAssetId(assetName, tag);
+  if (assetId) {
+    downloadAssetById(assetId, archivePath);
+    return fs.existsSync(archivePath);
+  }
+
+  // 3. Fall back to direct URL (works for public repos)
+  try {
+    downloadFile(getDownloadUrl(assetName, tag), archivePath);
+    return fs.existsSync(archivePath);
+  } catch {
+    return false;
+  }
+}
+
 function downloadAndExtract(platform, arch, tag) {
-  const assetName = getAssetName(platform, arch, tag);
-  if (!assetName) {
+  const { primary, fallback } = resolveAssetName(platform, arch, tag);
+  if (!primary) {
     throw new Error(`Unsupported poundingcore target: ${platform}-${arch}`);
   }
 
   const tempDir = path.join(os.tmpdir(), 'poundingcore-prepare', tag, `${platform}-${arch}`);
-  const archivePath = path.join(tempDir, assetName);
+  const archivePath = path.join(tempDir, primary);
   const extractDir = path.join(tempDir, 'extracted');
 
   removeDirectorySafe(tempDir);
   ensureDirectory(tempDir);
 
-  // 1. Try gh CLI first (handles auth for private repos natively)
-  if (downloadAssetViaGhCli(assetName, tag, archivePath)) {
-    // downloaded successfully via gh CLI
-  } else {
-    // 2. Try API-based download (curl with token)
-    const assetId = findAssetId(assetName, tag);
-    if (assetId) {
-      downloadAssetById(assetId, archivePath);
-    } else {
-      // 3. Fall back to direct URL (works for public repos)
-      downloadFile(getDownloadUrl(assetName, tag), archivePath);
+  // Try primary asset name (poundingcore-*), then fallback (aioncore-*)
+  let downloaded = tryDownload(primary, tag, archivePath, tempDir);
+
+  if (!downloaded && fallback) {
+    console.log(`  Primary asset not found, trying fallback: ${fallback}`);
+    const fallbackArchivePath = path.join(tempDir, fallback);
+    downloaded = tryDownload(fallback, tag, fallbackArchivePath, tempDir);
+    if (downloaded) {
+      // Rename fallback archive to primary path for extraction
+      if (fallbackArchivePath !== archivePath && fs.existsSync(fallbackArchivePath)) {
+        fs.renameSync(fallbackArchivePath, archivePath);
+      }
     }
+  }
+
+  if (!downloaded) {
+    throw new Error(
+      `Failed to download poundingcore ${tag} for ${platform}-${arch}. Tried:\n` +
+      `  - ${getDownloadUrl(primary, tag)}\n` +
+      (fallback ? `  - ${getDownloadUrl(fallback, tag)}\n` : '')
+    );
   }
 
   extractArchive(archivePath, extractDir, platform);

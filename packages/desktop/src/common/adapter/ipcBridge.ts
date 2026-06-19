@@ -855,7 +855,8 @@ export const acpConversation = {
   ),
   setConfigOption: httpPut<SetConfigOptionResponse, { conversation_id: string; option_id: string; value: string }>(
     (p) => `/api/conversations/${p.conversation_id}/config-options/${encodeURIComponent(p.option_id)}`,
-    (p): SetConfigOptionRequest => ({ value: p.value })
+    (p): SetConfigOptionRequest => ({ value: p.value }),
+    { silentStatuses: [404] }
   ),
 };
 

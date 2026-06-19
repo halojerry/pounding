@@ -8,7 +8,7 @@ const Guid = React.lazy(() => import('@renderer/pages/guid'));
 const AgentSettings = React.lazy(() => import('@renderer/pages/settings/AgentSettings'));
 const AssistantSettings = React.lazy(() => import('@renderer/pages/settings/AssistantSettings'));
 const CapabilitiesSettings = React.lazy(() => import('@renderer/pages/settings/CapabilitiesSettings'));
-const DisplaySettings = React.lazy(() => import('@renderer/pages/settings/DisplaySettings'));
+const DisplaySettings = React.lazy(() => import('@renderer/pages/settings/AppearanceSettings'));
 const AionrsSettings = React.lazy(() => import('@renderer/pages/settings/AionrsSettings'));
 const ModeSettings = React.lazy(() => import('@renderer/pages/settings/ModeSettings'));
 const SystemSettings = React.lazy(() => import('@renderer/pages/settings/SystemSettings'));

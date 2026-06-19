@@ -251,47 +251,47 @@ export async function captureBackendStartupFailure(error: unknown): Promise<void
       scope.setTag('pounding.backend_startup.runtime', failureInfo.runtime);
     }
     if (failureInfo.packageArch) {
-      scope.setTag('aionui.backend_startup.package_arch', failureInfo.packageArch);
+      scope.setTag('pounding.backend_startup.package_arch', failureInfo.packageArch);
     }
     if (failureInfo.deviceArch) {
-      scope.setTag('aionui.backend_startup.device_arch', failureInfo.deviceArch);
+      scope.setTag('pounding.backend_startup.device_arch', failureInfo.deviceArch);
     }
     if (failureInfo.expectedDownloadArch) {
-      scope.setTag('aionui.backend_startup.expected_download_arch', failureInfo.expectedDownloadArch);
+      scope.setTag('pounding.backend_startup.expected_download_arch', failureInfo.expectedDownloadArch);
     }
     if (typeof failureInfo.isRosettaTranslated === 'boolean') {
-      scope.setTag('aionui.backend_startup.rosetta_translated', getBooleanTagValue(failureInfo.isRosettaTranslated));
+      scope.setTag('pounding.backend_startup.rosetta_translated', getBooleanTagValue(failureInfo.isRosettaTranslated));
     }
     if (typeof details?.stage === 'string') {
       scope.setTag('pounding.backend_startup.stage', details.stage);
     }
     if (failureInfo.incompleteInstallationKind) {
-      scope.setTag('aionui.backend_startup.incomplete_installation_kind', failureInfo.incompleteInstallationKind);
+      scope.setTag('pounding.backend_startup.incomplete_installation_kind', failureInfo.incompleteInstallationKind);
     }
     for (const [tag, value] of [
-      ['aionui.backend_startup.missing_bundled_dir', getBooleanTagValue(failureInfo.missingBundledAioncoreDir)],
-      ['aionui.backend_startup.missing_runtime_dir', getBooleanTagValue(failureInfo.missingRuntimeDir)],
-      ['aionui.backend_startup.missing_binary', getBooleanTagValue(failureInfo.missingBackendBinary)],
-      ['aionui.backend_startup.missing_hub_dir', getBooleanTagValue(failureInfo.missingHubDir)],
-      ['aionui.backend_startup.missing_pet_states_dir', getBooleanTagValue(failureInfo.missingPetStatesDir)],
-      ['aionui.backend_startup.missing_pwa_dir', getBooleanTagValue(failureInfo.missingPwaDir)],
-      ['aionui.backend_startup.install_path_kind', getInstallPathKind(details?.resourcesPath)],
-      ['aionui.backend_startup.last_update_status', getString(autoUpdateDiagnostics?.lastEvent?.status)],
+      ['pounding.backend_startup.missing_bundled_dir', getBooleanTagValue(failureInfo.missingBundledAioncoreDir)],
+      ['pounding.backend_startup.missing_runtime_dir', getBooleanTagValue(failureInfo.missingRuntimeDir)],
+      ['pounding.backend_startup.missing_binary', getBooleanTagValue(failureInfo.missingBackendBinary)],
+      ['pounding.backend_startup.missing_hub_dir', getBooleanTagValue(failureInfo.missingHubDir)],
+      ['pounding.backend_startup.missing_pet_states_dir', getBooleanTagValue(failureInfo.missingPetStatesDir)],
+      ['pounding.backend_startup.missing_pwa_dir', getBooleanTagValue(failureInfo.missingPwaDir)],
+      ['pounding.backend_startup.install_path_kind', getInstallPathKind(details?.resourcesPath)],
+      ['pounding.backend_startup.last_update_status', getString(autoUpdateDiagnostics?.lastEvent?.status)],
       [
-        'aionui.backend_startup.health_polling_delayed',
+        'pounding.backend_startup.health_polling_delayed',
         getBooleanTagValue(
           typeof details?.healthCheckPollingDelayed === 'boolean' ? details.healthCheckPollingDelayed : undefined
         ),
       ],
-      ['aionui.backend_startup.health_attempts_bucket', getHealthAttemptBucket(details?.healthCheckAttempts)],
+      ['pounding.backend_startup.health_attempts_bucket', getHealthAttemptBucket(details?.healthCheckAttempts)],
       [
-        'aionui.backend_startup.health_attempt_deficit_bucket',
+        'pounding.backend_startup.health_attempt_deficit_bucket',
         getHealthAttemptBucket(details?.healthCheckAttemptDeficit),
       ],
-      ['aionui.backend_startup.health_timeout_overrun_bucket', getDurationBucket(details?.healthCheckTimeoutOverrunMs)],
-      ['aionui.backend_startup.health_max_attempt_gap_bucket', getDurationBucket(details?.healthCheckMaxAttemptGapMs)],
+      ['pounding.backend_startup.health_timeout_overrun_bucket', getDurationBucket(details?.healthCheckTimeoutOverrunMs)],
+      ['pounding.backend_startup.health_max_attempt_gap_bucket', getDurationBucket(details?.healthCheckMaxAttemptGapMs)],
       [
-        'aionui.backend_startup.seconds_since_quit_and_install',
+        'pounding.backend_startup.seconds_since_quit_and_install',
         getSecondsSince(autoUpdateDiagnostics?.lastQuitAndInstallAt),
       ],
     ] as const) {

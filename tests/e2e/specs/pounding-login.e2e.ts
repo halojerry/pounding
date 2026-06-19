@@ -30,9 +30,17 @@ async function tryLogin(username: string, password: string) {
   return { path: '/api/login', status: res.status, body: await res.text() };
 }
 
+const TEST_USERNAME = process.env.POUNDING_E2E_USERNAME;
+const TEST_PASSWORD = process.env.POUNDING_E2E_PASSWORD;
+
 test.describe('POUNDING Login', () => {
   test('login endpoint responds', async () => {
-    const result = await tryLogin('haloclawroot', 'Haloclaw2026!');
+    // Skip test if credentials not configured (CI secrets not available locally)
+    if (!TEST_USERNAME || !TEST_PASSWORD) {
+      console.log('Skipping login test: POUNDING_E2E_USERNAME/PASSWORD not set');
+      return;
+    }
+    const result = await tryLogin(TEST_USERNAME, TEST_PASSWORD);
     console.log(`Path: ${result.path}, Status: ${result.status}`);
     console.log(`Body (first 500 chars): ${result.body.substring(0, 500)}`);
 

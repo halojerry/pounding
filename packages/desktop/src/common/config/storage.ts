@@ -5,7 +5,7 @@
  */
 
 import type { SpeechToTextConfig } from '@/common/types/provider/speech';
-import type { Theme } from '@/common/theme/types';
+import type { ManagedRuntimeCliTarget, NewApiAccountStatus } from '@/common/types/newApiAccount';
 import { storage } from '@office-ai/platform';
 
 // 系统配置存储
@@ -51,14 +51,10 @@ export interface IConfigStorageRefer {
   'acp.cachedModes'?: Record<string, import('@/common/types/platform/acpTypes').AcpSessionModes>;
   'mcp.config'?: IMcpServer[];
   language: string;
-  theme: string; // @deprecated migrated to theme.activeId/theme.userThemes
-  colorScheme: string; // @deprecated migrated to theme.activeId/theme.userThemes
+  theme: string;
+  colorScheme: string;
   /** Persisted app-wide UI zoom factor for Display settings */
   'ui.zoomFactor'?: number;
-  /** Per-region configurable font sizes (px), set in Appearance settings */
-  'ui.fontSize.chat'?: number;
-  'ui.fontSize.markdown'?: number;
-  'ui.fontSize.code'?: number;
   /** Last-known main window size and position, restored on next launch */
   'window.bounds'?: { x?: number; y?: number; width: number; height: number };
   /** 桌面模式下是否自动启用 WebUI / Auto-enable WebUI in desktop mode */
@@ -67,13 +63,9 @@ export interface IConfigStorageRefer {
   'webui.desktop.allowRemote'?: boolean;
   /** 桌面模式下 WebUI 端口 / WebUI port in desktop mode */
   'webui.desktop.port'?: number;
-  customCss: string; // 自定义 CSS 样式 // @deprecated migrated to theme.activeId/theme.userThemes
-  'css.themes': ICssTheme[]; // 自定义 CSS 主题列表 / Custom CSS themes list // @deprecated migrated to theme.activeId/theme.userThemes
-  'css.activeThemeId': string; // 当前激活的主题 ID / Currently active theme ID // @deprecated migrated to theme.activeId/theme.userThemes
-  /** Active unified theme ID */
-  'theme.activeId': string;
-  /** User-created themes */
-  'theme.userThemes': Theme[];
+  customCss: string; // 自定义 CSS 样式
+  'css.themes': ICssTheme[]; // 自定义 CSS 主题列表 / Custom CSS themes list
+  'css.activeThemeId': string; // 当前激活的主题 ID / Currently active theme ID
   'aionrs.config'?: {
     /** Preferred session mode for new conversations / 新会话的默认模式 */
     preferredMode?: string;
@@ -193,7 +185,6 @@ export interface IEnvStorageRefer {
   'aionui.dir': {
     workDir: string;
     cacheDir: string;
-    logDir?: string;
   };
 }
 
@@ -212,7 +203,7 @@ export type ConversationSource =
   | (string & {});
 
 export type TChatConversationStatus = 'pending' | 'running' | 'finished';
-export type TConversationRuntimeStateKind = 'idle' | 'starting' | 'running' | 'cancelling' | 'waiting_confirmation';
+export type TConversationRuntimeStateKind = 'idle' | 'starting' | 'running' | 'waiting_confirmation';
 
 export type TConversationRuntimeSummary = {
   state: TConversationRuntimeStateKind;
@@ -221,7 +212,6 @@ export type TConversationRuntimeSummary = {
   task_status?: TChatConversationStatus;
   is_processing: boolean;
   pending_confirmations: number;
-  turn_id: string | null;
 };
 
 interface IChatConversation<T, Extra> {

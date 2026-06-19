@@ -59,7 +59,6 @@
   "historyBack": "뒤로",
   "more": "더보기",
   "refresh": "새로고침",
-  "readOnly": "읽기 전용",
   "tray.showWindow": "POUNDING 표시",
   "tray.newChat": "새 채팅",
   "tray.closeToTray": "트레이에 숨기기",
@@ -81,12 +80,7 @@
       "title": "POUNDING 설치가 불완전합니다",
       "description": "현재 설치에 필요한 로컬 리소스가 없어 AionCore를 시작할 수 없습니다. 최신 POUNDING를 다운로드하여 다시 설치하세요.",
       "downloadLatest": "최신 버전 다운로드",
-      "sendDiagnostics": "진단 보고서 보내기",
-      "runtimeComponentDescription": "This installation is missing required bundled runtime components, so {{resource}} cannot start. Reinstall the latest POUNDING package. If it still happens after reinstalling, check whether security or antivirus software quarantined POUNDING components."
-    },
-    "packageArchitectureMismatch": {
-      "title": "POUNDING package architecture mismatch",
-      "description": "This POUNDING package is for {{packageArch}}, but this Mac is {{deviceArch}}. You may have downloaded the wrong package. Please download and install the {{expectedArch}} package."
+      "sendDiagnostics": "진단 보고서 보내기"
     }
   },
   "fileAttach.addFiles": "파일 추가",
@@ -104,9 +98,5 @@
   "import": "가져오기",
   "processing": "처리 중...",
   "optional": "(선택 사항)",
-  "clear": "지우기",
-  "unit": {
-    "minute_short": "분",
-    "second_short": "초"
-  }
+  "clear": "지우기"
 }

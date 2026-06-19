@@ -7,12 +7,6 @@
 // configureChromium sets app name (dev isolation) and Chromium flags — must run before
 // ANY module that calls app.getPath('userData'), because Electron caches the path on first call.
 import './process/utils/configureChromium';
-import {
-  isFirstRun,
-  markFirstRunDone,
-  portableChoicePending,
-  showPortableStorageChoice,
-} from './process/utils/configureChromium';
 import { installGpuCrashHandler } from './process/utils/gpuRecovery';
 import { captureBackendStartupFailure, initSentry, scheduleStartupLogReport, setSentryDeviceId } from './sentry';
 
@@ -22,12 +16,9 @@ import './process/utils/configureConsoleLog';
 import { app, BrowserWindow, ipcMain, nativeImage, powerMonitor } from 'electron';
 import fixPath from 'fix-path';
 import * as fs from 'fs';
-import * as os from 'os';
 import * as path from 'path';
 import { initMainAdapterWithWindow } from './common/adapter/main';
 import { ipcBridge } from './common';
-import { mcpService } from '@/common/adapter/ipcBridge';
-import type { IMcpServer, IMcpServerTransportStdio } from '@/common/config/storage';
 import { initializeProcess } from './process';
 import { startBackendOrExit } from './process/startup/backendStartup';
 import { assertStartupArchitectureCompatible } from './process/startup/architectureCompatibility';
@@ -42,9 +33,8 @@ import './process/bridge/feedbackBridge';
 import { wasLaunchedAtLogin } from '@process/bridge/applicationBridge';
 import { onLanguageChanged } from './process/bridge/systemSettingsBridge';
 import { setInitialLanguage } from '@process/services/i18n';
-import { startupSelfCheck } from './process/services/DoctorService';
-import { ensureCodexProxyRunning, stopCodexProxy } from './process/services/CodexProxyManager';
 import { setupApplicationMenu } from './process/utils/appMenu';
+import { ensureCodexProxyRunning, stopCodexProxy } from './process/services/CodexProxyManager';
 import { startWebHost } from '@aionui/web-host';
 import { initializeZoomFactor, setupZoomForWindow } from './process/utils/zoom';
 import {
@@ -93,7 +83,7 @@ const skipSingleInstanceLock = isE2ETestMode || process.env.POUNDING_MULTI_INSTA
 const deepLinkFromArgv = process.argv.find((arg) => arg.startsWith(`${PROTOCOL_SCHEME}://`));
 const gotTheLock = skipSingleInstanceLock ? true : app.requestSingleInstanceLock({ deepLinkUrl: deepLinkFromArgv });
 if (!gotTheLock) {
-  console.warn('[AionUi] Another instance is already running; current process will exit.');
+  console.warn('[POUNDING] Another instance is already running; current process will exit.');
   app.quit();
 } else {
   app.on('second-instance', (_event, argv, _workingDirectory, additionalData) => {
@@ -116,7 +106,7 @@ if (!gotTheLock) {
       showOrCreateMainWindow({
         mainWindow,
         createWindow: () => {
-          console.log('[AionUi] second-instance received with no active main window, recreating main window');
+          console.log('[POUNDING] second-instance received with no active main window, recreating main window');
           createWindow();
         },
       });
@@ -125,9 +115,7 @@ if (!gotTheLock) {
 }
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
-// Fix GUI app PATH to match CLI environment on all platforms.
-// Electron sandboxes the environment; without this, spawned processes (npm, bun,
-// node) may not be found even though they work fine in Terminal.
+// 修复 macOS 和 Linux 下 GUI 应用的 PATH 环境变量,使其与命令行一致
 if (process.platform === 'darwin' || process.platform === 'linux') {
   fixPath();
 
@@ -147,72 +135,6 @@ if (process.platform === 'darwin' || process.platform === 'linux') {
       }
     } catch {
       // Ignore errors when reading nvm directory
-    }
-  }
-
-  // ~/.local/bin is used by Hermes shim, uv installer, and other Python tools.
-  // macOS GUI apps don't include it by default.
-  const localBin = path.join(os.homedir(), '.local', 'bin');
-  if (fs.existsSync(localBin) && !process.env.PATH.includes(localBin)) {
-    process.env.PATH = localBin + path.delimiter + process.env.PATH;
-    console.log('[AionUi] Added ~/.local/bin to PATH for Hermes/uv shims');
-  }
-}
-
-if (process.platform === 'win32') {
-  // On Windows, GUI apps launched from Start Menu / desktop shortcut don't
-  // inherit the user's shell PATH modifications. Manually prepend common
-  // Node.js / npm / bun install directories.
-  const home = process.env.USERPROFILE || process.env.HOME || '';
-  const extraPaths: string[] = [];
-
-  // npm global prefix (npm config get prefix)
-  const roamingNpm = path.join(home, 'AppData', 'Roaming', 'npm');
-  if (fs.existsSync(roamingNpm)) extraPaths.push(roamingNpm);
-
-  // nvm-windows
-  const nvmwHome = process.env.NVM_HOME || process.env.NVM_SYMLINK;
-  if (nvmwHome && fs.existsSync(nvmwHome)) extraPaths.push(nvmwHome);
-
-  // Volta
-  const voltaHome = process.env.VOLTA_HOME || path.join(home, 'AppData', 'Local', 'Volta');
-  if (fs.existsSync(voltaHome)) extraPaths.push(voltaHome);
-
-  // bun — always add ~/.bun/bin to PATH so spawned subprocesses (claude, codex)
-  // can find the `bun` runtime even if bun was installed after app startup.
-  const bunBin = path.join(home, '.bun', 'bin');
-  extraPaths.push(bunBin);
-  // Also check the local bun directory used by managed CLI installer
-  const bunLocalBin = path.join(home, '.local', 'bin');
-  if (fs.existsSync(bunLocalBin)) extraPaths.push(bunLocalBin);
-
-  // ~/.local/bin — used by Hermes shim, uv installer, and other Python tools.
-  const localBinWin = path.join(home, '.local', 'bin');
-  if (fs.existsSync(localBinWin)) extraPaths.push(localBinWin);
-
-  // fnm (Fast Node Manager)
-  const fnmDir = process.env.FNM_DIR || path.join(home, 'AppData', 'Roaming', 'fnm');
-  if (fs.existsSync(fnmDir)) {
-    try {
-      const aliases = path.join(fnmDir, 'aliases');
-      if (fs.existsSync(aliases)) {
-        const defaultAlias = fs.readFileSync(path.join(aliases, 'default'), 'utf-8').trim();
-        if (defaultAlias) {
-          const fnmNodeBin = path.join(fnmDir, 'node-versions', defaultAlias, 'installation');
-          if (fs.existsSync(fnmNodeBin)) extraPaths.push(fnmNodeBin);
-        }
-      }
-    } catch {
-      /* ignore */
-    }
-  }
-
-  if (extraPaths.length > 0) {
-    const currentPath = process.env.PATH || '';
-    const missing = extraPaths.filter((p) => !currentPath.toLowerCase().includes(p.toLowerCase()));
-    if (missing.length > 0) {
-      process.env.PATH = [...missing, currentPath].join(path.delimiter);
-      console.log('[AionUi] Windows PATH supplemented with:', missing.join(', '));
     }
   }
 }
@@ -320,7 +242,7 @@ function registerCronResumeBridge(backendPort: number): void {
         'x-aionui-internal': '1',
       },
     }).catch((error) => {
-      console.error('[AionUi] Failed to notify backend about system resume:', error);
+      console.error('[POUNDING] Failed to notify backend about system resume:', error);
     });
   };
 
@@ -343,9 +265,9 @@ const scheduleBackendMigrations = (): void => {
     try {
       const { runBackendMigrations } = await import('./process/utils/runBackendMigrations');
       await runBackendMigrations(ProcessConfig);
-      console.info('[AionUi] runBackendMigrations completed');
+      console.info('[POUNDING] runBackendMigrations completed');
     } catch (error) {
-      console.error('[AionUi] Backend migration hook threw:', error);
+      console.error('[POUNDING] Backend migration hook threw:', error);
     }
   })();
 };
@@ -374,7 +296,7 @@ function ensureAdminUserOnce(backendPort: number): Promise<void> {
 
 function markBackendReady(backendPort: number, source: string): void {
   if (backendStartedOk) return;
-  console.log(`[AionUi] ${source} ready (port=${backendPort})`);
+  console.log(`[POUNDING] ${source} ready (port=${backendPort})`);
   exposeBackendPort(backendPort);
   registerCronResumeBridge(backendPort);
   backendStartedOk = true;
@@ -389,18 +311,18 @@ function markBackendReady(backendPort: number, source: string): void {
   void ensureCodexProxyRunning()
     .then((result) => {
       if (result) {
-        console.log(`[AionUi] Codex API proxy running on port ${result.port}`);
+        console.log(`[POUNDING] Codex API proxy running on port ${result.port}`);
       } else {
-        console.warn('[AionUi] Codex API proxy could not be started — Codex CLI will not work');
+        console.warn('[POUNDING] Codex API proxy could not be started — Codex CLI will not work');
       }
     })
     .catch((err) => {
-      console.warn('[AionUi] Codex API proxy startup failed:', err.message || err);
+      console.warn('[POUNDING] Codex API proxy startup failed:', err.message || err);
     });
 }
 
 const createWindow = ({ showOnReady = true }: { showOnReady?: boolean } = {}): void => {
-  console.log('[AionUi] Creating main window...');
+  console.log('[POUNDING] Creating main window...');
   const { x: windowX, y: windowY, width: windowWidth, height: windowHeight } = resolveInitialBounds();
 
   // Get app icon for development mode (Windows/Linux need icon in BrowserWindow)
@@ -449,7 +371,7 @@ const createWindow = ({ showOnReady = true }: { showOnReady?: boolean } = {}): v
       webviewTag: true, // 启用 webview 标签用于 HTML 预览 / Enable webview tag for HTML preview
     },
   });
-  console.log(`[AionUi] Main window created (id=${mainWindow.id})`);
+  console.log(`[POUNDING] Main window created (id=${mainWindow.id})`);
 
   scheduleStartupLogReport(mainWindow);
 
@@ -459,18 +381,18 @@ const createWindow = ({ showOnReady = true }: { showOnReady?: boolean } = {}): v
   if (showOnReady) {
     const showWindow = () => {
       if (!mainWindow.isDestroyed() && !mainWindow.isVisible()) {
-        console.log('[AionUi] Showing main window');
+        console.log('[POUNDING] Showing main window');
         mainWindow.show();
         mainWindow.focus();
       }
     };
     mainWindow.once('ready-to-show', () => {
-      console.log('[AionUi] Window ready-to-show');
+      console.log('[POUNDING] Window ready-to-show');
       showWindow();
     });
     // Belt-and-suspenders: also show on did-finish-load in case ready-to-show already fired
     mainWindow.webContents.once('did-finish-load', () => {
-      console.log('[AionUi] Renderer did-finish-load');
+      console.log('[POUNDING] Renderer did-finish-load');
       showWindow();
       scheduleBackendMigrations();
     });
@@ -513,7 +435,7 @@ const createWindow = ({ showOnReady = true }: { showOnReady?: boolean } = {}): v
         console.error('[App] Failed to initialize autoUpdaterService:', error);
       });
   } else {
-    console.log('[AionUi] Auto-updater disabled via env/CI guard');
+    console.log('[POUNDING] Auto-updater disabled via env/CI guard');
   }
 
   // Load the renderer: dev server URL in development, built HTML file in production
@@ -521,51 +443,51 @@ const createWindow = ({ showOnReady = true }: { showOnReady?: boolean } = {}): v
   const fallbackFile = path.join(__dirname, '../renderer/index.html');
 
   if (!app.isPackaged && rendererUrl) {
-    console.log(`[AionUi] Loading renderer URL: ${rendererUrl}`);
+    console.log(`[POUNDING] Loading renderer URL: ${rendererUrl}`);
     mainWindow.loadURL(rendererUrl).catch((error) => {
-      console.error('[AionUi] loadURL failed, falling back to file:', error.message || error);
+      console.error('[POUNDING] loadURL failed, falling back to file:', error.message || error);
       mainWindow.loadFile(fallbackFile).catch((e2) => {
-        console.error('[AionUi] loadFile fallback also failed:', e2.message || e2);
+        console.error('[POUNDING] loadFile fallback also failed:', e2.message || e2);
       });
     });
   } else {
-    console.log(`[AionUi] Loading renderer file: ${fallbackFile}`);
+    console.log(`[POUNDING] Loading renderer file: ${fallbackFile}`);
     mainWindow.loadFile(fallbackFile).catch((error) => {
-      console.error('[AionUi] loadFile failed:', error.message || error);
+      console.error('[POUNDING] loadFile failed:', error.message || error);
     });
   }
 
   mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
-    console.error('[AionUi] did-fail-load:', { errorCode, errorDescription, validatedURL, isMainFrame });
+    console.error('[POUNDING] did-fail-load:', { errorCode, errorDescription, validatedURL, isMainFrame });
   });
 
   mainWindow.webContents.on('render-process-gone', (_event, details) => {
-    console.error('[AionUi] render-process-gone:', details);
+    console.error('[POUNDING] render-process-gone:', details);
 
     // Reload the renderer to recover from the crash.
     // The isDestroyed() guard in adapter/main.ts prevents further sends
     // to the dead webContents while the reload is in progress.
     if (!mainWindow.isDestroyed()) {
-      console.log('[AionUi] Attempting to recover from renderer crash by reloading...');
+      console.log('[POUNDING] Attempting to recover from renderer crash by reloading...');
 
       if (!app.isPackaged && rendererUrl) {
         mainWindow.loadURL(rendererUrl).catch((error) => {
-          console.error('[AionUi] Recovery loadURL failed:', error.message || error);
+          console.error('[POUNDING] Recovery loadURL failed:', error.message || error);
         });
       } else {
         mainWindow.loadFile(fallbackFile).catch((error) => {
-          console.error('[AionUi] Recovery loadFile failed:', error.message || error);
+          console.error('[POUNDING] Recovery loadFile failed:', error.message || error);
         });
       }
     }
   });
 
   mainWindow.webContents.on('unresponsive', () => {
-    console.warn('[AionUi] Renderer became unresponsive');
+    console.warn('[POUNDING] Renderer became unresponsive');
   });
 
   mainWindow.on('closed', () => {
-    console.log('[AionUi] Main window closed');
+    console.log('[POUNDING] Main window closed');
   });
 
   // DevTools is no longer auto-opened at startup.
@@ -593,24 +515,8 @@ const createWindow = ({ showOnReady = true }: { showOnReady?: boolean } = {}): v
 
 const handleAppReady = async (): Promise<void> => {
   const t0 = performance.now();
-  const mark = (label: string) => console.log(`[AionUi:ready] ${label} +${Math.round(performance.now() - t0)}ms`);
+  const mark = (label: string) => console.log(`[POUNDING:ready] ${label} +${Math.round(performance.now() - t0)}ms`);
   mark('start');
-
-  // Ask user where to store data when running from USB dealer kit for the first time.
-  // Must happen before window creation so the userData path is set correctly.
-  if (portableChoicePending) {
-    try {
-      await showPortableStorageChoice();
-    } catch (err) {
-      console.warn('[AionUi] Portable storage choice dialog failed, defaulting to USB:', err);
-    }
-  }
-
-  // Log first-run state for diagnostics
-  if (isFirstRun()) {
-    console.log('[AionUi] First launch detected — CLI auto-installation will trigger after login');
-    markFirstRunDone();
-  }
 
   if (!app.isPackaged) {
     try {
@@ -724,41 +630,6 @@ const handleAppReady = async (): Promise<void> => {
     await ensureAdminUserOnce(bootBackendPort);
   }
 
-  // Start background doctor self-check (non-blocking, silent)
-  void startupSelfCheck().catch((err) => {
-    console.error('[POUNDING] Doctor startup check failed:', err);
-  });
-
-  // Preflight: check if a JavaScript runtime is available. Without node/npm/bun,
-  // CLI installation and MCP servers won't work. Log a clear warning.
-  void (async () => {
-    const { execFile } = await import('node:child_process');
-    const whichCmd = process.platform === 'win32' ? 'where' : 'which';
-    const runtimes = ['node', 'npm', 'bun'];
-    const missing: string[] = [];
-    for (const rt of runtimes) {
-      try {
-        await new Promise<void>((resolve, reject) => {
-          execFile(whichCmd, [rt], { timeout: 3000 }, (err) => {
-            if (err) reject(err);
-            else resolve();
-          });
-        });
-      } catch {
-        missing.push(rt);
-      }
-    }
-    if (missing.length === runtimes.length) {
-      console.warn(
-        '[AionUi] ⚠️  No JavaScript runtime (node/npm/bun) found in PATH. ' +
-          'CLI installation and MCP servers will not work. ' +
-          'Please install Node.js (https://nodejs.org) or Bun (https://bun.sh).'
-      );
-    } else if (missing.length > 0) {
-      console.log(`[AionUi] Runtime check: found runtimes except: ${missing.join(', ')}`);
-    }
-  })();
-
   // One-shot backend migrations are deferred until after the renderer finishes
   // loading. Some migration steps (ConfigStorage.get, ipcBridge.listProviders)
   // route through the renderer via BroadcastChannel; running them here would
@@ -768,7 +639,7 @@ const handleAppReady = async (): Promise<void> => {
     initializeZoomFactor(await ProcessConfig.get('ui.zoomFactor'));
     mark('initializeZoomFactor');
   } catch (error) {
-    console.error('[AionUi] Failed to restore zoom factor:', error);
+    console.error('[POUNDING] Failed to restore zoom factor:', error);
     initializeZoomFactor(undefined);
   }
 
@@ -776,7 +647,7 @@ const handleAppReady = async (): Promise<void> => {
     loadSavedWindowBounds(await ProcessConfig.get('window.bounds'));
     mark('restoreWindowBounds');
   } catch (error) {
-    console.error('[AionUi] Failed to restore window bounds:', error);
+    console.error('[POUNDING] Failed to restore window bounds:', error);
     loadSavedWindowBounds(undefined);
   }
 
@@ -946,38 +817,6 @@ const handleAppReady = async (): Promise<void> => {
       console.log(
         `[CDP] MCP chrome-devtools: npx chrome-devtools-mcp@0.16.0 --browser-url=http://127.0.0.1:${cdpPort}`
       );
-
-      // Update the chrome-devtools MCP server in the backend DB with the actual
-      // CDP port. This handles port-conflict scenarios (9231, 9232, etc.) where
-      // the runtime port differs from the default 9230 used during migration
-      // bootstrap.
-      try {
-        const servers = await mcpService.listServers.invoke();
-        const chromeDevtools = servers.find(
-          (s: IMcpServer) => s.name === 'chrome-devtools' && s.builtin === true && s.transport.type === 'stdio'
-        );
-        if (chromeDevtools) {
-          const transport = chromeDevtools.transport as IMcpServerTransportStdio;
-          const currentArgs: string[] = transport.args ?? [];
-          const browserUrlArg = `--browser-url=http://127.0.0.1:${cdpPort}`;
-          const hasUrl = currentArgs.some((a) => a.startsWith('--browser-url='));
-          const needsUpdate = !hasUrl || !currentArgs.includes(browserUrlArg);
-          if (needsUpdate) {
-            const newArgs = hasUrl
-              ? currentArgs.map((a) => (a.startsWith('--browser-url=') ? browserUrlArg : a))
-              : [...currentArgs, browserUrlArg];
-            await mcpService.updateServer.invoke({
-              id: chromeDevtools.id,
-              data: {
-                transport: { ...transport, args: newArgs },
-              },
-            });
-            console.log(`[CDP] Updated chrome-devtools MCP server --browser-url to port ${cdpPort}`);
-          }
-        }
-      } catch (error) {
-        console.warn('[CDP] Failed to update chrome-devtools MCP server config:', error);
-      }
     } else {
       console.warn(`[CDP] Warning: Remote debugging port ${cdpPort} not responding`);
     }
@@ -1013,7 +852,7 @@ void app
   .then(handleAppReady)
   .catch((error) => {
     // App initialization failed
-    console.error('[AionUi] App initialization failed:', error);
+    console.error('[POUNDING] App initialization failed:', error);
     app.quit();
   });
 
@@ -1075,11 +914,11 @@ installQuitCleanup({
 
 app.on('will-quit', () => {
   stopCodexProxy();
-  console.log('[AionUi] will-quit — all cleanup should be complete');
+  console.log('[POUNDING] will-quit — all cleanup should be complete');
 });
 
 app.on('quit', (_event, exitCode) => {
-  console.log(`[AionUi] quit (exitCode=${exitCode})`);
+  console.log(`[POUNDING] quit (exitCode=${exitCode})`);
 });
 
 // In this file you can include the rest of your app's specific main process

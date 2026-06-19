@@ -1,0 +1,8 @@
+{
+  "pipeline": "/webhook/pl-v3-304140",
+  "ingest": "/webhook/v2-ingest-292201",
+  "follow_sell": "/webhook/fs-v4-303992",
+  "refresh": "/webhook/re-v2-304020",
+  "image_gen": "/webhook/mx-bp2-377417",
+  "pricing": "/webhook/pricing-v1"
+}

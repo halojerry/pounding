@@ -198,13 +198,15 @@ export async function httpRequest<T>(
   }
 
   if (!response.ok) {
-    // Response body can only be consumed once — read as text, then try JSON
-    const rawText = await response.text().catch(() => '');
     let errorBody: unknown;
     try {
-      errorBody = JSON.parse(rawText);
+      errorBody = await response.json();
     } catch {
-      errorBody = rawText;
+      try {
+        errorBody = await response.text();
+      } catch {
+        errorBody = '<unreadable body>';
+      }
     }
     if (options?.silentStatuses?.includes(response.status)) {
       console.debug(`[httpBridge] ${method} ${path} → ${response.status} (silenced)`, errorBody);
@@ -292,14 +294,15 @@ export function httpPost<Data, Params = undefined>(
 
 export function httpPut<Data, Params = undefined>(
   path: string | ((params: Params) => string),
-  mapBody?: (params: Params) => unknown
+  mapBody?: (params: Params) => unknown,
+  options?: HttpRequestOptions
 ): ProviderLike<Data, Params> {
   return {
     provider: () => {},
     invoke: (async (params?: Params) => {
       const resolvedPath = typeof path === 'function' ? path(params!) : path;
       const body = mapBody ? mapBody(params!) : params;
-      return httpRequest<Data>('PUT', resolvedPath, body);
+      return httpRequest<Data>('PUT', resolvedPath, body, options);
     }) as ProviderLike<Data, Params>['invoke'],
   };
 }

@@ -1,7 +1,7 @@
 import type { AcpInitializeResult, AcpSessionConfigOption, AcpSessionModes } from '@/common/types/platform/acpTypes';
 import type { SpeechToTextConfig } from '@/common/types/provider/speech';
 import type { ICssTheme, IMcpServer, TProviderWithModel } from '@/common/config/storage';
-import type { Theme } from '@/common/theme/types';
+import type { ManagedRuntimeCliTarget, NewApiAccountStatus } from '@/common/types/newApiAccount';
 
 export type ConfigKeyMap = {
   'google.config': {
@@ -32,9 +32,6 @@ export type ConfigKeyMap = {
   theme: string;
   colorScheme: string;
   'ui.zoomFactor': number | undefined;
-  'ui.fontSize.chat': number | undefined;
-  'ui.fontSize.markdown': number | undefined;
-  'ui.fontSize.code': number | undefined;
   'window.bounds': { x?: number; y?: number; width: number; height: number } | undefined;
   'webui.desktop.enabled': boolean | undefined;
   'webui.desktop.allowRemote': boolean | undefined;
@@ -42,8 +39,6 @@ export type ConfigKeyMap = {
   customCss: string;
   'css.themes': ICssTheme[];
   'css.activeThemeId': string;
-  'theme.activeId': string;
-  'theme.userThemes': Theme[];
   'aionrs.config': { preferredMode?: string } | undefined;
   'aionrs.defaultModel': { id: string; use_model: string } | undefined;
   'tools.imageGenerationModel': TProviderWithModel & { switch?: boolean };
@@ -89,6 +84,11 @@ export type ConfigKeyMap = {
   'migration.assistantsMigrated_v1': boolean | undefined;
   'newApi.desktop.account': NewApiAccountStatus | undefined;
   'newApi.desktop.cliModelPrefs': Partial<Record<ManagedRuntimeCliTarget, string>> | undefined;
+  'ui.fontSize.chat': number | undefined;
+  'ui.fontSize.markdown': number | undefined;
+  'ui.fontSize.code': number | undefined;
+  'theme.activeId': string;
+  'theme.userThemes': import('@/common/theme/types').Theme[];
 };
 
 export type ConfigKey = keyof ConfigKeyMap;

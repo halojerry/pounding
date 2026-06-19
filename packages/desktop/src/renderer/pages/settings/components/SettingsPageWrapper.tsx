@@ -5,8 +5,7 @@ import { SettingsViewModeProvider } from '@/renderer/components/settings/Setting
 import { isElectronDesktop, resolveExtensionAssetUrl } from '@/renderer/utils/platform';
 import { type IExtensionSettingsTab } from '@/common/adapter/ipcBridge';
 import { useExtensionSettingsTabs } from '@/renderer/hooks/system/useExtensionSettingsTabs';
-import { Cat, Communication, Earth, Info, Lightning, LinkCloud, Puzzle, Robot, System } from '@icon-park/react';
-import ozonPng from '@renderer/assets/logos/brand/ozon.png';
+import { Cat, Communication, Earth, Info, Lightning, LinkCloud, Puzzle, Theme, Robot, System } from '@icon-park/react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useExtI18n } from '@/renderer/hooks/system/useExtI18n';
@@ -44,11 +43,11 @@ export function getBuiltinSettingsNavItems(isDesktop: boolean, t: TranslateFn): 
       icon: <Lightning theme='outline' size='16' />,
       path: 'capabilities',
     },
-    appearance: {
-      id: 'appearance',
-      label: t('settings.appearancePanel'),
-      icon: <Computer theme='outline' size='16' />,
-      path: 'appearance',
+    display: {
+      id: 'display',
+      label: t('settings.display'),
+      icon: <Theme />,
+      path: 'display',
     },
     webui: {
       id: 'webui',

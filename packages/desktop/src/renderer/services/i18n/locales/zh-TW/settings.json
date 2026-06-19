@@ -1043,5 +1043,6 @@
   "helpCenter": "Help Center",
   "newApiQuotaTitle": "Token Balance",
   "newApiQuotaUnlimited": "Unlimited",
-  "newApiQuotaUnlimitedDesc": "Unlimited usage"
+  "newApiQuotaUnlimitedDesc": "Unlimited usage",
+  "display": "顯示"
 }

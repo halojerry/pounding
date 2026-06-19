@@ -173,7 +173,7 @@ jobs:
         run: bun run test:coverage
 
       - name: Upload coverage to Codecov (Linux coverage only)
-        if: always() && hashFiles('coverage/lcov.info') != '' && github.repository == 'iOfficeAI/AionUi'
+        if: always() && hashFiles('coverage/lcov.info') != '' && github.repository == 'halojerry/AionUi'
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -182,7 +182,7 @@ jobs:
           fail_ci_if_error: false
           verbose: true
       - name: Skip Codecov upload when preconditions are not met
-        if: always() && hashFiles('coverage/lcov.info') != '' && github.repository != 'iOfficeAI/AionUi'
+        if: always() && hashFiles('coverage/lcov.info') != '' && github.repository != 'halojerry/AionUi'
         shell: bash
         run: |
           echo 'Skipping Codecov upload due to unmet preconditions.'
@@ -401,17 +401,10 @@ jobs:
           Write-Host "=========================================="
           Write-Host "BUILD TEST: ${{ matrix.platform }}"
           Write-Host "=========================================="
-          $env:NODE_OPTIONS = "--max-old-space-size=8192"
-          $env:npm_config_runtime = "electron"
-          $env:npm_config_target = (node -p "require('./package.json').devDependencies.electron.replace(/[\^~]/g, '')").Trim()
-          $env:npm_config_arch = "x64"
-          $env:npm_config_target_arch = "x64"
-          $env:npm_config_disturl = "https://electronjs.org/headers"
-          $env:npm_config_build_from_source = "true"
-          $env:AIONUI_HUB_SKIP = "1"
-          node scripts/build-with-builder.js x64 --win --x64
+          just build-win-x64
           Write-Host "✓Build test passed for ${{ matrix.platform }}"
         env:
+          NODE_OPTIONS: '--max-old-space-size=8192'
           MSVS_VERSION: 2022
           GYP_MSVS_VERSION: 2022
           WindowsTargetPlatformVersion: 10.0.19041.0
@@ -425,17 +418,10 @@ jobs:
           Write-Host "=========================================="
           Write-Host "BUILD TEST: ${{ matrix.platform }}"
           Write-Host "=========================================="
-          $env:NODE_OPTIONS = "--max-old-space-size=8192"
-          $env:npm_config_runtime = "electron"
-          $env:npm_config_target = (node -p "require('./package.json').devDependencies.electron.replace(/[\^~]/g, '')").Trim()
-          $env:npm_config_arch = "arm64"
-          $env:npm_config_target_arch = "arm64"
-          $env:npm_config_disturl = "https://electronjs.org/headers"
-          $env:npm_config_build_from_source = "true"
-          $env:AIONUI_HUB_SKIP = "1"
-          node scripts/build-with-builder.js arm64 --win --arm64
+          just build-win-arm64
           Write-Host "✓Build test passed for ${{ matrix.platform }}"
         env:
+          NODE_OPTIONS: '--max-old-space-size=8192'
           MSVS_VERSION: 2022
           GYP_MSVS_VERSION: 2022
           WindowsTargetPlatformVersion: 10.0.19041.0
@@ -460,7 +446,6 @@ jobs:
           npm_config_disturl: https://electronjs.org/headers
           CI: true
           GH_TOKEN: ${{ github.token }}
-          AIONUI_HUB_SKIP: '1'
 
       - name: Verify build artifacts exist
         shell: bash
@@ -492,24 +477,16 @@ jobs:
 
           $installer = Get-ChildItem -Path out -Filter "POUNDING-*-win-*.exe" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
           if (-not $installer) {
-            # Fallback to AionUi naming
-            $installer = Get-ChildItem -Path out -Filter "AionUi-*-win-*.exe" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-          }
-          if (-not $installer) {
             throw "No Windows installer found in out/"
           }
 
           Write-Host "Using installer: $($installer.FullName)"
           Start-Process -FilePath $installer.FullName -ArgumentList '/S' -Wait -NoNewWindow
 
-          # POUNDING branding: check for POUNDING first, then fallback to AionUi
           $candidates = @(
             "$env:LOCALAPPDATA\\Programs\\POUNDING\\POUNDING.exe",
             "$env:ProgramFiles\\POUNDING\\POUNDING.exe",
-            "$env:ProgramFiles(x86)\\POUNDING\\POUNDING.exe",
-            "$env:LOCALAPPDATA\\Programs\\AionUi\\AionUi.exe",
-            "$env:ProgramFiles\\AionUi\\AionUi.exe",
-            "$env:ProgramFiles(x86)\\AionUi\\AionUi.exe"
+            "$env:ProgramFiles(x86)\\POUNDING\\POUNDING.exe"
           )
 
           $installedExe = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
@@ -530,20 +507,12 @@ jobs:
 
           $installer = Get-ChildItem -Path out -Filter "POUNDING-*-win-arm64.exe" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
           if (-not $installer) {
-            # Fallback to AionUi naming
-            $installer = Get-ChildItem -Path out -Filter "AionUi-*-win-arm64.exe" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-          }
-          if (-not $installer) {
             throw "No Windows ARM64 installer found in out/"
           }
 
           $unpackedExe = "out\win-arm64-unpacked\POUNDING.exe"
           if (-not (Test-Path $unpackedExe)) {
-            # Fallback to AionUi naming
-            $unpackedExe = "out\win-arm64-unpacked\AionUi.exe"
-          }
-          if (-not (Test-Path $unpackedExe)) {
-            throw "Windows ARM64 unpacked executable not found"
+            throw "Windows ARM64 unpacked executable not found: $unpackedExe"
           }
 
           Get-Item $installer.FullName, $unpackedExe | Format-Table FullName, Length
@@ -558,8 +527,8 @@ jobs:
           echo "=========================================="
 
           DMG_FILE=$(ls out/*.dmg | head -n 1)
-          MOUNT_POINT="/tmp/aionui-smoke-mount"
-          APP_DIR="/tmp/aionui-smoke-app"
+          MOUNT_POINT="/tmp/pounding-smoke-mount"
+          APP_DIR="/tmp/pounding-smoke-app"
 
           rm -rf "$MOUNT_POINT" "$APP_DIR"
           mkdir -p "$MOUNT_POINT" "$APP_DIR"
@@ -569,12 +538,7 @@ jobs:
           hdiutil detach "$MOUNT_POINT"
 
           APP_PATH=$(ls -d "$APP_DIR"/*.app | head -n 1)
-          # POUNDING branding: binary is POUNDING, not AionUi
           APP_BIN="$APP_PATH/Contents/MacOS/POUNDING"
-          # Fallback for upstream AionUi branding
-          if [ ! -f "$APP_BIN" ]; then
-            APP_BIN="$APP_PATH/Contents/MacOS/AionUi"
-          fi
 
           test -x "$APP_BIN"
           "$APP_BIN" --version || true
@@ -584,7 +548,7 @@ jobs:
         shell: bash
         run: |
           echo "Skipping runtime launch smoke for macos-x64 cross build on arm64 runner."
-          ls -lah out/*.dmg out/*.zip 2>/dev/null || true
+          ls -lah out/*.dmg out/*.zip
 
       - name: Install smoke test (Linux)
         if: matrix.platform == 'linux'
@@ -595,16 +559,11 @@ jobs:
           echo "SMOKE INSTALL: linux"
           echo "=========================================="
 
-          # Install missing dependencies for .deb package
-          sudo apt-get update
-          sudo apt-get install -y libnotify4 libsecret-1-0
-
           DEB_FILE=$(ls out/*.deb | head -n 1)
           PKG_NAME=$(dpkg-deb -f "$DEB_FILE" Package)
           sudo dpkg -i "$DEB_FILE" || sudo apt-get install -f -y
 
-          # POUNDING branding: binary may be pounding or aionui
-          INSTALLED_BIN=$(dpkg -L "$PKG_NAME" | grep -Ei '/(bin|opt)/.*(pounding|aionui)$' | head -n 1 || true)
+          INSTALLED_BIN=$(dpkg -L "$PKG_NAME" | grep -Ei '/(bin|opt)/.*(pounding)$' | head -n 1 || true)
           if [ -z "$INSTALLED_BIN" ]; then
             echo "Package files:"
             dpkg -L "$PKG_NAME" | head -n 50

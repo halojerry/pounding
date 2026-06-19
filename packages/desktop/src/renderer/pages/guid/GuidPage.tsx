@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -20,6 +20,7 @@ import GuidInputCard from './components/GuidInputCard';
 import GuidModelSelector from './components/GuidModelSelector';
 import MentionDropdown, { MentionSelectorBadge } from './components/MentionDropdown';
 import QuickActionButtons from './components/QuickActionButtons';
+import PoundingInteractiveLogo from '@/renderer/components/layout/PoundingInteractiveLogo';
 import FeedbackReportModal from '@/renderer/components/settings/SettingsModal/contents/FeedbackReportModal';
 import { useGuidAgentSelection } from './hooks/useGuidAgentSelection';
 import { useGuidInput } from './hooks/useGuidInput';
@@ -92,10 +93,18 @@ const GuidPage: React.FC = () => {
     void ensureBackendMcpCatalog()
       .then(({ allServers }) => {
         setAvailableMcpServers(allServers);
+        // Respect the `enabled` flag from each MCP server so that
+        // servers configured as "default on" are pre-checked in new
+        // conversations (IMcpServer.enabled = "默认启用，新会话默认勾选").
+        setGuidSelectedMcpServerIds((prev) => {
+          if (prev !== undefined) return prev;
+          return allServers.filter((s) => s.enabled !== false).map((s) => s.id);
+        });
       })
       .catch((error) => {
         console.error('[GuidPage] Failed to load MCP catalog:', error);
         setAvailableMcpServers([]);
+        setGuidSelectedMcpServerIds((prev) => prev ?? []);
       });
   }, []);
 
@@ -189,6 +198,7 @@ const GuidPage: React.FC = () => {
     getEffectiveAgentType: agentSelection.getEffectiveAgentType,
     resolveEnabledSkills: agentSelection.resolveEnabledSkills,
     resolveDisabledBuiltinSkills: agentSelection.resolveDisabledBuiltinSkills,
+    resolvePresetRulesAndSkills: agentSelection.resolvePresetRulesAndSkills,
     guidDisabledBuiltinSkills,
     guidEnabledSkills,
     assistantDefaultSkillIds: resolvedAssistantDefaults.skillIds,
@@ -637,7 +647,9 @@ const GuidPage: React.FC = () => {
         await ipcBridge.assistants.update.invoke({ id: assistantId, preset_agent_type: nextType });
         await Promise.all([swrMutate('assistants.list'), agentSelection.refreshCustomAgents()]);
         const agent_name =
-          agentSelection.availableAgents?.find((a) => (a.backend || a.agent_type) === nextType)?.name || nextType;
+          agentSelection.availableAgents?.find((a) => (a.backend || a.agent_type) === nextType)?.name ||
+          ({ aionrs: 'POUNDING CLI' } as Record<string, string>)[nextType] ||
+          nextType;
         Message.success(t('guid.switchedToAgent', { agent: agent_name }));
       } catch (error) {
         console.error('[GuidPage] Failed to switch preset agent type:', error);
@@ -752,7 +764,7 @@ const GuidPage: React.FC = () => {
                     }}
                     aria-label={t('common.back')}
                   />
-                  <p className={`${styles.heroTitle} text-2xl font-semibold mb-0 text-0`}>
+                  <p className={`${styles.heroTitle} text-2xl font-semibold mb-0 text-0 text-center`}>
                     <span className={styles.heroTitleInlineIcon} aria-hidden='true'>
                       {selectedAssistantAvatar?.kind === 'image' ? (
                         <img
@@ -781,7 +793,12 @@ const GuidPage: React.FC = () => {
                 </div>
               </div>
             ) : (
-              <p className='text-2xl font-semibold mb-0 text-0 text-center'>{heroTitle}</p>
+              <div className='inline-flex items-center gap-12px'>
+                <div className='size-48px relative shrink-0'>
+                  <PoundingInteractiveLogo className='absolute inset-0 m-auto' />
+                </div>
+                <p className='text-2xl font-semibold mb-0 text-0 text-center'>{heroTitle}</p>
+              </div>
             )}
           </div>
 

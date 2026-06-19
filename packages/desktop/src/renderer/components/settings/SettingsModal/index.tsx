@@ -12,8 +12,7 @@ import { type IExtensionSettingsTab } from '@/common/adapter/ipcBridge';
 import { useExtI18n } from '@/renderer/hooks/system/useExtI18n';
 import { useExtensionSettingsTabs } from '@/renderer/hooks/system/useExtensionSettingsTabs';
 import { Tabs } from '@arco-design/web-react';
-import { Earth, Info, LinkCloud, Puzzle, Toolkit } from '@icon-park/react';
-import ozonPng from '@renderer/assets/logos/brand/ozon.png';
+import { Earth, Info, LinkCloud, Puzzle, System, Toolkit } from '@icon-park/react';
 import classNames from 'classnames';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -215,7 +214,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ visible, onCancel, defaul
       {
         key: 'system',
         label: t('settings.system'),
-        icon: <img src={ozonPng} alt='System' style={{ width: 20, height: 20 }} />,
+        icon: <System />,
       },
       { key: 'about', label: t('settings.about'), icon: <Info theme='outline' size='20' fill={iconColors.secondary} /> }
     );

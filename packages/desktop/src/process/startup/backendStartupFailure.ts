@@ -13,18 +13,12 @@ type ErrorWithDetails = Error & {
     causeMessage?: unknown;
     stderrTail?: unknown;
     stdoutTail?: unknown;
-    backendBoundaryCode?: unknown;
-    backendBoundaryStage?: unknown;
     runtimeKey?: unknown;
     binaryName?: unknown;
     bundledDirExists?: unknown;
     runtimeDirExists?: unknown;
     resourcesDirEntries?: unknown;
     runtimeDirEntries?: unknown;
-    packageArch?: unknown;
-    deviceArch?: unknown;
-    expectedDownloadArch?: unknown;
-    isRosettaTranslated?: unknown;
   };
 };
 
@@ -70,30 +64,6 @@ function getStringArray(value: unknown): string[] | undefined {
   return strings.length === value.length ? strings : undefined;
 }
 
-function getString(value: unknown): string | undefined {
-  return typeof value === 'string' && value.length > 0 ? value : undefined;
-}
-
-function classifyPackageArchitectureMismatch(
-  details: ErrorWithDetails['details']
-): BackendStartupFailureInfo | undefined {
-  if (!details) return undefined;
-  if (details.stage !== 'startup_architecture_check') return undefined;
-
-  return {
-    reason: 'backend_package_architecture_mismatch',
-    packageArch: getString(details.packageArch),
-    deviceArch: getString(details.deviceArch),
-    expectedDownloadArch: getString(details.expectedDownloadArch),
-    isRosettaTranslated: typeof details.isRosettaTranslated === 'boolean' ? details.isRosettaTranslated : undefined,
-  };
-}
-
-function getMissingDirectoryFlag(entries: string[], directoryName: string): boolean | undefined {
-  if (entries.includes(directoryName)) return false;
-  return entries.length < MAX_REPORTED_DIR_ENTRIES ? true : undefined;
-}
-
 function classifyIncompleteInstallation(details: ErrorWithDetails['details']): BackendStartupFailureInfo | undefined {
   if (!details) return undefined;
   if (details.stage !== 'resolve_binary' || details.isPackaged !== true) return undefined;
@@ -128,11 +98,7 @@ function classifyIncompleteInstallation(details: ErrorWithDetails['details']): B
 }
 
 export function classifyBackendStartupFailure(error: unknown): BackendStartupFailureInfo {
-  const details = getBackendStartupDetails(error);
-  const packageArchitectureMismatch = classifyPackageArchitectureMismatch(details);
-  if (packageArchitectureMismatch) return packageArchitectureMismatch;
-
-  const incompleteInstallation = classifyIncompleteInstallation(details);
+  const incompleteInstallation = classifyIncompleteInstallation(getBackendStartupDetails(error));
   if (incompleteInstallation) return incompleteInstallation;
 
   const text = collectBackendStartupText(error);
@@ -145,14 +111,5 @@ export function classifyBackendStartupFailure(error: unknown): BackendStartupFai
     };
   }
 
-  const backendBoundaryCode =
-    typeof details?.backendBoundaryCode === 'string' ? details.backendBoundaryCode : undefined;
-  const backendBoundaryStage =
-    typeof details?.backendBoundaryStage === 'string' ? details.backendBoundaryStage : undefined;
-
-  return {
-    reason: 'backend_startup_failed',
-    backendBoundaryCode,
-    backendBoundaryStage,
-  };
+  return { reason: 'backend_startup_failed' };
 }

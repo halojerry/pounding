@@ -36,6 +36,14 @@ function runPostInstall() {
     console.error('Postinstall failed:', e.message);
     // Don't exit with error code to avoid breaking installation
   }
+
+  // Patch electron to return the real API (not the binary path string).
+  // Electron v34+ ships a simplified index.js that breaks electron-vite.
+  try {
+    require('./patch-electron.cjs');
+  } catch (e) {
+    console.error('[postinstall] patch-electron failed:', e.message);
+  }
 }
 
 // Only run if this script is executed directly

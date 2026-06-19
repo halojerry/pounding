@@ -617,7 +617,7 @@ async function installHermes(): Promise<void> {
   const indexUrls = ['https://pypi.tuna.tsinghua.edu.cn/simple', 'https://pypi.org/simple'];
 
   ensureDir(path.dirname(HERMES_VENV_DIR));
-  await runCommand(uvBinary, ['venv', HERMES_VENV_DIR]);
+  await runCommand(uvBinary, ['venv', '--clear', HERMES_VENV_DIR]);
   let lastError: unknown;
   for (const indexUrl of indexUrls) {
     try {
@@ -664,7 +664,7 @@ export async function preinstallHermesFromBundle(bundledResourcesDir: string): P
   if (!fs.existsSync(pythonBinary)) return false;
 
   try {
-    await runCommand(pythonBinary, ['-m', 'venv', HERMES_VENV_DIR]);
+    await runCommand(pythonBinary, ['-m', 'venv', '--clear', HERMES_VENV_DIR]);
 
     const uvCmd = fs.existsSync(uvBinary) ? uvBinary : 'uv';
     const venvPython = path.join(

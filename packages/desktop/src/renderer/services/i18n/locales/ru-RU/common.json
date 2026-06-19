@@ -58,7 +58,6 @@
   "forward": "Вперёд",
   "more": "Ещё",
   "refresh": "Обновить",
-  "readOnly": "Только чтение",
   "tray.showWindow": "Показать POUNDING",
   "tray.newChat": "Новый чат",
   "tray.closeToTray": "Свернуть в трей",
@@ -80,12 +79,7 @@
       "title": "Установка POUNDING неполная",
       "description": "В этой установке отсутствуют обязательные локальные ресурсы, поэтому AionCore не может запуститься. Загрузите и переустановите последнюю версию POUNDING.",
       "downloadLatest": "Скачать последнюю версию",
-      "sendDiagnostics": "Отправить диагностику",
-      "runtimeComponentDescription": "This installation is missing required bundled runtime components, so {{resource}} cannot start. Reinstall the latest POUNDING package. If it still happens after reinstalling, check whether security or antivirus software quarantined POUNDING components."
-    },
-    "packageArchitectureMismatch": {
-      "title": "POUNDING package architecture mismatch",
-      "description": "This POUNDING package is for {{packageArch}}, but this Mac is {{deviceArch}}. You may have downloaded the wrong package. Please download and install the {{expectedArch}} package."
+      "sendDiagnostics": "Отправить диагностику"
     }
   },
   "fileAttach.addFiles": "Добавить файлы",
@@ -104,9 +98,5 @@
   "optional": "(необязательно)",
   "clear": "Очистить",
   "historyBack": "Назад",
-  "agentMode": "Режим агента",
-  "unit": {
-    "minute_short": "мин",
-    "second_short": "с"
-  }
+  "agentMode": "Режим агента"
 }

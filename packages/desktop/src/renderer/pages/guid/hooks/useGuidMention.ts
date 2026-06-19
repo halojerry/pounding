@@ -10,6 +10,10 @@ import type { AvailableAgent, MentionOption } from '../types';
 import { getAgentKey } from './agentSelectionUtils';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+const AGENT_TYPE_DISPLAY: Record<string, string> = {
+  aionrs: 'POUNDING CLI',
+};
+
 export type GuidMentionResult = {
   mentionQuery: string | null;
   setMentionQuery: React.Dispatch<React.SetStateAction<string | null>>;
@@ -62,7 +66,7 @@ export const useGuidMention = ({
     const agents = availableAgents || [];
     return agents.map((agent) => {
       const key = getAgentKey(agent);
-      const label = agent.name || agent.backend || agent.agent_type;
+      const label = agent.name || agent.backend || AGENT_TYPE_DISPLAY[agent.agent_type] || agent.agent_type;
       const avatarValue = agent.custom_agent_id
         ? agent.avatar || customAgentAvatarMap.get(agent.custom_agent_id)
         : undefined;

@@ -62,6 +62,12 @@ function trimLookupText(text: string): string {
 
 /**
  * Resolve the poundingcore binary path.
+ *
+ * Search order:
+ *  1. POUNDING_BACKEND_BIN env var (local dev override)
+ *  2. Bundled with app (production)
+ *  3. System PATH
+ *
  * Returns the absolute path to the binary, or throws if not found.
  */
 export function resolveBinaryPath(): string {
@@ -73,14 +79,22 @@ export function resolveBinaryPath(): string {
     pathLookupCommand: process.platform === 'win32' ? `where ${BINARY_NAME}` : `which ${BINARY_NAME}`,
   };
 
+  // 1. POUNDING_BACKEND_BIN env var — local dev override
+  const envBin = process.env.POUNDING_BACKEND_BIN;
+  if (envBin && existsSync(envBin)) {
+    return envBin;
+  }
+
+  // 2. Bundled with app (production)
   const bundled = bundledPath(runtimeKey, binaryName, diagnostics);
   if (bundled) return bundled;
 
+  // 3. System PATH
   const fromPath = resolveFromSystemPATH(diagnostics);
   if (fromPath) return fromPath;
 
   throw new BackendBinaryResolveError(
-    `Cannot find "${BINARY_NAME}" binary. Checked bundled location and system PATH.`,
+    `Cannot find "${BINARY_NAME}" binary. Checked POUNDING_BACKEND_BIN env, bundled location, and system PATH.`,
     diagnostics
   );
 }

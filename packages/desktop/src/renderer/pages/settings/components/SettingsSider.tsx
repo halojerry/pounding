@@ -3,8 +3,19 @@ import { isElectronDesktop, resolveExtensionAssetUrl } from '@/renderer/utils/pl
 import { type IExtensionSettingsTab } from '@/common/adapter/ipcBridge';
 import { useExtI18n } from '@/renderer/hooks/system/useExtI18n';
 import { useExtensionSettingsTabs } from '@/renderer/hooks/system/useExtensionSettingsTabs';
-import { Cat, Communication, Earth, Info, Lightning, LinkCloud, Puzzle, Robot, Speed, System } from '@icon-park/react';
-import ozonPng from '@renderer/assets/logos/brand/ozon.png';
+import {
+  Cat,
+  Communication,
+  Earth,
+  Info,
+  Lightning,
+  LinkCloud,
+  Puzzle,
+  Robot,
+  Speed,
+  Theme,
+  System,
+} from '@icon-park/react';
 import classNames from 'classnames';
 import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -18,7 +29,7 @@ export const BUILTIN_TAB_IDS = [
   'model',
   'assistants',
   'capabilities',
-  'appearance',
+  'display',
   'webui',
   'pet',
   'system',
@@ -33,7 +44,6 @@ export const BUILTIN_TAB_IDS = [
 export const LEGACY_ANCHOR_REMAP: Record<string, string> = {
   'skills-hub': 'capabilities',
   tools: 'capabilities',
-  display: 'appearance',
 };
 
 /**
@@ -43,7 +53,7 @@ export const LEGACY_ANCHOR_REMAP: Record<string, string> = {
  */
 const GROUP_HEADER_BEFORE: Record<string, string> = {
   agent: 'settings.groupAiCore',
-  appearance: 'settings.groupApp',
+  display: 'settings.groupApp',
   about: 'settings.groupAbout',
 };
 
@@ -90,7 +100,7 @@ const SettingsSider: React.FC<{ collapsed?: boolean; tooltipEnabled?: boolean }>
         icon: <Lightning />,
         path: 'capabilities',
       },
-      appearance: { id: 'appearance', label: t('settings.appearancePanel'), icon: <Computer />, path: 'appearance' },
+      display: { id: 'display', label: t('settings.display'), icon: <Theme />, path: 'display' },
       webui: {
         id: 'webui',
         label: t('settings.webui'),
@@ -103,10 +113,10 @@ const SettingsSider: React.FC<{ collapsed?: boolean; tooltipEnabled?: boolean }>
     };
 
     // Start with ordered builtin IDs, hiding desktop-only tabs in browser mode
-    // and hiding Display/Pet in release builds.
+    // and hiding Pet in release builds.
     const isProduction = process.env.NODE_ENV === 'production';
     const result: SiderItem[] = BUILTIN_TAB_IDS.filter(
-      (id) => (isDesktop || id !== 'pet') && (!isProduction || (id !== 'display' && id !== 'pet'))
+      (id) => (isDesktop || id !== 'pet') && (!isProduction || id !== 'pet')
     ).map((id) => builtinMap[id]);
 
     // Extension tabs with position anchoring

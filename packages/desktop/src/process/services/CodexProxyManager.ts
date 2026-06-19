@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -105,7 +105,7 @@ function resolveProxyScriptPath(): string {
     path.join(__dirname, PROXY_SCRIPT_NAME),
     // electron-vite dev: __dirname = out/main/, source is in packages/desktop/src/process/
     path.join(__dirname, '..', '..', '..', 'packages', 'desktop', 'src', 'process', PROXY_SCRIPT_NAME),
-    // Fallback: process.cwd() is project root (AionUi/)
+    // Fallback: process.cwd() is project root (POUNDING/)
     path.join(process.cwd(), 'packages', 'desktop', 'src', 'process', PROXY_SCRIPT_NAME),
   ];
 
@@ -121,6 +121,19 @@ function resolveProxyScriptPath(): string {
 function parsePortFromLine(line: string): number | null {
   const match = line.match(/\[proxy\] PORT=(\d+)/);
   return match ? parseInt(match[1], 10) : null;
+}
+
+/** Write the proxy port to the well-known file. Synchronous so callers can rely
+ *  on the file being present immediately after this returns. */
+function writePortFile(port: number): void {
+  try {
+    const portFile = resolveProxyPortFile();
+    const dir = path.dirname(portFile);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(portFile, String(port), 'utf-8');
+  } catch (err: unknown) {
+    console.error(`[CodexProxyManager] Failed to write port file: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }
 
 function startProxy(apiKey: string, upstream: string): Promise<number> {
@@ -164,18 +177,7 @@ function startProxy(apiKey: string, upstream: string): Promise<number> {
           state.process = child;
           state.port = port;
           state.status = 'running';
-          // Write port to well-known file so other modules can read it
-          // without importing this module (avoids circular dependencies).
-          try {
-            const portFile = resolveProxyPortFile();
-            const dir = path.dirname(portFile);
-            fs.mkdirSync(dir, { recursive: true });
-            fs.writeFileSync(portFile, String(port), 'utf-8');
-          } catch (err: unknown) {
-            console.error(
-              `[CodexProxyManager] Failed to write port file: ${err instanceof Error ? err.message : String(err)}`
-            );
-          }
+          writePortFile(port);
           console.log(`[CodexProxyManager] Proxy ready on port ${port}`);
           resolve(port);
         }
@@ -245,11 +247,29 @@ function handleProxyExit(code: number | null, signal: string | null): void {
     const upstream = 'https://api.mxou.cn/v1';
 
     startProxy(apiKey, upstream)
-      .then((port) => {
+      .then(async (port) => {
         // Re-sync Codex config with the new port
         console.log(`[CodexProxyManager] Re-syncing Codex config after restart on port ${port}`);
+
+        // Only re-sync if the backend is healthy — reconcileManagedRuntimeState
+        // makes HTTP calls that will fail if poundingcore is already shutting down.
+        const backendPort = (globalThis as Record<string, unknown>).__backendPort as number | undefined;
+        if (backendPort) {
+          try {
+            const healthResp = await fetch(`http://127.0.0.1:${backendPort}/health`, {
+              signal: AbortSignal.timeout(2000),
+            });
+            if (!healthResp.ok) {
+              console.warn('[CodexProxyManager] Backend not healthy, skipping config re-sync');
+              return;
+            }
+          } catch {
+            console.warn('[CodexProxyManager] Backend unreachable, skipping config re-sync');
+            return;
+          }
+        }
+
         try {
-          // Dynamic import to avoid circular dependencies
           import('@process/bridge/services/NewApiDesktopAccountService').then((m) => {
             void m.newApiDesktopAccountService.reconcileManagedRuntimeState().catch((err: unknown) => {
               console.error('[CodexProxyManager] Failed to re-sync config:', err);
@@ -302,6 +322,10 @@ export async function ensureCodexProxyRunning(): Promise<{ port: number } | null
       state.status = 'stopped';
       // Fall through to restart below
     } else {
+      // Ensure port file exists before returning (may have been lost due to
+      // a previous write failure or disk cleanup). Always write synchronously
+      // so callers (e.g. resolveCodexBaseUrl) can rely on the file.
+      writePortFile(state.port);
       return { port: state.port };
     }
   }
@@ -389,12 +413,18 @@ export function getCodexProxyPort(): number | null {
  * creating a circular dependency on CodexProxyManager.
  */
 export function readCodexProxyPort(): number | null {
+  const portFile = resolveProxyPortFile();
   try {
-    const content = fs.readFileSync(resolveProxyPortFile(), 'utf-8').trim();
+    const content = fs.readFileSync(portFile, 'utf-8').trim();
     const port = parseInt(content, 10);
-    if (port > 0 && port < 65536) return port;
+    if (port > 0 && port < 65536) {
+      console.log(`[CodexProxyManager] Read port ${port} from ${portFile}`);
+      return port;
+    }
+    console.warn(`[CodexProxyManager] Invalid port content "${content}" in ${portFile}`);
     return null;
   } catch {
+    console.warn(`[CodexProxyManager] Port file not found: ${portFile}`);
     return null;
   }
 }

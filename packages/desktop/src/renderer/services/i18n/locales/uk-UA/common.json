@@ -59,7 +59,6 @@
   "historyBack": "Назад",
   "more": "Більше",
   "refresh": "Оновити",
-  "readOnly": "Лише читання",
   "tray.showWindow": "Показати POUNDING",
   "tray.newChat": "Новий чат",
   "tray.closeToTray": "Згорнути в трей",
@@ -81,12 +80,7 @@
       "title": "Встановлення POUNDING неповне",
       "description": "У цьому встановленні бракує потрібних локальних ресурсів, тому AionCore не може запуститися. Завантажте та перевстановіть останню версію POUNDING.",
       "downloadLatest": "Завантажити останню версію",
-      "sendDiagnostics": "Надіслати діагностику",
-      "runtimeComponentDescription": "This installation is missing required bundled runtime components, so {{resource}} cannot start. Reinstall the latest POUNDING package. If it still happens after reinstalling, check whether security or antivirus software quarantined POUNDING components."
-    },
-    "packageArchitectureMismatch": {
-      "title": "POUNDING package architecture mismatch",
-      "description": "This POUNDING package is for {{packageArch}}, but this Mac is {{deviceArch}}. You may have downloaded the wrong package. Please download and install the {{expectedArch}} package."
+      "sendDiagnostics": "Надіслати діагностику"
     }
   },
   "fileAttach.addFiles": "Додати файли",

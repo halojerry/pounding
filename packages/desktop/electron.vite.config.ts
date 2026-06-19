@@ -123,7 +123,32 @@ export default defineConfig(({ mode }) => {
               }),
             ]
           : []),
-        ...(enableSentrySourceMaps ? [sentryVitePlugin(sentryPluginOptions)] : []),
+        ...(enableSentrySourceMaps
+          ? [
+              // Wrap sentry plugin to prevent build failure on upload errors (e.g. invalid token, network issues)
+              (() => {
+                const sentryPlugin = sentryVitePlugin(sentryPluginOptions);
+                return {
+                  ...sentryPlugin,
+                  name: 'sentry-non-fatal',
+                  buildStart: async (opt: any) => {
+                    try {
+                      await (sentryPlugin as any).buildStart?.(opt);
+                    } catch (e) {
+                      console.warn('[sentry] Build integration failed (non-fatal):', (e as Error).message);
+                    }
+                  },
+                  writeBundle: async (opt: any, bundle: any) => {
+                    try {
+                      await (sentryPlugin as any).writeBundle?.(opt, bundle);
+                    } catch (e) {
+                      console.warn('[sentry] Build integration failed (non-fatal):', (e as Error).message);
+                    }
+                  },
+                };
+              })(),
+            ]
+          : []),
         ...(isDevelopment ? [buildMcpServersPlugin()] : []),
       ],
       resolve: { alias: mainAliases, extensions: ['.ts', '.tsx', '.js', '.json'] },
@@ -237,7 +262,27 @@ export default defineConfig(({ mode }) => {
       plugins: [
         UnoCSS(unoConfig),
         iconParkPlugin(),
-        ...(enableSentrySourceMaps ? [sentryVitePlugin(sentryPluginOptions)] : []),
+        ...(enableSentrySourceMaps
+          ? [
+              (() => {
+                const sentryPlugin = sentryVitePlugin(sentryPluginOptions);
+                return {
+                  ...sentryPlugin,
+                  name: 'sentry-non-fatal',
+                  buildStart: async (opt: any) => {
+                    try { await (sentryPlugin as any).buildStart?.(opt); } catch (e) {
+                      console.warn('[sentry] Build integration failed (non-fatal):', (e as Error).message);
+                    }
+                  },
+                  writeBundle: async (opt: any, bundle: any) => {
+                    try { await (sentryPlugin as any).writeBundle?.(opt, bundle); } catch (e) {
+                      console.warn('[sentry] Build integration failed (non-fatal):', (e as Error).message);
+                    }
+                  },
+                };
+              })(),
+            ]
+          : []),
       ],
       build: {
         target: 'es2022',

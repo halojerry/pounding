@@ -200,13 +200,14 @@ export async function httpRequest<T>(
   if (!response.ok) {
     let errorBody: unknown;
     try {
-      errorBody = await response.json();
-    } catch {
+      const rawText = await response.text();
       try {
-        errorBody = await response.text();
+        errorBody = JSON.parse(rawText);
       } catch {
-        errorBody = '<unreadable body>';
+        errorBody = rawText;
       }
+    } catch {
+      errorBody = '<unreadable body>';
     }
     if (options?.silentStatuses?.includes(response.status)) {
       console.debug(`[httpBridge] ${method} ${path} → ${response.status} (silenced)`, errorBody);

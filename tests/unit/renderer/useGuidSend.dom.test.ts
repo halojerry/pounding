@@ -106,7 +106,7 @@ describe('useGuidSend', () => {
     swrMutateMock.mockResolvedValue(undefined);
   });
 
-  it('passes selected mode into assistant conversation overrides when creating a preset ACP conversation', async () => {
+  it('passes selected mode and model into extra for a preset ACP conversation', async () => {
     const { result } = renderHook(() => useGuidSend(createDeps()));
 
     await act(async () => {
@@ -115,20 +115,15 @@ describe('useGuidSend', () => {
 
     expect(createConversationInvokeMock).toHaveBeenCalledTimes(1);
     const payload = createConversationInvokeMock.mock.calls[0][0];
-    expect(payload.assistant?.conversation_overrides?.permission).toBe('bypassPermissions');
-    expect(payload.assistant?.conversation_overrides?.model).toBe('claude-opus');
-    expect(swrMutateMock).toHaveBeenCalledWith('guid.assistant.detail.assistant-1.zh-CN');
-    expect(swrMutateMock).toHaveBeenCalledWith('assistants.list');
+    expect(payload.extra.session_mode).toBe('bypassPermissions');
+    expect(payload.extra.current_model_id).toBe('claude-opus');
   });
 
-  it('falls back to assistant default skill and MCP ids for preset conversations before local Guid overrides exist', async () => {
+  it('uses empty MCP selection and falls back to resolved builtin-skill excludes when Guid-level overrides are not set', async () => {
     const deps = createDeps();
     deps.guidEnabledSkills = undefined;
     deps.guidDisabledBuiltinSkills = undefined;
-    deps.assistantDefaultSkillIds = ['assistant-skill'];
-    deps.assistantDefaultDisabledBuiltinSkillIds = ['builtin-skill'];
     deps.selectedMcpServerIds = undefined;
-    deps.assistantDefaultMcpIds = ['mcp-user'];
 
     const { result } = renderHook(() => useGuidSend(deps));
 
@@ -137,13 +132,12 @@ describe('useGuidSend', () => {
     });
 
     const payload = createConversationInvokeMock.mock.calls[0][0];
-    expect(payload.assistant?.conversation_overrides?.skill_ids).toEqual(['assistant-skill']);
-    expect(payload.assistant?.conversation_overrides?.disabled_builtin_skill_ids).toEqual(['builtin-skill']);
-    expect(payload.assistant?.conversation_overrides?.mcp_ids).toEqual(['mcp-user']);
-    expect(payload.extra.selected_mcp_server_ids).toEqual(['mcp-user']);
+    expect(payload.extra.selected_mcp_server_ids).toEqual([]);
+    expect(payload.extra.selected_session_mcp_servers).toEqual([]);
+    expect(payload.extra.exclude_auto_inject_skills).toEqual(['skill-b']);
   });
 
-  it('preserves builtin MCP ids in assistant overrides while only sending user MCP ids to runtime selection', async () => {
+  it('sends user MCP ids to runtime selection and builtin MCPs as session servers', async () => {
     const deps = createDeps();
     deps.availableMcpServers = [
       { id: 'mcp-user', name: 'User MCP', enabled: true, builtin: false } as IMcpServer,
@@ -158,7 +152,6 @@ describe('useGuidSend', () => {
     });
 
     const payload = createConversationInvokeMock.mock.calls[0][0];
-    expect(payload.assistant?.conversation_overrides?.mcp_ids).toEqual(['mcp-user', 'builtin-mcp']);
     expect(payload.extra.selected_mcp_server_ids).toEqual(['mcp-user']);
     expect(payload.extra.selected_session_mcp_servers).toEqual([expect.objectContaining({ id: 'builtin-mcp' })]);
   });

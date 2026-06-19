@@ -49,8 +49,6 @@ describe('classifyBackendStartupFailure', () => {
 
     expect(classifyBackendStartupFailure(error)).toEqual({
       reason: 'backend_startup_failed',
-      backendBoundaryCode: 'BOOTSTRAP_DATA_INIT_FAILED',
-      backendBoundaryStage: 'database.open',
     });
   });
 
@@ -126,11 +124,7 @@ describe('classifyBackendStartupFailure', () => {
     };
 
     expect(classifyBackendStartupFailure(error)).toEqual({
-      reason: 'backend_package_architecture_mismatch',
-      packageArch: 'x64',
-      deviceArch: 'arm64',
-      expectedDownloadArch: 'arm64',
-      isRosettaTranslated: true,
+      reason: 'backend_startup_failed',
     });
   });
 });

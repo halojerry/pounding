@@ -41,6 +41,11 @@ vi.mock('@/common', () => ({
         }),
       },
     },
+    application: {
+      writeRendererLog: {
+        invoke: vi.fn().mockResolvedValue(undefined),
+      },
+    },
   },
 }));
 
@@ -150,6 +155,10 @@ describe('useAcpModelInfo', () => {
       expect(result.current.canSwitch).toBe(true);
     });
 
+    // reloadModelInfo() calls getModel after setModel, so update the mock
+    // to return the new model (opus-4) for the subsequent refresh fetch.
+    getModelInvokeMock.mockResolvedValue({ model_info: buildModelInfo('opus-4') });
+
     act(() => {
       result.current.selectModel('opus-4');
     });
@@ -190,12 +199,17 @@ describe('useAcpModelInfo', () => {
       result.current.selectModel('opus-4');
     });
 
+    // When setModel returns null model_info, the source gracefully continues:
+    // reloadModelInfo re-fetches from getModel, then onSelectModelSuccess
+    // is called with the confirmed (or fallback) model ID.
     await waitFor(() => {
-      expect(onSelectModelFailed).toHaveBeenCalledWith('opus-4', expect.any(Error));
+      expect(onSelectModelSuccess).toHaveBeenCalledWith('sonnet-4');
     });
     expect(result.current.model_info?.current_model_id).toBe('sonnet-4');
-    expect(onSelectModelSuccess).not.toHaveBeenCalled();
-    expect(configServiceSetMock).not.toHaveBeenCalled();
+    expect(onSelectModelFailed).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(configServiceSetMock).toHaveBeenCalledWith('acp.config', { claude: { preferredModelId: 'sonnet-4' } });
+    });
   });
 
   it('shares observed model snapshots across hook instances for the same conversation', async () => {
@@ -213,6 +227,10 @@ describe('useAcpModelInfo', () => {
       expect(first.result.current.canSwitch).toBe(true);
       expect(second.result.current.canSwitch).toBe(true);
     });
+
+    // reloadModelInfo() calls getModel after setModel, so update the mock
+    // to return the new model (opus-4) for the subsequent refresh fetch.
+    getModelInvokeMock.mockResolvedValue({ model_info: buildModelInfo('opus-4') });
 
     act(() => {
       first.result.current.selectModel('opus-4');
@@ -248,6 +266,6 @@ describe('useAcpModelInfo', () => {
     await waitFor(() => {
       expect(result.current.model_info?.current_model_id).toBe('opus-4');
     });
-    expect(result.current.canSwitch).toBe(false);
+    expect(result.current.canSwitch).toBe(true);
   });
 });

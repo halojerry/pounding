@@ -14,7 +14,7 @@ on:
         default: false
   pull_request:
     types: [opened, synchronize, edited, closed, ready_for_review]
-    branches: [main, feature/**, release/pounding-*]
+    branches: [main, dev, feature/**, release/pounding-*]
     paths-ignore:
       - '**/*.md'
       - 'docs/**'

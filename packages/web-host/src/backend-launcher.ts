@@ -213,7 +213,7 @@ const FETCH_FORBIDDEN_PORTS = new Set([
 ]);
 
 const FETCH_COMPATIBLE_PORT_MAX_ATTEMPTS = 50;
-const AIONCORE_LISTENING_PREFIX = 'AIONCORE_LISTENING ';
+const POUNDINGCORE_LISTENING_PREFIX = 'POUNDINGCORE_LISTENING ';
 const BACKEND_PORT_REPORT_TIMEOUT_MS = 30_000;
 
 function isFetchForbiddenPort(port: number): boolean {
@@ -230,7 +230,7 @@ export function findAvailablePort(
 
   const firstRequestedPort = preferredPort && !isFetchForbiddenPort(preferredPort) ? preferredPort : 0;
   if (preferredPort && firstRequestedPort === 0) {
-    console.info(`[aioncore] skipped fetch-blocked backend port ${preferredPort}`);
+    console.info(`[poundingcore] skipped fetch-blocked backend port ${preferredPort}`);
   }
 
   const tryPort = (requestedPort: number, remainingAttempts: number, attempt: number): Promise<number> =>
@@ -257,12 +257,12 @@ export function findAvailablePort(
         server.close(() => {
           cleanup();
           if (resolvedPort > 0 && !isFetchForbiddenPort(resolvedPort)) {
-            console.info(`[aioncore] selected backend port ${resolvedPort} after ${attempt} attempts`);
+            console.info(`[poundingcore] selected backend port ${resolvedPort} after ${attempt} attempts`);
             resolve(resolvedPort);
             return;
           }
           if (resolvedPort > 0 && remainingAttempts > 1) {
-            console.info(`[aioncore] skipped fetch-blocked backend port ${resolvedPort}`);
+            console.info(`[poundingcore] skipped fetch-blocked backend port ${resolvedPort}`);
             tryPort(0, remainingAttempts - 1, attempt + 1).then(resolve, reject);
             return;
           }
@@ -317,10 +317,10 @@ function clearHealthCheckErrorDiagnostics(diagnostics: HealthCheckDiagnostics): 
   delete diagnostics.healthCheckLastErrorCauseCode;
 }
 
-function parseAioncoreListeningPort(line: string): number | undefined {
-  if (!line.startsWith(AIONCORE_LISTENING_PREFIX)) return undefined;
+function parsePoundingcoreListeningPort(line: string): number | undefined {
+  if (!line.startsWith(POUNDINGCORE_LISTENING_PREFIX)) return undefined;
   try {
-    const parsed = JSON.parse(line.slice(AIONCORE_LISTENING_PREFIX.length)) as { port?: unknown };
+    const parsed = JSON.parse(line.slice(POUNDINGCORE_LISTENING_PREFIX.length)) as { port?: unknown };
     if (typeof parsed.port !== 'number' || !Number.isInteger(parsed.port)) return undefined;
     if (parsed.port <= 0 || parsed.port > 65535) return undefined;
     return parsed.port;
@@ -599,7 +599,7 @@ export class BackendLifecycleManager {
       };
       reportedPortTimer = setTimeout(() => {
         rejectReportedPort(
-          makeStartupError('listen_timeout', 'aioncore did not report its listening port before timeout', undefined, {
+          makeStartupError('listen_timeout', 'poundingcore did not report its listening port before timeout', undefined, {
             healthCheckTimeoutMs: BACKEND_PORT_REPORT_TIMEOUT_MS,
             healthCheckElapsedMs: Date.now() - startupStartedAt,
           })
@@ -611,7 +611,7 @@ export class BackendLifecycleManager {
       stdoutTail = appendOutputTail(stdoutTail, data);
       for (const line of data.toString().split('\n')) {
         const trimmed = line.trim();
-        const port = parseAioncoreListeningPort(trimmed);
+        const port = parsePoundingcoreListeningPort(trimmed);
         if (port !== undefined) {
           this._port = port;
           serverListeningObserved = true;

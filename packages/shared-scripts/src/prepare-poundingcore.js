@@ -428,8 +428,8 @@ function downloadAndExtract(platform, arch, tag) {
   if (!downloaded) {
     throw new Error(
       `Failed to download poundingcore ${tag} for ${platform}-${arch}. Tried:\n` +
-      `  - ${getDownloadUrl(primary, tag)}\n` +
-      (fallback ? `  - ${getDownloadUrl(fallback, tag)}\n` : '')
+        `  - ${getDownloadUrl(primary, tag)}\n` +
+        (fallback ? `  - ${getDownloadUrl(fallback, tag)}\n` : '')
     );
   }
 

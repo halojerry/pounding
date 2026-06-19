@@ -270,12 +270,16 @@ export default defineConfig(({ mode }) => {
                   ...sentryPlugin,
                   name: 'sentry-non-fatal',
                   buildStart: async (opt: any) => {
-                    try { await (sentryPlugin as any).buildStart?.(opt); } catch (e) {
+                    try {
+                      await (sentryPlugin as any).buildStart?.(opt);
+                    } catch (e) {
                       console.warn('[sentry] Build integration failed (non-fatal):', (e as Error).message);
                     }
                   },
                   writeBundle: async (opt: any, bundle: any) => {
-                    try { await (sentryPlugin as any).writeBundle?.(opt, bundle); } catch (e) {
+                    try {
+                      await (sentryPlugin as any).writeBundle?.(opt, bundle);
+                    } catch (e) {
                       console.warn('[sentry] Build integration failed (non-fatal):', (e as Error).message);
                     }
                   },

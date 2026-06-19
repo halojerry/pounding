@@ -288,8 +288,14 @@ export async function captureBackendStartupFailure(error: unknown): Promise<void
         'pounding.backend_startup.health_attempt_deficit_bucket',
         getHealthAttemptBucket(details?.healthCheckAttemptDeficit),
       ],
-      ['pounding.backend_startup.health_timeout_overrun_bucket', getDurationBucket(details?.healthCheckTimeoutOverrunMs)],
-      ['pounding.backend_startup.health_max_attempt_gap_bucket', getDurationBucket(details?.healthCheckMaxAttemptGapMs)],
+      [
+        'pounding.backend_startup.health_timeout_overrun_bucket',
+        getDurationBucket(details?.healthCheckTimeoutOverrunMs),
+      ],
+      [
+        'pounding.backend_startup.health_max_attempt_gap_bucket',
+        getDurationBucket(details?.healthCheckMaxAttemptGapMs),
+      ],
       [
         'pounding.backend_startup.seconds_since_quit_and_install',
         getSecondsSince(autoUpdateDiagnostics?.lastQuitAndInstallAt),

@@ -599,10 +599,15 @@ export class BackendLifecycleManager {
       };
       reportedPortTimer = setTimeout(() => {
         rejectReportedPort(
-          makeStartupError('listen_timeout', 'poundingcore did not report its listening port before timeout', undefined, {
-            healthCheckTimeoutMs: BACKEND_PORT_REPORT_TIMEOUT_MS,
-            healthCheckElapsedMs: Date.now() - startupStartedAt,
-          })
+          makeStartupError(
+            'listen_timeout',
+            'poundingcore did not report its listening port before timeout',
+            undefined,
+            {
+              healthCheckTimeoutMs: BACKEND_PORT_REPORT_TIMEOUT_MS,
+              healthCheckElapsedMs: Date.now() - startupStartedAt,
+            }
+          )
         );
       }, BACKEND_PORT_REPORT_TIMEOUT_MS);
     });

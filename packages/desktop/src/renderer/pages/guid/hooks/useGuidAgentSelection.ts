@@ -25,6 +25,12 @@ import { usePresetAssistantResolver } from './usePresetAssistantResolver';
 import { useAgentAvailability } from './useAgentAvailability';
 import { useCustomAgentsLoader } from './useCustomAgentsLoader';
 import { isSupportedNewConversationAgent } from '@/renderer/utils/model/agentTypeSupportPolicy';
+import { useProvidersQuery } from '@/renderer/hooks/agent/useModelProviderList';
+import {
+  getManagedCliSelectableModels,
+  resolveManagedRuntimeCliTarget,
+  MANAGED_NEWAPI_PROVIDER_ID,
+} from '@/common/types/agent/managedRuntimeCli';
 
 export type GuidAgentSelectionResult = {
   selectedAgentKey: string;
@@ -219,6 +225,8 @@ export const useGuidAgentSelection = ({
     availableAgents,
     resolvePresetAgentType,
   });
+
+  const { data: providers } = useProvidersQuery();
 
   /**
    * Find agent by key.

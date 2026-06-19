@@ -71,8 +71,8 @@ function resolveBackendBinary(): string {
   const projectRoot = process.cwd();
   const candidates = [
     process.env.AIONUI_BACKEND_BINARY,
-    path.join(projectRoot, '../aionCore/target/debug/aioncore'),
-    path.join(os.homedir(), '.cargo', 'bin', 'aioncore'),
+    path.join(projectRoot, '../aionCore/target/debug/poundingcore'),
+    path.join(os.homedir(), '.cargo', 'bin', 'poundingcore'),
   ].filter((value): value is string => Boolean(value));
 
   for (const candidate of candidates) {
@@ -81,7 +81,7 @@ function resolveBackendBinary(): string {
     }
   }
 
-  throw new Error('aioncore binary not found for migration e2e');
+  throw new Error('poundingcore binary not found for migration e2e');
 }
 
 function schemaPath(): string {
@@ -89,12 +89,12 @@ function schemaPath(): string {
 }
 
 function querySqliteValue(dataDir: string, sql: string): string {
-  const dbPath = path.join(dataDir, 'aionui-backend.db');
+  const dbPath = path.join(dataDir, 'pounding-backend.db');
   return execFileSync('sqlite3', ['-readonly', dbPath, sql], { encoding: 'utf8' }).trim();
 }
 
 function seedLegacyDatabase(dataDir: string): void {
-  const legacyDbPath = path.join(dataDir, 'aionui.db');
+  const legacyDbPath = path.join(dataDir, 'pounding.db');
   const schemaSql = fs.readFileSync(schemaPath(), 'utf8');
   execFileSync('sqlite3', [legacyDbPath], { input: schemaSql, encoding: 'utf8' });
 

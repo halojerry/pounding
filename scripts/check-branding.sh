@@ -168,6 +168,150 @@ else
   PASS=$((PASS + 1))
 fi
 
+# ── Locale: preview.json (all 9 locales) ──
+echo ""
+echo "==> Checking locale preview.json files..."
+for locale in en-US ja-JP ko-KR pt-BR ru-RU tr-TR uk-UA zh-CN zh-TW; do
+  check_not "locales/${locale}/preview.json contains AionUi" \
+    '"AionUi"' \
+    "$ROOT/packages/desktop/src/renderer/services/i18n/locales/${locale}/preview.json" \
+    "    locales/${locale}/preview.json has AionUi branding residue"
+done
+
+# ── Locale: pt-BR files with known AionUi residue ──
+echo ""
+echo "==> Checking pt-BR locale files for AionUi residue..."
+for f in cron.json conversation.json settings.json; do
+  check_not "locales/pt-BR/${f} contains AionUi" \
+    '"AionUi"' \
+    "$ROOT/packages/desktop/src/renderer/services/i18n/locales/pt-BR/${f}" \
+    "    locales/pt-BR/${f} has AionUi branding residue"
+done
+
+# ── All locale JSON files (global scan) ──
+echo ""
+echo "==> Checking all locale JSON files for AionUi..."
+LOCALE_AIONUI=$(grep -rl '"AionUi"' "$ROOT/packages/desktop/src/renderer/services/i18n/locales/" --include="*.json" 2>/dev/null || true)
+if [ -z "$LOCALE_AIONUI" ]; then
+  echo -e "${GREEN}PASS${NC} no AionUi in locale JSON files"
+  PASS=$((PASS + 1))
+else
+  echo -e "${RED}FAIL${NC} locale JSON files have AionUi branding residue:"
+  echo "$LOCALE_AIONUI" | while read -r f; do echo -e "  ${YELLOW}$f${NC}"; done
+  FAIL=$((FAIL + 1))
+  ERRORS+=("locale JSON files have AionUi branding residue")
+fi
+
+# ── Scripts: packaged-launch.mjs ──
+echo ""
+echo "==> Checking scripts/packaged-launch.mjs..."
+check_not "packaged-launch.mjs AionUi.exe" \
+  'AionUi\.exe' \
+  "$ROOT/scripts/packaged-launch.mjs" \
+  "    packaged-launch.mjs has AionUi.exe"
+check_not "packaged-launch.mjs AionUi binary" \
+  "'AionUi'" \
+  "$ROOT/scripts/packaged-launch.mjs" \
+  "    packaged-launch.mjs has 'AionUi'"
+check_not "packaged-launch.mjs aionui lower" \
+  "'aionui'" \
+  "$ROOT/scripts/packaged-launch.mjs" \
+  "    packaged-launch.mjs has 'aionui'"
+check_not "packaged-launch.mjs AIONUI_EXTENSIONS" \
+  'AIONUI_EXTENSIONS_PATH' \
+  "$ROOT/scripts/packaged-launch.mjs" \
+  "    packaged-launch.mjs has AIONUI_EXTENSIONS_PATH"
+
+# ── Scripts: dev-bootstrap.mjs ──
+echo ""
+echo "==> Checking scripts/dev-bootstrap.mjs..."
+check_not "dev-bootstrap.mjs aionui" \
+  "'aionui'" \
+  "$ROOT/scripts/dev-bootstrap.mjs" \
+  "    dev-bootstrap.mjs has 'aionui'"
+check_not "dev-bootstrap.mjs AionUi" \
+  "'AionUi'" \
+  "$ROOT/scripts/dev-bootstrap.mjs" \
+  "    dev-bootstrap.mjs has 'AionUi'"
+
+# ── Scripts: pack-web-cli.js ──
+echo ""
+echo "==> Checking scripts/pack-web-cli.js..."
+check_not "pack-web-cli.js aionui-web" \
+  'aionui-web' \
+  "$ROOT/scripts/pack-web-cli.js" \
+  "    pack-web-cli.js has aionui-web"
+
+# ── Scripts: install-web.sh ──
+echo ""
+echo "==> Checking scripts/install-web.sh..."
+check_not "install-web.sh aionui-web" \
+  'aionui-web' \
+  "$ROOT/scripts/install-web.sh" \
+  "    install-web.sh has aionui-web"
+check_not "install-web.sh AionUi-2.0.2" \
+  'AionUi-2\.0\.2' \
+  "$ROOT/scripts/install-web.sh" \
+  "    install-web.sh has old AionUi-2.0.2 version reference"
+
+# ── Tests directory ──
+echo ""
+echo "==> Checking tests/ for iOfficeAI references..."
+TESTS_IOFFICE=$(grep -rl 'iOfficeAI' "$ROOT/tests/" --include="*.ts" --include="*.tsx" 2>/dev/null || true)
+if [ -z "$TESTS_IOFFICE" ]; then
+  echo -e "${GREEN}PASS${NC} no iOfficeAI references in tests"
+  PASS=$((PASS + 1))
+else
+  echo -e "${RED}FAIL${NC} test files have iOfficeAI references:"
+  echo "$TESTS_IOFFICE" | while read -r f; do echo -e "  ${YELLOW}$f${NC}"; done
+  FAIL=$((FAIL + 1))
+  ERRORS+=("test files have iOfficeAI references")
+fi
+
+# ── Scripts: global aionui scan for remaining files ──
+echo ""
+echo "==> Checking scripts/ for AionUi in bin/log paths..."
+SCRIPTS_AIONUI_FIX=$(grep -rl '\.aionui-fix' "$ROOT/scripts/" --include="*.sh" --include="*.js" --include="*.mjs" 2>/dev/null | grep -v 'check-branding.sh' || true)
+if [ -z "$SCRIPTS_AIONUI_FIX" ]; then
+  echo -e "${GREEN}PASS${NC} no .aionui-fix paths in scripts"
+  PASS=$((PASS + 1))
+else
+  echo -e "${RED}FAIL${NC} scripts have .aionui-fix paths:"
+  echo "$SCRIPTS_AIONUI_FIX" | while read -r f; do echo -e "  ${YELLOW}$f${NC}"; done
+  FAIL=$((FAIL + 1))
+  ERRORS+=("scripts have .aionui-fix paths")
+fi
+
+SCRIPTS_AIONUI_DEV=$(grep -rl 'AionUi-Dev' "$ROOT/scripts/" --include="*.ts" --include="*.mjs" 2>/dev/null || true)
+if [ -z "$SCRIPTS_AIONUI_DEV" ]; then
+  echo -e "${GREEN}PASS${NC} no AionUi-Dev log paths in scripts"
+  PASS=$((PASS + 1))
+else
+  echo -e "${RED}FAIL${NC} scripts have AionUi-Dev log paths:"
+  echo "$SCRIPTS_AIONUI_DEV" | while read -r f; do echo -e "  ${YELLOW}$f${NC}"; done
+  FAIL=$((FAIL + 1))
+  ERRORS+=("scripts have AionUi-Dev log paths")
+fi
+
+# ── GitHub workflows ──
+echo ""
+echo "==> Checking GitHub workflows for branding..."
+WF_IOFFICE=$(grep -rl "org: 'iOfficeAI'" "$ROOT/.github/workflows/" --include="*.yml" 2>/dev/null || true)
+if [ -z "$WF_IOFFICE" ]; then
+  echo -e "${GREEN}PASS${NC} no iOfficeAI project org in workflows"
+  PASS=$((PASS + 1))
+else
+  echo -e "${RED}FAIL${NC} CI workflow has iOfficeAI project org reference:"
+  echo "$WF_IOFFICE" | while read -r f; do echo -e "  ${YELLOW}$f${NC}"; done
+  FAIL=$((FAIL + 1))
+  ERRORS+=("CI workflow has iOfficeAI project org reference")
+fi
+
+check_not "bump-homebrew.yml has aionui cask" \
+  'aionui' \
+  "$ROOT/.github/workflows/bump-homebrew.yml" \
+  "    bump-homebrew.yml has aionui cask name"
+
 echo ""
 echo "=== Results: $PASS passed, $FAIL failed ==="
 

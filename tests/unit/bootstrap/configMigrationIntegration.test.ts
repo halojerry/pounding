@@ -57,7 +57,7 @@ describe('configMigrationIntegration', () => {
   });
 
   it('runs migrations when database version is outdated', async () => {
-    const result = await runLegacyDatabaseMigrations('/test/aionui.db');
+    const result = await runLegacyDatabaseMigrations('/test/pounding.db');
 
     expect(result.migrated).toBe(true);
     expect(result.fromVersion).toBe(20);
@@ -69,7 +69,7 @@ describe('configMigrationIntegration', () => {
   it('skips migrations when database does not exist', async () => {
     (existsSync as any).mockReturnValue(false);
 
-    const result = await runLegacyDatabaseMigrations('/test/aionui.db');
+    const result = await runLegacyDatabaseMigrations('/test/pounding.db');
 
     expect(result.skipped).toBe(true);
     expect(result.migrated).toBe(false);
@@ -77,13 +77,13 @@ describe('configMigrationIntegration', () => {
   });
 
   it('closes driver after migration completes', async () => {
-    await runLegacyDatabaseMigrations('/test/aionui.db');
+    await runLegacyDatabaseMigrations('/test/pounding.db');
 
     expect(mockDriver.close).toHaveBeenCalled();
   });
 
   it('ensures system user exists after migration', async () => {
-    await runLegacyDatabaseMigrations('/test/aionui.db');
+    await runLegacyDatabaseMigrations('/test/pounding.db');
 
     expect(mockDriver.prepare).toHaveBeenCalledWith(expect.stringContaining('INSERT OR IGNORE INTO users'));
   });
@@ -93,7 +93,7 @@ describe('configMigrationIntegration', () => {
       throw new Error('Migration failed');
     });
 
-    await expect(runLegacyDatabaseMigrations('/test/aionui.db')).rejects.toThrow('Migration failed');
+    await expect(runLegacyDatabaseMigrations('/test/pounding.db')).rejects.toThrow('Migration failed');
     expect(mockDriver.close).toHaveBeenCalled();
   });
 });

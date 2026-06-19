@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Simplified build script for AionUi
+ * Simplified build script for POUNDING
  * Coordinates electron-vite (bundling) and electron-builder (packaging)
  *
  * Features:
@@ -470,13 +470,13 @@ try {
   // 5. Prepare poundingcore binary (for packaged runtime usage)
   if (!skipPrepare) {
     const { preparePoundingcore } = require('../packages/shared-scripts/src/prepare-poundingcore.js');
-    const { resolveAioncoreVersion } = require('./resolveAioncoreVersion.js');
+    const { resolvePoundingcoreVersion } = require('./resolvePoundingcoreVersion.js');
     const projectRoot = path.resolve(__dirname, '..');
     preparePoundingcore({
       projectRoot,
       platform: process.platform,
       arch: targetArch,
-      version: resolveAioncoreVersion(projectRoot),
+      version: resolvePoundingcoreVersion(projectRoot),
     });
   } else {
     console.log('⚡ --skip-prepare: Skipping poundingcore & managed-resources preparation');

@@ -66,7 +66,7 @@ describe('migrationErrorRecovery', () => {
       throw new Error('Schema init failed');
     });
 
-    await expect(runLegacyDatabaseMigrations('/test/aionui.db')).rejects.toThrow('Schema init failed');
+    await expect(runLegacyDatabaseMigrations('/test/pounding.db')).rejects.toThrow('Schema init failed');
     expect(mockDriver.close).toHaveBeenCalled();
   });
 
@@ -75,7 +75,7 @@ describe('migrationErrorRecovery', () => {
       throw new Error('Migration step failed');
     });
 
-    await expect(runLegacyDatabaseMigrations('/test/aionui.db')).rejects.toThrow('Migration step failed');
+    await expect(runLegacyDatabaseMigrations('/test/pounding.db')).rejects.toThrow('Migration step failed');
     expect(mockDriver.close).toHaveBeenCalled();
   });
 
@@ -84,7 +84,7 @@ describe('migrationErrorRecovery', () => {
       throw new Error('Set version failed');
     });
 
-    await expect(runLegacyDatabaseMigrations('/test/aionui.db')).rejects.toThrow('Set version failed');
+    await expect(runLegacyDatabaseMigrations('/test/pounding.db')).rejects.toThrow('Set version failed');
     expect(mockDriver.close).toHaveBeenCalled();
   });
 
@@ -93,7 +93,7 @@ describe('migrationErrorRecovery', () => {
       throw new Error('User insert failed');
     });
 
-    await expect(runLegacyDatabaseMigrations('/test/aionui.db')).rejects.toThrow('User insert failed');
+    await expect(runLegacyDatabaseMigrations('/test/pounding.db')).rejects.toThrow('User insert failed');
     expect(mockDriver.close).toHaveBeenCalled();
   });
 

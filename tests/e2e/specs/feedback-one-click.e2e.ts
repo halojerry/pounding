@@ -77,7 +77,7 @@ test.describe('One-click feedback infrastructure', () => {
 
     // Close via the custom close button in the modal header. ModalWrapper is
     // configured with closable={false} so Escape alone does not dismiss it.
-    const closeBtn = page.locator('.aionui-modal-close-btn').first();
+    const closeBtn = page.locator('.pounding-modal-close-btn').first();
     await closeBtn.click();
     await expect(modalBody).toBeHidden({ timeout: 5_000 });
   });

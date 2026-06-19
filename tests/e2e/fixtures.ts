@@ -5,7 +5,7 @@
  *
  * Two modes:
  *   1. **Packaged mode** (CI default): Launches from electron-builder's unpacked output
- *      (e.g. out/linux-unpacked/aionui, out/mac-arm64/AionUi.app, out/win-unpacked/AionUi.exe).
+ *      (e.g. out/linux-unpacked/aionui, out/mac-arm64/AionUi.app, out/win-unpacked/POUNDING.exe).
  *      This validates that packaged resources are intact.
  *   2. **Dev mode** (local default): Launches via `electron .` from project root with
  *      the Vite dev server (electron-vite dev).
@@ -69,12 +69,12 @@ function resolvePackagedApp(): { executablePath: string; cwd: string } | null {
   const platform = process.platform;
 
   if (platform === 'win32') {
-    // out/win-unpacked/AionUi.exe  or  out/win-x64-unpacked/AionUi.exe
+    // out/win-unpacked/POUNDING.exe  or  out/win-x64-unpacked/POUNDING.exe
     for (const dir of ['win-unpacked', 'win-x64-unpacked', 'win-arm64-unpacked']) {
       const exe = path.join(outDir, dir, 'POUNDING.exe');
       if (fs.existsSync(exe)) return { executablePath: exe, cwd: path.join(outDir, dir) };
       // Also check legacy name
-      const legacyExe = path.join(outDir, dir, 'AionUi.exe');
+      const legacyExe = path.join(outDir, dir, 'POUNDING.exe');
       if (fs.existsSync(legacyExe)) return { executablePath: legacyExe, cwd: path.join(outDir, dir) };
     }
   } else if (platform === 'darwin') {
@@ -87,7 +87,7 @@ function resolvePackagedApp(): { executablePath: string; cwd: string } | null {
         const exe = path.join(macDir, appBundle, 'Contents', 'MacOS', 'POUNDING');
         if (fs.existsSync(exe)) return { executablePath: exe, cwd: macDir };
         // Fall back to legacy name
-        const legacyExe = path.join(macDir, appBundle, 'Contents', 'MacOS', 'AionUi');
+        const legacyExe = path.join(macDir, appBundle, 'Contents', 'MacOS', 'POUNDING');
         if (fs.existsSync(legacyExe)) return { executablePath: legacyExe, cwd: macDir };
       }
     }
@@ -97,7 +97,7 @@ function resolvePackagedApp(): { executablePath: string; cwd: string } | null {
       const dirPath = path.join(outDir, dir);
       if (!fs.existsSync(dirPath)) continue;
       // Try new and legacy executable names
-      for (const name of ['pounding', 'POUNDING', 'aionui', 'AionUi']) {
+      for (const name of ['pounding', 'POUNDING', 'pounding', 'POUNDING']) {
         const exe = path.join(dirPath, name);
         if (fs.existsSync(exe)) return { executablePath: exe, cwd: dirPath };
       }

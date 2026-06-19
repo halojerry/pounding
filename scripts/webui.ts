@@ -63,7 +63,7 @@ const getFlag = (name: string): string | undefined => {
  * Why a dedicated `-web` name, not the same `~/.aionui[-dev]` that Electron
  * uses: on macOS, Electron's getDataPath() (packages/desktop/src/process/utils/
  * utils.ts) creates `~/.aionui-dev` as a **symlink** to
- * `~/Library/Application Support/AionUi-Dev/aionui` so CLI tools (claude,
+ * `~/Library/Application Support/POUNDING-Dev/aionui` so CLI tools (claude,
  * gemini, qwen…) don't choke on the literal space in "Application Support".
  * If standalone webui runs first on a clean machine, it would create the
  * symlink location as a **real directory** instead. When Electron is later

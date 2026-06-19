@@ -37,7 +37,7 @@ describe('classifyBackendStartupFailure', () => {
   });
 
   it('preserves backend bootstrap code and stage for generic startup failures', () => {
-    const error = new Error('aioncore exited before health check passed') as Error & {
+    const error = new Error('poundingcore exited before health check passed') as Error & {
       details?: Record<string, unknown>;
     };
     error.details = {
@@ -112,7 +112,7 @@ describe('classifyBackendStartupFailure', () => {
   });
 
   it('classifies packaged macOS architecture mismatches separately from generic startup failures', () => {
-    const error = new Error('AionUi package architecture does not match this Mac') as Error & {
+    const error = new Error('POUNDING package architecture does not match this Mac') as Error & {
       details?: Record<string, unknown>;
     };
     error.details = {

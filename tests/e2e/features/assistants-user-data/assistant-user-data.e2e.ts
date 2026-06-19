@@ -49,7 +49,7 @@ const MIGRATION_BACKEND_PORT = 25902;
  * Node version used at install time (Electron vs. Playwright worker mismatch).
  */
 function querySqliteIds(dataDir: string, sql: string): string[] {
-  const dbPath = path.join(dataDir, 'aionui.db');
+  const dbPath = path.join(dataDir, 'pounding.db');
   const out = execFileSync('sqlite3', ['-readonly', dbPath, sql], { encoding: 'utf8' });
   return out
     .split('\n')

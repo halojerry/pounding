@@ -1,6 +1,6 @@
 name: Verify Homebrew Cask
 
-# The aionui cask is on Homebrew's autobump list — BrewTestBot automatically
+# The pounding cask is on Homebrew's autobump list — BrewTestBot automatically
 # creates version-bump PRs every ~3 hours. This workflow only *verifies* that
 # the cask has been updated, it no longer submits bump PRs itself.
 
@@ -51,7 +51,7 @@ jobs:
           EXPECTED="${{ steps.release.outputs.version }}"
 
           # Fetch the cask file directly from the Homebrew repo
-          CASK_CONTENT=$(curl -fsSL "https://raw.githubusercontent.com/Homebrew/homebrew-cask/HEAD/Casks/a/aionui.rb" 2>/dev/null || echo "")
+          CASK_CONTENT=$(curl -fsSL "https://raw.githubusercontent.com/Homebrew/homebrew-cask/HEAD/Casks/a/pounding.rb" 2>/dev/null || echo "")
 
           if [ -z "$CASK_CONTENT" ]; then
             echo "::error::Failed to fetch cask file from Homebrew repo"
@@ -79,9 +79,9 @@ jobs:
         run: |
           EXPECTED="${{ steps.release.outputs.version }}"
 
-          # Search for open PRs updating aionui in homebrew-cask
+          # Search for open PRs updating pounding in homebrew-cask
           PR_LIST=$(gh pr list --repo Homebrew/homebrew-cask \
-            --search "aionui $EXPECTED in:title" --state open \
+            --search "pounding $EXPECTED in:title" --state open \
             --json number,title,url --limit 5 2>/dev/null || echo "[]")
           PR_COUNT=$(echo "$PR_LIST" | jq length)
 
@@ -110,7 +110,7 @@ jobs:
           if [ "$STATUS" = "match" ]; then
             echo "Homebrew cask is up to date!"
             echo "  Version: $CASK_VERSION"
-            echo "  Install: brew install --cask aionui"
+            echo "  Install: brew install --cask pounding"
           elif [ "$STATUS" = "mismatch" ] && [ "$PR_STATUS" = "pr_pending" ]; then
             echo "Homebrew bump PR is pending review."
             echo "  Current cask: $CASK_VERSION"
@@ -123,7 +123,7 @@ jobs:
             echo ""
             echo "  If this persists, manually create a PR:"
             echo "  1. Fork https://github.com/Homebrew/homebrew-cask"
-            echo "  2. Update Casks/a/aionui.rb with new version and SHA256"
+            echo "  2. Update Casks/a/pounding.rb with new version and SHA256"
             echo "  3. Submit PR to Homebrew/homebrew-cask"
             exit 1
           else

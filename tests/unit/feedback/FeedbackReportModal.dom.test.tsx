@@ -170,7 +170,7 @@ describe('FeedbackReportModal — prefill', () => {
     const user = userEvent.setup();
     renderModal(<FeedbackReportModal visible={true} onCancel={onCancel} defaultModule='agent-detection' />);
 
-    const closeBtn = document.querySelector('.aionui-modal-close-btn') as HTMLElement | null;
+    const closeBtn = document.querySelector('.pounding-modal-close-btn') as HTMLElement | null;
     expect(closeBtn).not.toBeNull();
     await user.click(closeBtn!);
 

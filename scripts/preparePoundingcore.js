@@ -4,27 +4,27 @@
  * Reads environment variables and invokes the shared module.
  *
  * Version resolution order:
- *  1. AIONUI_BACKEND_RUN_ID env (download from AionCore Manual Build artifact)
- *  2. AIONUI_BACKEND_VERSION env (for ad-hoc release overrides)
- *  3. "aioncoreVersion" field in repo-root package.json (the pin)
+ *  1. POUNDING_BACKEND_RUN_ID env (download from poundingcore Manual Build artifact)
+ *  2. POUNDING_BACKEND_VERSION env (for ad-hoc release overrides)
+ *  3. "poundingcoreVersion" field in repo-root package.json (the pin)
  *  4. 'latest' (fallback; not recommended for reproducible builds)
  *
  * Environment variables:
- *  - AIONUI_BACKEND_RUN_ID: AionCore Manual Build workflow run id
- *  - AIONUI_BACKEND_VERSION: override the pinned version
- *  - AIONUI_BACKEND_ARCH: target architecture (default: process.arch)
+ *  - POUNDING_BACKEND_RUN_ID: poundingcore Manual Build workflow run id
+ *  - POUNDING_BACKEND_VERSION: override the pinned version
+ *  - POUNDING_BACKEND_ARCH: target architecture (default: process.arch)
  *  - GH_TOKEN / GITHUB_TOKEN: GitHub API token (for rate limiting)
  */
 
 const path = require('path');
 const { preparePoundingcore } = require('../packages/shared-scripts/src/prepare-poundingcore.js');
-const { resolveAioncoreVersion } = require('./resolveAioncoreVersion.js');
+const { resolvePoundingcoreVersion } = require('./resolvePoundingcoreVersion.js');
 
 const projectRoot = path.resolve(__dirname, '..');
 const platform = process.platform;
-// Support cross-compilation: AIONUI_BACKEND_ARCH > npm_config_target_arch > process.arch
+// Support cross-compilation: POUNDING_BACKEND_ARCH > npm_config_target_arch > process.arch
 const arch = process.env.POUNDING_BACKEND_ARCH || process.env.npm_config_target_arch || process.arch;
-const version = resolveAioncoreVersion(projectRoot);
+const version = resolvePoundingcoreVersion(projectRoot);
 
 try {
   preparePoundingcore({ projectRoot, platform, arch, version });

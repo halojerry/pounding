@@ -26,7 +26,7 @@ async function closeFeedbackModal(page: Page) {
   // ModalWrapper renders the feedback modal with a dedicated custom close
   // button class — scoped to avoid matching the Agent editor's AionModal
   // close button (which uses aria-label='Close' instead).
-  await page.locator('.aionui-modal-close-btn').first().click();
+  await page.locator('.pounding-modal-close-btn').first().click();
   await expect(page.locator(MODAL_BODY)).toBeHidden({ timeout: 5_000 });
 }
 

@@ -32,8 +32,8 @@ describe('build-with-builder', () => {
       args: ['auto', '--mac', '--x64'],
       expectedArch: 'x64',
     },
-  ])('prepares bundled AionCore for $expectedArch with args $args', ({ args, expectedArch }) => {
-    const tempDir = mkdtempSync(join(tmpdir(), 'aionui-build-test-'));
+  ])('prepares bundled poundingcore for $expectedArch with args $args', ({ args, expectedArch }) => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'pounding-build-test-'));
     const hookPath = join(tempDir, 'hook.cjs');
     const callsPath = join(tempDir, 'prepare-calls.json');
 
@@ -64,8 +64,8 @@ Module._load = function patchedLoad(request, parent, isMain) {
     return { preparePoundingcore: recordPrepareCall };
   }
 
-  if (request === './resolveAioncoreVersion.js' || request.endsWith('/resolveAioncoreVersion.js')) {
-    return { resolveAioncoreVersion: () => 'v-test' };
+  if (request === './resolvePoundingcoreVersion.js' || request.endsWith('/resolvePoundingcoreVersion.js')) {
+    return { resolvePoundingcoreVersion: () => 'v-test' };
   }
 
   return originalLoad.call(this, request, parent, isMain);

@@ -5,7 +5,7 @@ import { join } from 'node:path';
 
 const {
   verifyBundledAioncoreResources,
-} = require('../../../packages/shared-scripts/src/verify-bundled-aioncore-resources');
+} = require('../../../packages/shared-scripts/src/verify-bundled-poundingcore-resources');
 
 describe('verifyBundledAioncoreResources', () => {
   let tmp: string;
@@ -14,13 +14,13 @@ describe('verifyBundledAioncoreResources', () => {
   let codexRoot: string;
 
   beforeEach(() => {
-    tmp = mkdtempSync(join(tmpdir(), 'aionui-bundled-resources-'));
+    tmp = mkdtempSync(join(tmpdir(), 'pounding-bundled-resources-'));
     resourcesDir = join(tmp, 'resources');
-    managedResourcesDir = join(resourcesDir, 'bundled-aioncore', 'win32-x64', 'managed-resources');
+    managedResourcesDir = join(resourcesDir, 'bundled-poundingcore', 'win32-x64', 'managed-resources');
 
-    mkdirSync(join(resourcesDir, 'bundled-aioncore', 'win32-x64'), { recursive: true });
-    writeFileSync(join(resourcesDir, 'bundled-aioncore', 'win32-x64', 'aioncore.exe'), '', { flush: true });
-    writeFileSync(join(resourcesDir, 'bundled-aioncore', 'win32-x64', 'manifest.json'), '{}', { flush: true });
+    mkdirSync(join(resourcesDir, 'bundled-poundingcore', 'win32-x64'), { recursive: true });
+    writeFileSync(join(resourcesDir, 'bundled-poundingcore', 'win32-x64', 'poundingcore.exe'), '', { flush: true });
+    writeFileSync(join(resourcesDir, 'bundled-poundingcore', 'win32-x64', 'manifest.json'), '{}', { flush: true });
 
     const nodeRoot = join(managedResourcesDir, 'node', 'node-v24.11.0-win-x64');
     mkdirSync(nodeRoot, { recursive: true });
@@ -67,16 +67,16 @@ describe('verifyBundledAioncoreResources', () => {
       targetArch: 'x64',
     });
 
-    expect(result.missing).toContain('bundled-aioncore/win32-x64/managed-resources/node/*/node.exe');
+    expect(result.missing).toContain('bundled-poundingcore/win32-x64/managed-resources/node/*/node.exe');
   });
 
   it('passes for non-Windows node runtime layout', () => {
     const darwinResourcesDir = join(tmp, 'darwin-resources');
-    const darwinManagedResourcesDir = join(darwinResourcesDir, 'bundled-aioncore', 'darwin-arm64', 'managed-resources');
+    const darwinManagedResourcesDir = join(darwinResourcesDir, 'bundled-poundingcore', 'darwin-arm64', 'managed-resources');
 
-    mkdirSync(join(darwinResourcesDir, 'bundled-aioncore', 'darwin-arm64'), { recursive: true });
-    writeFileSync(join(darwinResourcesDir, 'bundled-aioncore', 'darwin-arm64', 'aioncore'), '', { flush: true });
-    writeFileSync(join(darwinResourcesDir, 'bundled-aioncore', 'darwin-arm64', 'manifest.json'), '{}', {
+    mkdirSync(join(darwinResourcesDir, 'bundled-poundingcore', 'darwin-arm64'), { recursive: true });
+    writeFileSync(join(darwinResourcesDir, 'bundled-poundingcore', 'darwin-arm64', 'poundingcore'), '', { flush: true });
+    writeFileSync(join(darwinResourcesDir, 'bundled-poundingcore', 'darwin-arm64', 'manifest.json'), '{}', {
       flush: true,
     });
     mkdirSync(join(darwinManagedResourcesDir, 'node', 'node-v24.11.0-darwin-arm64', 'bin'), { recursive: true });
@@ -105,16 +105,16 @@ describe('verifyBundledAioncoreResources', () => {
     });
 
     expect(result.missing).toEqual([]);
-    expect(result.checked).toContain('bundled-aioncore/darwin-arm64/managed-resources/node/*/bin/node');
+    expect(result.checked).toContain('bundled-poundingcore/darwin-arm64/managed-resources/node/*/bin/node');
   });
 
   it('reports missing non-Windows managed node runtime executable', () => {
     const linuxResourcesDir = join(tmp, 'linux-resources');
-    const linuxManagedResourcesDir = join(linuxResourcesDir, 'bundled-aioncore', 'linux-x64', 'managed-resources');
+    const linuxManagedResourcesDir = join(linuxResourcesDir, 'bundled-poundingcore', 'linux-x64', 'managed-resources');
 
-    mkdirSync(join(linuxResourcesDir, 'bundled-aioncore', 'linux-x64'), { recursive: true });
-    writeFileSync(join(linuxResourcesDir, 'bundled-aioncore', 'linux-x64', 'aioncore'), '', { flush: true });
-    writeFileSync(join(linuxResourcesDir, 'bundled-aioncore', 'linux-x64', 'manifest.json'), '{}', { flush: true });
+    mkdirSync(join(linuxResourcesDir, 'bundled-poundingcore', 'linux-x64'), { recursive: true });
+    writeFileSync(join(linuxResourcesDir, 'bundled-poundingcore', 'linux-x64', 'poundingcore'), '', { flush: true });
+    writeFileSync(join(linuxResourcesDir, 'bundled-poundingcore', 'linux-x64', 'manifest.json'), '{}', { flush: true });
     mkdirSync(join(linuxManagedResourcesDir, 'node', 'node-v24.11.0-linux-x64'), { recursive: true });
 
     const result = verifyBundledAioncoreResources({
@@ -123,7 +123,7 @@ describe('verifyBundledAioncoreResources', () => {
       targetArch: 'x64',
     });
 
-    expect(result.missing).toContain('bundled-aioncore/linux-x64/managed-resources/node/*/bin/node');
+    expect(result.missing).toContain('bundled-poundingcore/linux-x64/managed-resources/node/*/bin/node');
   });
 
   it('reports missing managed ACP manifest', () => {
@@ -136,7 +136,7 @@ describe('verifyBundledAioncoreResources', () => {
     });
 
     expect(result.missing).toContain(
-      'bundled-aioncore/win32-x64/managed-resources/acp/codex-acp/*/win32-x64/manifest.json'
+      'bundled-poundingcore/win32-x64/managed-resources/acp/codex-acp/*/win32-x64/manifest.json'
     );
   });
 
@@ -150,7 +150,7 @@ describe('verifyBundledAioncoreResources', () => {
     });
 
     expect(result.missing).toContain(
-      'bundled-aioncore/win32-x64/managed-resources/acp/codex-acp/0.14.0/win32-x64/codex-acp.exe'
+      'bundled-poundingcore/win32-x64/managed-resources/acp/codex-acp/0.14.0/win32-x64/codex-acp.exe'
     );
   });
 });

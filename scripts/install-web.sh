@@ -3,11 +3,11 @@
 # POUNDING WebUI — One-Click Installation Script
 # ============================================================================
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/halojerry/AionUi-2.0.2-dev-a3881e2/main/scripts/install-web.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/halojerry/pounding/main/scripts/install-web.sh | bash
 #   # Or specify version:
 #   VERSION=1.0.0 bash install-web.sh
 #   # Or install to custom directory:
-#   INSTALL_DIR=/opt/aionui-web bash install-web.sh
+#   INSTALL_DIR=/opt/pounding-web bash install-web.sh
 # ============================================================================
 
 set -euo pipefail
@@ -27,7 +27,7 @@ VERSION="${VERSION:-__VERSION__}"
 INSTALL_DIR="${INSTALL_DIR:-${HOME}/.local/share/pounding-web}"
 BIN_DIR="${BIN_DIR:-${HOME}/.local/bin}"
 MIRROR="${MIRROR:-https://yss-1256275613.cos.ap-guangzhou.myqcloud.com/pounding/releases/download}"
-GITHUB_REPO="${GITHUB_REPO:-halojerry/AionUi-2.0.2-dev-a3881e2}"
+GITHUB_REPO="${GITHUB_REPO:-halojerry/pounding}"
 CREATE_SYMLINK="${CREATE_SYMLINK:-1}"
 UPDATE_PATH="${UPDATE_PATH:-1}"
 
@@ -115,13 +115,13 @@ Environment Variables:
 
 Examples:
   # Install latest version
-  curl -fsSL https://raw.githubusercontent.com/halojerry/AionUi-2.0.2-dev-a3881e2/main/scripts/install-web.sh | bash
+  curl -fsSL https://raw.githubusercontent.com/halojerry/pounding/main/scripts/install-web.sh | bash
 
   # Install specific version
   VERSION=1.0.0 bash install-web.sh
 
   # Install to custom directory
-  INSTALL_DIR=/opt/aionui-web bash install-web.sh
+  INSTALL_DIR=/opt/pounding-web bash install-web.sh
 
   # Use local file mirror (for offline installation)
   MIRROR=file:///path/to/releases bash install-web.sh
@@ -165,7 +165,7 @@ detect_platform_arch() {
     info "Detected platform: ${BOLD}${PLATFORM}-${ARCH}${NC}"
 
     # Build tarball filename
-    TARBALL_NAME="aionui-web-${VERSION}-${PLATFORM}-${ARCH}.tar.gz"
+    TARBALL_NAME="pounding-web-${VERSION}-${PLATFORM}-${ARCH}.tar.gz"
     CHECKSUM_NAME="${TARBALL_NAME}.sha256"
 }
 
@@ -201,7 +201,7 @@ resolve_version() {
     fi
 
     # Rebuild tarball name (VERSION may have changed)
-    TARBALL_NAME="aionui-web-${VERSION}-${PLATFORM}-${ARCH}.tar.gz"
+    TARBALL_NAME="pounding-web-${VERSION}-${PLATFORM}-${ARCH}.tar.gz"
     CHECKSUM_NAME="${TARBALL_NAME}.sha256"
 }
 
@@ -316,7 +316,7 @@ extract_tarball() {
     mkdir -p "$(dirname "$INSTALL_DIR")"
 
     # Extract tarball
-    # Tarball root directory is aionui-web/, rename after extraction to INSTALL_DIR
+    # Tarball root directory is pounding-web/, rename after extraction to INSTALL_DIR
     local extract_temp="${TEMP_DIR}/extract"
     mkdir -p "$extract_temp"
 
@@ -324,16 +324,16 @@ extract_tarball() {
     tar -xzf "$TARBALL_PATH" -C "$extract_temp" || die "Failed to extract tarball"
 
     # Move to final installation location
-    if [[ -d "${extract_temp}/aionui-web" ]]; then
-        mv "${extract_temp}/aionui-web" "$INSTALL_DIR"
+    if [[ -d "${extract_temp}/pounding-web" ]]; then
+        mv "${extract_temp}/pounding-web" "$INSTALL_DIR"
     else
-        die "Tarball structure is invalid (missing aionui-web/ directory)"
+        die "Tarball structure is invalid (missing pounding-web/ directory)"
     fi
 
     success "Extracted to $INSTALL_DIR"
 
     # Set executable permission on the bun-compiled standalone binary
-    chmod +x "${INSTALL_DIR}/aionui-web" 2>/dev/null || true
+    chmod +x "${INSTALL_DIR}/pounding-web" 2>/dev/null || true
 
     # On macOS, strip the quarantine xattr Safari/Chrome/curl-downloaded files
     # inherit — otherwise Gatekeeper kills unsigned Mach-O binaries with a
@@ -344,8 +344,8 @@ extract_tarball() {
     fi
 
     # Verify installation
-    if [[ ! -x "${INSTALL_DIR}/aionui-web" ]]; then
-        die "Installation failed: ${INSTALL_DIR}/aionui-web not found or not executable"
+    if [[ ! -x "${INSTALL_DIR}/pounding-web" ]]; then
+        die "Installation failed: ${INSTALL_DIR}/pounding-web not found or not executable"
     fi
 
     success "Installation completed"
@@ -355,8 +355,8 @@ extract_tarball() {
 }
 
 create_symlink() {
-    local symlink_path="${BIN_DIR}/aionui-web"
-    local target_path="${INSTALL_DIR}/aionui-web"
+    local symlink_path="${BIN_DIR}/pounding-web"
+    local target_path="${INSTALL_DIR}/pounding-web"
 
     info "Creating symlink: ${BOLD}${symlink_path}${NC} -> ${target_path}"
 
@@ -442,32 +442,32 @@ print_summary() {
     echo ""
     echo -e "  ${BOLD}📍 Installation directory:${NC}  ${INSTALL_DIR}"
     if [[ "$CREATE_SYMLINK" == "1" ]]; then
-        echo -e "  ${BOLD}📍 Symlink:${NC}                ${BIN_DIR}/aionui-web"
+        echo -e "  ${BOLD}📍 Symlink:${NC}                ${BIN_DIR}/pounding-web"
     fi
     echo ""
     echo -e "  ${BOLD}🚀 Usage:${NC}"
     echo ""
     if [[ "$CREATE_SYMLINK" == "1" && ":$PATH:" == *":${BIN_DIR}:"* ]]; then
         echo "    # Start POUNDING WebUI"
-        echo "    aionui-web start"
+        echo "    pounding-web start"
         echo ""
         echo "    # Check version"
-        echo "    aionui-web version"
+        echo "    pounding-web version"
     else
         echo "    # Start POUNDING WebUI (using full path)"
-        echo "    ${INSTALL_DIR}/aionui-web start"
+        echo "    ${INSTALL_DIR}/pounding-web start"
         echo ""
         echo "    # Or add symlink to PATH:"
         if [[ "$CREATE_SYMLINK" == "1" ]]; then
             echo "    export PATH=\"${BIN_DIR}:\$PATH\""
         else
-            echo "    ln -s ${INSTALL_DIR}/aionui-web ~/.local/bin/aionui-web"
+            echo "    ln -s ${INSTALL_DIR}/pounding-web ~/.local/bin/pounding-web"
             echo "    export PATH=\"~/.local/bin:\$PATH\""
         fi
     fi
     echo ""
     echo -e "  ${BOLD}📖 Documentation:${NC}  https://api.mxou.cn"
-    echo -e "  ${BOLD}🐛 Report issues:${NC}  https://github.com/halojerry/AionUi-2.0.2-dev-a3881e2/issues"
+    echo -e "  ${BOLD}🐛 Report issues:${NC}  https://github.com/halojerry/pounding/issues"
     echo ""
     echo -e "  ${BOLD}🗑️  Uninstall:${NC}"
     echo ""
@@ -476,7 +476,7 @@ print_summary() {
     if [[ "$CREATE_SYMLINK" == "1" ]]; then
         echo ""
         echo "    # Remove symlink"
-        echo "    rm ${BIN_DIR}/aionui-web"
+        echo "    rm ${BIN_DIR}/pounding-web"
     fi
     if [[ "$UPDATE_PATH" == "1" ]]; then
         echo ""

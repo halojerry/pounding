@@ -142,7 +142,7 @@ function getLogFilePath(): string {
   const candidates: string[] = [];
   if (process.platform === 'darwin') {
     candidates.push(
-      path.join(os.homedir(), 'Library', 'Logs', 'AionUi-Dev', `${today}.log`),
+      path.join(os.homedir(), 'Library', 'Logs', 'POUNDING-Dev', `${today}.log`),
       path.join(os.homedir(), 'Library', 'Logs', 'AionUi', `${today}.log`)
     );
   } else if (process.platform === 'win32') {

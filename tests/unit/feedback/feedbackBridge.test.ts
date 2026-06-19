@@ -131,7 +131,7 @@ describe('feedbackBridge — capture-screenshot', () => {
 
 describe('feedback logs', () => {
   it('collects the same recent three log days used by user feedback reports', () => {
-    const logsDir = mkdtempSync(path.join(tmpdir(), 'aionui-feedback-logs-'));
+    const logsDir = mkdtempSync(path.join(tmpdir(), 'pounding-feedback-logs-'));
     try {
       writeFileSync(path.join(logsDir, '2026-05-25.log'), 'today frontend\n');
       writeFileSync(path.join(logsDir, '2026-05-25.poundingcore.log'), 'today backend\n');

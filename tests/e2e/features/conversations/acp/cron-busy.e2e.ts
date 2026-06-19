@@ -281,7 +281,7 @@ test.describe('ACP cron busy handling', () => {
       expect(job.metadata.conversation_id).toBe(conversationId);
 
       const userDataPath = await getUserDataPath(electronApp);
-      const dbPath = path.join(userDataPath, 'aionui', 'aionui-backend.db');
+      const dbPath = path.join(userDataPath, 'aionui', 'pounding-backend.db');
 
       await expect
         .poll(() => queryCronRow(dbPath, job.id).conversation_id, {

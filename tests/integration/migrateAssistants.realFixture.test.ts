@@ -91,7 +91,7 @@ describeIfFixtures('migrateAssistantsToBackend (real fixture)', () => {
   let port = 0;
 
   beforeEach(async () => {
-    dataDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'aionui-migrate-fixture-'));
+    dataDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'pounding-migrate-fixture-'));
     legacyAssistantsDir = path.join(dataDir, '__legacy_config__', 'assistants');
     mkdirSync(legacyAssistantsDir, { recursive: true });
 

@@ -858,6 +858,14 @@ export const acpConversation = {
     (p): SetConfigOptionRequest => ({ value: p.value }),
     { silentStatuses: [404] }
   ),
+  getModel: httpGet<{ model_info: import('../types/platform/acpTypes').AcpModelInfo | null }, { conversation_id: string }>(
+    (p) => `/api/conversations/${p.conversation_id}/model`,
+    { silentStatuses: [404] }
+  ),
+  setModel: httpPut<{ model_info: import('../types/platform/acpTypes').AcpModelInfo | null }, { conversation_id: string; model_id: string }>(
+    (p) => `/api/conversations/${p.conversation_id}/model`,
+    (p) => ({ model_id: p.model_id })
+  ),
 };
 
 // ---------------------------------------------------------------------------

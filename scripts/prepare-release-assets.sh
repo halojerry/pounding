@@ -47,8 +47,8 @@ done
 # ---------------------------------------------------------------------------
 echo "==> Copying web-cli tarballs from $ARTIFACTS_DIR ..."
 mapfile -t WEB_CLI_FILES < <(find "$ARTIFACTS_DIR" -type f \( \
-  -name "aionui-web-*.tar.gz" -o \
-  -name "aionui-web-*.tar.gz.sha256" \
+  -name "pounding-web-*.tar.gz" -o \
+  -name "pounding-web-*.tar.gz.sha256" \
 \) | sort)
 
 WEB_CLI_DUPS=$(for file in "${WEB_CLI_FILES[@]}"; do basename "$file"; done | sort | uniq -d || true)
@@ -134,7 +134,7 @@ WEB_PLATFORMS=(
 )
 
 for plat in "${WEB_PLATFORMS[@]}"; do
-  tarball="aionui-web-${VERSION}-${plat}.tar.gz"
+  tarball="pounding-web-${VERSION}-${plat}.tar.gz"
   if [ ! -f "$OUTPUT_DIR/$tarball" ]; then
     echo "::warning::Missing web-cli tarball: $tarball (web-cli pack is disabled)"
   fi

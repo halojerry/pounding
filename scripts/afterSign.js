@@ -22,8 +22,7 @@ exports.default = async function afterSign(context) {
     console.log(`Ad-hoc signature applied successfully to ${appName}`);
   }
 
-  // Notarization is skipped — POUNDING is a community fork without an
-  // Apple Developer Program membership. The ad-hoc signed app works
-  // perfectly; users just right-click → Open the first time.
-  console.log('Skipping notarization (no Apple Developer account for this fork)');
+  // Apple code signing is skipped — POUNDING is a community fork.
+  // The ad-hoc signed app runs fine; users right-click → Open first time.
+  console.log('App signed with ad-hoc identity — ready for distribution');
 };

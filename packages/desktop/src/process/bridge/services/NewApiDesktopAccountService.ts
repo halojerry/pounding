@@ -1830,7 +1830,18 @@ async function syncManagedProviderRuntimeConfigs(provider: IProvider, prefs: Man
     },
     {
       cliTarget: 'openclaw',
-      run: (providerWithModel) => writeOpenClawManagedProviderModel(providerWithModel, provider),
+      run: async (providerWithModel) => {
+        // Ensure the OpenClaw Gateway daemon is running before writing config.
+        // The ACP bridge (`openclaw acp`) needs a live gateway at
+        // ws://127.0.0.1:18789 to complete its stdio initialize handshake.
+        try {
+          const { ensureOpenClawGatewayRunning } = await import('../../services/OpenClawGatewayManager');
+          await ensureOpenClawGatewayRunning();
+        } catch (error) {
+          console.warn('[POUNDING] OpenClaw gateway preflight failed:', error);
+        }
+        writeOpenClawManagedProviderModel(providerWithModel, provider);
+      },
     },
   ];
 

@@ -87,7 +87,8 @@ const makeGitHubReleaseResponse = () => [
       },
       {
         name: 'POUNDING-1.9.22-win-x64.exe',
-        browser_download_url: 'https://github.com/halojerry/pounding/releases/download/v1.9.22/POUNDING-1.9.22-win-x64.exe',
+        browser_download_url:
+          'https://github.com/halojerry/pounding/releases/download/v1.9.22/POUNDING-1.9.22-win-x64.exe',
         size: 456,
         content_type: 'application/vnd.microsoft.portable-executable',
       },

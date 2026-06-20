@@ -97,15 +97,9 @@ vi.mock('@renderer/utils/platform', () => ({ isElectronDesktop: () => false }));
 
 // Layout uses Arco's Layout component for the shell.
 vi.mock('@arco-design/web-react', () => {
-  const ArcoSider = ({ children, ...props }: { children?: React.ReactNode }) => (
-    <aside {...props}>{children}</aside>
-  );
-  const ArcoHeader = ({ children, ...props }: { children?: React.ReactNode }) => (
-    <header {...props}>{children}</header>
-  );
-  const ArcoContent = ({ children, ...props }: { children?: React.ReactNode }) => (
-    <main {...props}>{children}</main>
-  );
+  const ArcoSider = ({ children, ...props }: { children?: React.ReactNode }) => <aside {...props}>{children}</aside>;
+  const ArcoHeader = ({ children, ...props }: { children?: React.ReactNode }) => <header {...props}>{children}</header>;
+  const ArcoContent = ({ children, ...props }: { children?: React.ReactNode }) => <main {...props}>{children}</main>;
   const ArcoLayout = Object.assign(
     ({ children, className }: { children?: React.ReactNode; className?: string }) => (
       <div className={className}>{children}</div>
@@ -115,7 +109,9 @@ vi.mock('@arco-design/web-react', () => {
   return {
     Layout: ArcoLayout,
     Button: ({ children, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement>) => (
-      <button type='button' {...props}>{children}</button>
+      <button type='button' {...props}>
+        {children}
+      </button>
     ),
     Spin: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
     Trigger: ({ children }: { children?: React.ReactNode }) => <>{children}</>,

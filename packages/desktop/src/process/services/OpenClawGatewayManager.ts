@@ -78,13 +78,17 @@ function resolveOpenClawBinary(): string {
     const bunBinDir = path.join(os.homedir(), '.bun', 'bin');
     const bunPath = path.join(bunBinDir, process.platform === 'win32' ? 'openclaw.cmd' : 'openclaw');
     if (fs.existsSync(bunPath)) return bunPath;
-  } catch { /* fall through */ }
+  } catch {
+    /* fall through */
+  }
 
   try {
     const localBinDir = path.join(os.homedir(), '.local', 'bin');
     const localPath = path.join(localBinDir, process.platform === 'win32' ? 'openclaw.cmd' : 'openclaw');
     if (fs.existsSync(localPath)) return localPath;
-  } catch { /* fall through */ }
+  } catch {
+    /* fall through */
+  }
 
   return 'openclaw'; // fallback to PATH resolution
 }

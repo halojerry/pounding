@@ -72,10 +72,17 @@ describe('verifyBundledPoundingcoreResources', () => {
 
   it('passes for non-Windows node runtime layout', () => {
     const darwinResourcesDir = join(tmp, 'darwin-resources');
-    const darwinManagedResourcesDir = join(darwinResourcesDir, 'bundled-poundingcore', 'darwin-arm64', 'managed-resources');
+    const darwinManagedResourcesDir = join(
+      darwinResourcesDir,
+      'bundled-poundingcore',
+      'darwin-arm64',
+      'managed-resources'
+    );
 
     mkdirSync(join(darwinResourcesDir, 'bundled-poundingcore', 'darwin-arm64'), { recursive: true });
-    writeFileSync(join(darwinResourcesDir, 'bundled-poundingcore', 'darwin-arm64', 'poundingcore'), '', { flush: true });
+    writeFileSync(join(darwinResourcesDir, 'bundled-poundingcore', 'darwin-arm64', 'poundingcore'), '', {
+      flush: true,
+    });
     writeFileSync(join(darwinResourcesDir, 'bundled-poundingcore', 'darwin-arm64', 'manifest.json'), '{}', {
       flush: true,
     });

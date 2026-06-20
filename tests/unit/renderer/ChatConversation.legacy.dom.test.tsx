@@ -35,13 +35,14 @@ vi.mock('@/common/utils', () => ({
 
 // ── UI library mocks ──
 vi.mock('@arco-design/web-react', () => {
-  const Menu = Object.assign(
-    ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
-    { Item: ({ children }: { children?: React.ReactNode }) => <div>{children}</div> }
-  );
+  const Menu = Object.assign(({ children }: { children?: React.ReactNode }) => <div>{children}</div>, {
+    Item: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
+  });
   return {
     Button: ({ children, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement>) => (
-      <button type='button' {...props}>{children}</button>
+      <button type='button' {...props}>
+        {children}
+      </button>
     ),
     Dropdown: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
     Menu,

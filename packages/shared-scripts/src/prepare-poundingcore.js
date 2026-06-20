@@ -359,7 +359,9 @@ function downloadAndExtractActionsArtifact(platform, arch, runId) {
 
   const archivePath = findAioncoreArchiveInDir(artifactExtractDir);
   if (!archivePath) {
-    throw new Error(`poundingcore artifact ${expectedArtifactName} from run ${runId} does not contain an aioncore archive`);
+    throw new Error(
+      `poundingcore artifact ${expectedArtifactName} from run ${runId} does not contain an aioncore archive`
+    );
   }
 
   extractArchive(archivePath, binaryExtractDir, platform);
@@ -367,7 +369,9 @@ function downloadAndExtractActionsArtifact(platform, arch, runId) {
   const binaryName = getBinaryName(platform);
   const binaryPath = findBinaryInDir(binaryExtractDir, binaryName);
   if (!binaryPath) {
-    throw new Error(`Binary ${binaryName} not found in poundingcore artifact ${expectedArtifactName} from run ${runId}`);
+    throw new Error(
+      `Binary ${binaryName} not found in poundingcore artifact ${expectedArtifactName} from run ${runId}`
+    );
   }
 
   return {

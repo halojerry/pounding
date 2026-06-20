@@ -7,48 +7,23 @@ exports.default = async function afterSign(context) {
     return;
   }
 
-  // Lazy-load notarize because @electron/notarize is ESM-only
-  const { notarize } = await import('@electron/notarize');
-
   const appName = context.packager.appInfo.productFilename;
-  const appBundleId = context.packager.appInfo.id;
   const appPath = `${appOutDir}/${appName}.app`;
 
-  // Check if app is actually signed before attempting notarization
+  // Check if app is properly signed
   try {
     execSync(`codesign --verify --verbose "${appPath}"`, { stdio: 'pipe' });
     console.log(`App ${appName} is properly code signed`);
-  } catch (error) {
+  } catch {
+    // Apply ad-hoc signature (allows app to run locally, user just needs
+    // to right-click → Open on first launch to bypass Gatekeeper).
     console.log(`App ${appName} is not code signed, applying ad-hoc signature...`);
-    try {
-      execSync(`codesign --force --deep --sign - "${appPath}"`, { stdio: 'inherit' });
-      console.log(`Ad-hoc signature applied successfully to ${appName}`);
-    } catch (adHocError) {
-      console.error('Ad-hoc signing failed:', adHocError.message);
-    }
-    return;
+    execSync(`codesign --force --deep --sign - "${appPath}"`, { stdio: 'inherit' });
+    console.log(`Ad-hoc signature applied successfully to ${appName}`);
   }
 
-  // Skip notarization if credentials are not provided
-  if (!process.env.appleId || !process.env.appleIdPassword) {
-    console.log('Skipping notarization - missing Apple ID credentials');
-    return;
-  }
-
-  console.log(`Starting notarization for ${appName} (${appBundleId})...`);
-
-  try {
-    await notarize({
-      tool: 'notarytool',
-      appBundleId,
-      appPath: appPath,
-      appleId: process.env.appleId,
-      appleIdPassword: process.env.appleIdPassword,
-      teamId: process.env.teamId,
-    });
-    console.log('Notarization completed successfully');
-  } catch (error) {
-    console.error('Notarization failed:', error);
-    throw error;
-  }
+  // Notarization is skipped — POUNDING is a community fork without an
+  // Apple Developer Program membership. The ad-hoc signed app works
+  // perfectly; users just right-click → Open the first time.
+  console.log('Skipping notarization (no Apple Developer account for this fork)');
 };

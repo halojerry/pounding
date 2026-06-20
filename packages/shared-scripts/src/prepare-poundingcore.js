@@ -125,7 +125,42 @@ function prepareManagedResources(binaryPath, targetDir) {
   });
 
   removeDirectorySafe(dataDir);
+
+  // Copy vendored native CLI tools (Hermes, OpenCode, OpenClaw) from
+  // vendor/managed-resources/cli/ into the bundle. These are pre-vendored
+  // via scripts/vendor-managed-resources.sh from npm/pip sources.
+  // targetDir is resources/bundled-poundingcore/<runtimeKey>
+  const projectRoot = path.resolve(targetDir, '..', '..', '..');
+  const vendorCliRoot = path.join(projectRoot, 'vendor', 'managed-resources', 'cli');
+  if (fs.existsSync(vendorCliRoot)) {
+    const bundleCliRoot = path.join(bundleOut, 'cli');
+    console.log(`  Bundling vendored CLI tools from ${path.relative(process.cwd(), vendorCliRoot)}`);
+    ensureDirectory(bundleCliRoot);
+    copyDirectorySync(vendorCliRoot, bundleCliRoot);
+  }
+
   return bundleOut;
+}
+
+/**
+ * Recursively copy a directory. Creates target directory and preserves
+ * symlinks. Equivalent to `cp -R src dst`.
+ */
+function copyDirectorySync(src, dest) {
+  ensureDirectory(dest);
+  const entries = fs.readdirSync(src, { withFileTypes: true });
+  for (const entry of entries) {
+    const srcPath = path.join(src, entry.name);
+    const destPath = path.join(dest, entry.name);
+    if (entry.isDirectory()) {
+      copyDirectorySync(srcPath, destPath);
+    } else if (entry.isSymbolicLink()) {
+      const linkTarget = fs.readlinkSync(srcPath);
+      fs.symlinkSync(linkTarget, destPath);
+    } else {
+      fs.copyFileSync(srcPath, destPath);
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------

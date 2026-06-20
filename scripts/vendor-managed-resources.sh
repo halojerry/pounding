@@ -13,8 +13,9 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 VENDOR_DIR="${PROJECT_DIR}/vendor/managed-resources"
 
 NODE_VERSION="${NODE_VERSION:-24.11.0}"
-CLAUDE_ACP_VERSION="${CLAUDE_ACP_VERSION:-0.39.0}"
-CODEX_ACP_VERSION="${CODEX_ACP_VERSION:-0.14.0}"
+HERMES_VERSION="${HERMES_VERSION:-0.1.0}"
+OPENCODE_VERSION="${OPENCODE_VERSION:-0.1.0}"
+OPENCLAW_VERSION="${OPENCLAW_VERSION:-0.1.0}"
 
 # Default: all targets. Use --target to limit to one.
 DEFAULT_TARGETS="darwin-arm64,darwin-x64,linux-x64,linux-arm64,win32-x64,win32-arm64"
@@ -205,8 +206,8 @@ vendor_acp() {
 # 3. CLI binaries (OpenCode, OpenClaw) — structure: cli/<name>/<platform>/
 # ---------------------------------------------------------------------------
 vendor_cli_one() {
-  local cli_name="$1" package_name="$2"
-  echo "==> CLI: ${cli_name} (${package_name})"
+  local cli_name="$1" package_name="$2" version="$3"
+  echo "==> CLI: ${cli_name} (${package_name}@${version})"
   IFS=',' read -r -a targets <<<"${TARGETS}"
 
   for target in "${targets[@]}"; do
@@ -214,7 +215,7 @@ vendor_cli_one() {
     meta="$(target_meta "${target}")"
     IFS='|' read -r plat arch platdir <<<"${meta}"
 
-    local dest="${VENDOR_DIR}/cli/${cli_name}/${platdir}"
+    local dest="${VENDOR_DIR}/cli/${cli_name}/${version}/${platdir}"
     if [[ -d "${dest}" ]] && [[ -f "${dest}/manifest.json" ]]; then
       echo "  ${target}: already vendored"
       continue
@@ -229,7 +230,7 @@ vendor_cli_one() {
   "name": "vendor-${cli_name}",
   "private": true,
   "dependencies": {
-    "${package_name}": "*"
+    "${package_name}": "${version}"
   }
 }
 PKGJSON
@@ -285,9 +286,67 @@ MANIFEST
   done
 }
 
+vendor_hermes() {
+  echo "==> Hermes v${HERMES_VERSION}"
+  IFS=',' read -r -a targets <<<"${TARGETS}"
+
+  for target in "${targets[@]}"; do
+    local meta plat arch platdir
+    meta="$(target_meta "${target}")"
+    IFS='|' read -r plat arch platdir <<<"${meta}"
+
+    local dest="${VENDOR_DIR}/cli/hermes/${HERMES_VERSION}/${platdir}"
+    if [[ -d "${dest}" ]] && [[ -f "${dest}/manifest.json" ]]; then
+      echo "  ${target}: already vendored"
+      continue
+    fi
+
+    # Hermes is a Python package — pip install into vendor directory.
+    # Platform filtering: only vendor for the current host platform since
+    # pip cannot cross-install for other OS/arch.
+    local host_target
+    case "$(uname -s)" in
+      Darwin) host_target="darwin-$(uname -m | sed 's/x86_64/x64/;s/arm64/arm64/')" ;;
+      Linux)  host_target="linux-$(uname -m | sed 's/x86_64/x64/;s/aarch64/arm64/')" ;;
+      *)      echo "  ${target}: skipping (unsupported host)" && continue ;;
+    esac
+    if [[ "${target}" != "${host_target}" ]]; then
+      echo "  ${target}: skipping (cross-platform, vendored only for ${host_target})"
+      continue
+    fi
+
+    echo "  ${target}: pip install"
+    rm -rf "${dest}"
+    mkdir -p "${dest}"
+    pip3 install \
+      --target "${dest}" \
+      --python-version 3.12 \
+      --only-binary :all: \
+      --no-deps \
+      "hermes-agent[acp]==${HERMES_VERSION}" 2>&1 | tail -3 || {
+        echo "  ${target}: pip install FAILED, trying with deps"
+        pip3 install --target "${dest}" "hermes-agent[acp]==${HERMES_VERSION}" 2>&1 | tail -3 || {
+          echo "  ${target}: pip install FAILED, skipping"
+          rm -rf "${dest}"
+          continue
+        }
+      }
+
+    # Write manifest
+    cat > "${dest}/manifest.json" <<MANIFEST
+{
+  "entrypoint": "bin/hermes",
+  "path_entries": ["bin"]
+}
+MANIFEST
+    echo "  ${target}: done (${dest})"
+  done
+}
+
 vendor_clis() {
-  vendor_cli_one "opencode" "opencode-ai"
-  vendor_cli_one "openclaw" "openclaw"
+  vendor_cli_one "opencode" "opencode-ai" "${OPENCODE_VERSION}"
+  vendor_cli_one "openclaw" "openclaw" "${OPENCLAW_VERSION}"
+  vendor_hermes
 }
 
 # ---------------------------------------------------------------------------
@@ -295,10 +354,13 @@ vendor_clis() {
 # ---------------------------------------------------------------------------
 main() {
   echo "==> Vendoring managed resources to ${VENDOR_DIR}"
-  echo "    Targets:   ${TARGETS}"
-  echo "    Node.js:   v${NODE_VERSION}"
-  echo "    Claude ACP: v${CLAUDE_ACP_VERSION}"
-  echo "    Codex ACP:  v${CODEX_ACP_VERSION}"
+  echo "    Targets:     ${TARGETS}"
+  echo "    Node.js:     v${NODE_VERSION}"
+  echo "    Claude ACP:  v${CLAUDE_ACP_VERSION}"
+  echo "    Codex ACP:   v${CODEX_ACP_VERSION}"
+  echo "    Hermes:      v${HERMES_VERSION}"
+  echo "    OpenCode:    v${OPENCODE_VERSION}"
+  echo "    OpenClaw:    v${OPENCLAW_VERSION}"
   echo ""
 
   mkdir -p "${VENDOR_DIR}"

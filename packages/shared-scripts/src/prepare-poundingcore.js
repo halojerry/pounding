@@ -528,18 +528,8 @@ function preparePoundingcore(options) {
   if (sourcePath) {
     copyFileSafe(sourcePath, targetBinaryPath);
     ensureExecutableMode(targetBinaryPath);
-    // prepareManagedResources bundles Node.js + ACP tools into the app.
-    // Skip on Windows — the poundingcore binary triggers npm inside
-    // staging directories which hits a Windows-specific npm bug
-    // (EISDIR: lstat 'D:'). std::env::temp_dir() was tried as a fix
-    // (shorter paths) but npm on Windows CI runners still crashes.
-    // These resources are installed at runtime when needed.
-    if (process.platform !== 'win32') {
-      const bundledManagedResourcesDir = prepareManagedResources(targetBinaryPath, targetDir);
-      console.log(`  Bundled managed resources prepared: ${bundledManagedResourcesDir}`);
-    } else {
-      console.log('  Skipping managed resources bundle on Windows (npm EISDIR bug — installed at runtime)');
-    }
+    const bundledManagedResourcesDir = prepareManagedResources(targetBinaryPath, targetDir);
+    console.log(`  Bundled managed resources prepared: ${bundledManagedResourcesDir}`);
 
     // The release tag is the authoritative version — the aioncore
     // binary does not expose a --version flag (it has --app-version which

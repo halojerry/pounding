@@ -79,7 +79,7 @@ function writeJson(filePath, payload) {
 }
 
 function getBinaryName(platform) {
-  return platform === 'win32' ? 'aioncore.exe' : 'aioncore';
+  return platform === 'win32' ? 'poundingcore.exe' : 'poundingcore';
 }
 
 function getActionsTarget(platform, arch) {
@@ -169,7 +169,7 @@ function resolveLatestTag() {
  * Build the release asset filename for the given platform/arch/tag.
  *
  * Expected asset naming convention:
- *   aioncore-v0.1.0-aarch64-apple-darwin.tar.gz
+ *   poundingcore-v0.1.0-aarch64-apple-darwin.tar.gz
  */
 function getAssetName(platform, arch, tag) {
   const archMap = { x64: 'x86_64', arm64: 'aarch64' };
@@ -182,7 +182,9 @@ function getAssetName(platform, arch, tag) {
   const normalizedPlatform = platformMap[platform];
   if (!normalizedArch || !normalizedPlatform) return null;
   const ext = platform === 'win32' ? '.zip' : '.tar.gz';
-  return `aioncore-${tag}-${normalizedArch}-${normalizedPlatform}${ext}`;
+  // Release assets use the tag with '-Pounding' stripped (e.g. v0.1.33-Pounding → v0.1.33)
+  const cleanVersion = tag.replace(/-Pounding$/, '');
+  return `poundingcore-${cleanVersion}-${normalizedArch}-${normalizedPlatform}${ext}`;
 }
 
 function getDownloadUrl(assetName, tag) {
@@ -238,7 +240,7 @@ function findAioncoreArchiveInDir(dir) {
     const fullPath = path.join(dir, entry.name);
     if (
       entry.isFile() &&
-      entry.name.startsWith('aioncore-') &&
+      entry.name.startsWith('poundingcore-') &&
       (entry.name.endsWith('.zip') || entry.name.endsWith('.tar.gz'))
     ) {
       return fullPath;

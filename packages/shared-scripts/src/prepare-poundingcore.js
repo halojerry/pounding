@@ -493,7 +493,17 @@ function preparePoundingcore(options) {
   if (sourcePath) {
     copyFileSafe(sourcePath, targetBinaryPath);
     ensureExecutableMode(targetBinaryPath);
-    const bundledManagedResourcesDir = prepareManagedResources(targetBinaryPath, targetDir);
+    // prepareManagedResources bundles Node.js + ACP tools into the app.
+    // Skip on Windows for now — the poundingcore binary triggers npm inside
+    // deep staging directories which hits a Windows path resolution bug
+    // (EISDIR: lstat 'D:'). These resources are installed at runtime when
+    // needed, so skipping here is safe.
+    if (process.platform !== 'win32') {
+      const bundledManagedResourcesDir = prepareManagedResources(targetBinaryPath, targetDir);
+      console.log(`  Bundled managed resources prepared: ${bundledManagedResourcesDir}`);
+    } else {
+      console.log('  Skipping managed resources bundle on Windows (runtime install fallback)');
+    }
 
     // The release tag is the authoritative version — the aioncore
     // binary does not expose a --version flag (it has --app-version which
@@ -512,7 +522,6 @@ function preparePoundingcore(options) {
     console.log(
       `  Bundled poundingcore prepared: resources/bundled-poundingcore/${runtimeKey}/${binaryName} [source=${sourceType}]`
     );
-    console.log(`  Bundled managed resources prepared: ${bundledManagedResourcesDir}`);
 
     if (tempDir) removeDirectorySafe(tempDir);
     return { prepared: true, dir: targetDir, sourceType };

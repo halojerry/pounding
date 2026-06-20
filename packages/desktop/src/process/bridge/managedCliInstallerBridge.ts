@@ -734,7 +734,10 @@ const DESCRIPTORS: Record<ManagedCliInstallTarget, ManagedCliDescriptor> = {
   claude: {
     target: 'claude',
     detectCommand: 'claude',
-    detectPaths: [path.join(BUN_BIN_DIR, process.platform === 'win32' ? 'claude.cmd' : 'claude')],
+    detectPaths: [
+      path.join(BUN_BIN_DIR, process.platform === 'win32' ? 'claude.cmd' : 'claude'),
+      path.join(HERMES_BIN_DIR, process.platform === 'win32' ? 'claude.cmd' : 'claude'),
+    ],
     install: async () => {
       const command = await getGlobalJsCommand();
       if (command === getNpmCommand()) {

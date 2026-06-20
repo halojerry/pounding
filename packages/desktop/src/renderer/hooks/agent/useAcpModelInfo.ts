@@ -490,6 +490,16 @@ export const useAcpModelInfo = ({
         // Persist only after the active ACP session accepts the model switch.
         if (backend) {
           void savePreferredModelId(backend, confirmedModelId);
+          // Sync CLI config files so the selected model is written to the CLI's
+          // native config (settings.json, config.toml, etc.) — not just the ACP session.
+          const cliTarget = resolveManagedRuntimeCliTarget(backend);
+          if (cliTarget) {
+            void ipcBridge.newApiAccount.reconcileModel
+              .invoke({ cliTarget, modelId: confirmedModelId })
+              .catch((err) => {
+                console.warn('[useAcpModelInfo] reconcileModel failed:', err);
+              });
+          }
         }
         logAcpModelInfo('select_model_preference_save_queued', {
           conversation_id,

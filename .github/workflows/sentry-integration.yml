@@ -47,9 +47,9 @@ jobs:
 
           print(f"Found {len(existing_ids)} existing sentry-tracked GitHub issues")
 
-          # 2. Fetch unresolved Sentry issues
+          # 2. Fetch unresolved Sentry issues (statsPeriod: 24h or 14d only)
           url = (f"https://sentry.io/api/0/projects/{sentry_org}/{sentry_project}"
-                 f"/issues/?limit=20&statsPeriod=7d&query=is:unresolved&sort=freq")
+                 f"/issues/?limit=20&statsPeriod=14d&query=is:unresolved&sort=freq")
           req = Request(url, headers={"Authorization": f"Bearer {sentry_token}"})
           resp = urlopen(req)
           issues = json.loads(resp.read())

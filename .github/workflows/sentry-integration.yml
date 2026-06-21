@@ -83,7 +83,7 @@ jobs:
               body = "\n".join(body_lines)
 
               gh_title = f"sentry: {title[:100]}"
-              labels = "sentry,high-frequency" if count >= 10 else "sentry"
+              labels = "sentry,high-frequency" if int(count) >= 10 else "sentry"
 
               print(f"  CREATE [{issue_id}] ({count} events) -> {title[:60]}")
               result = run_gh(["issue", "create", "--repo", github_repo,

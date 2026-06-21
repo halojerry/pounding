@@ -280,8 +280,9 @@ jobs:
                 $success = $true
               }
             } catch {
-            Write-Warning "electron-rebuild failed: $_"
-            echo "::warning title=Native Rebuild Failed::electron-rebuild failed for better-sqlite3 — non-fatal"
+              Write-Warning "electron-rebuild failed: $_"
+              echo "::warning title=Native Rebuild Failed::electron-rebuild failed for better-sqlite3 — non-fatal"
+            }
           }
 
           # Final verification

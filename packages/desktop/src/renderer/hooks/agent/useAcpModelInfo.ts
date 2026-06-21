@@ -17,7 +17,7 @@ import {
   MANAGED_NEWAPI_PROVIDER_ID,
 } from '@/common/types/agent/managedRuntimeCli';
 import { configService } from '@/common/config/configService';
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import useSWR from 'swr';
 
 type AcpModelInfoKey = readonly ['acp-model-info', string];
@@ -92,6 +92,8 @@ export interface UseAcpModelInfoResult {
   model_info: AcpModelInfo | null;
   /** True when the agent exposes a switchable model list */
   canSwitch: boolean;
+  /** True while a model switch is in-flight (loading indicator) */
+  isSetting: boolean;
   /** Switch the active model and persist via IPC */
   selectModel: (model_id: string) => void;
 }
@@ -109,6 +111,7 @@ export const useAcpModelInfo = ({
   initialModelId,
   prepareRuntime,
   enabled = true,
+  persistGlobalPreference,
   onSelectModelSuccess,
   onSelectModelFailed,
 }: {
@@ -117,10 +120,12 @@ export const useAcpModelInfo = ({
   initialModelId?: string;
   prepareRuntime?: () => Promise<void>;
   enabled?: boolean;
+  persistGlobalPreference?: boolean;
   onSelectModelSuccess?: (model_id: string) => void;
   onSelectModelFailed?: (model_id: string, error: unknown) => void;
 }): UseAcpModelInfoResult => {
   const hasUserChangedModel = useRef(false);
+  const [isSetting, setIsSetting] = useState(false);
   const prevConversationIdRef = useRef(conversation_id);
   const modelInfoRef = useRef<AcpModelInfo | null>(null);
   const handshakeModelInfoRef = useRef<AcpModelInfo | null>(null);
@@ -433,6 +438,7 @@ export const useAcpModelInfo = ({
     (model_id: string) => {
       if (!enabled) return;
       hasUserChangedModel.current = true;
+      setIsSetting(true);
       const previousModelInfo = model_info;
       logAcpModelInfo('select_model_requested', {
         conversation_id,
@@ -466,6 +472,7 @@ export const useAcpModelInfo = ({
           }
           onSelectModelFailed?.(model_id, error);
           void reloadModelInfo().catch(() => {});
+          setIsSetting(false);
           return;
         }
 
@@ -488,7 +495,7 @@ export const useAcpModelInfo = ({
         onSelectModelSuccess?.(confirmedModelId);
 
         // Persist only after the active ACP session accepts the model switch.
-        if (backend) {
+        if (backend && persistGlobalPreference !== false) {
           void savePreferredModelId(backend, confirmedModelId);
           // Sync CLI config files so the selected model is written to the CLI's
           // native config (settings.json, config.toml, etc.) — not just the ACP session.
@@ -507,7 +514,9 @@ export const useAcpModelInfo = ({
           requested_model_id: model_id,
           confirmed_model_id: confirmedModelId,
         });
+        setIsSetting(false);
       })().catch((error) => {
+        setIsSetting(false);
         console.error('[useAcpModelInfo] Failed to finalize model selection:', error);
       });
     },
@@ -519,6 +528,7 @@ export const useAcpModelInfo = ({
       mutateModelInfo,
       onSelectModelFailed,
       onSelectModelSuccess,
+      persistGlobalPreference,
       prepareRuntime,
       reloadModelInfo,
       updateModelInfo,
@@ -527,5 +537,5 @@ export const useAcpModelInfo = ({
 
   const canSwitch = enabled && Boolean(model_info && model_info.available_models.length > 0);
 
-  return { model_info, canSwitch, selectModel };
+  return { model_info, canSwitch, isSetting, selectModel };
 };

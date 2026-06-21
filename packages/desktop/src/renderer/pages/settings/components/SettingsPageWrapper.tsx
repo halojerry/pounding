@@ -16,6 +16,7 @@ interface SettingsPageWrapperProps {
   children: React.ReactNode;
   className?: string;
   contentClassName?: string;
+  title?: string;
 }
 
 type NavItem = { label: string; icon: React.ReactElement; path: string; id: string };

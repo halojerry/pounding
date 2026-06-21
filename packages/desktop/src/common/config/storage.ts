@@ -35,6 +35,8 @@ export interface IConfigStorageRefer {
       preferredMode?: string;
       /** Preferred model ID for new conversations / 新会话的默认模型 */
       preferredModelId?: string;
+      /** Preferred thought level for new conversations / 新会话的默认思考深度 */
+      preferredThoughtLevel?: string;
       /** LLM prompt timeout in seconds (default: 300) / LLM 请求超时时间（秒，默认 300） */
       promptTimeout?: number;
     };
@@ -185,6 +187,7 @@ export interface IEnvStorageRefer {
   'aionui.dir': {
     workDir: string;
     cacheDir: string;
+    logDir: string;
   };
 }
 
@@ -203,7 +206,7 @@ export type ConversationSource =
   | (string & {});
 
 export type TChatConversationStatus = 'pending' | 'running' | 'finished';
-export type TConversationRuntimeStateKind = 'idle' | 'starting' | 'running' | 'waiting_confirmation';
+export type TConversationRuntimeStateKind = 'idle' | 'starting' | 'running' | 'cancelling' | 'waiting_confirmation';
 
 export type TConversationRuntimeSummary = {
   state: TConversationRuntimeStateKind;
@@ -212,6 +215,7 @@ export type TConversationRuntimeSummary = {
   task_status?: TChatConversationStatus;
   is_processing: boolean;
   pending_confirmations: number;
+  turn_id?: string;
 };
 
 interface IChatConversation<T, Extra> {

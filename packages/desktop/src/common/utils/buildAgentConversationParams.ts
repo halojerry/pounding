@@ -32,6 +32,11 @@ export type BuildAgentConversationInput = {
   current_model_id?: string;
   thought_level?: string;
   assistant_locale?: string;
+  preset_resources?: {
+    rules?: string;
+    enabled_skills?: string[];
+    exclude_auto_inject_skills?: string[];
+  };
   assistant_conversation_overrides?: BuildAgentConversationAssistantOverrides;
   extra?: Partial<ICreateConversationParams['extra']>;
 };

@@ -53,6 +53,9 @@ export type GuidSendDeps = {
   ) => string[] | undefined;
   guidDisabledBuiltinSkills: string[] | undefined;
   guidEnabledSkills: string[] | undefined;
+  assistantDefaultSkillIds: string[] | undefined;
+  assistantDefaultDisabledBuiltinSkillIds: string[] | undefined;
+  assistantDefaultMcpIds: string[] | undefined;
   availableMcpServers: IMcpServer[];
   selectedMcpServerIds: string[] | undefined;
   currentEffectiveAgentInfo: EffectiveAgentInfo;
@@ -67,6 +70,7 @@ export type GuidSendDeps = {
   // Navigation
   navigate: NavigateFunction;
   t: TFunction;
+  localeKey: string;
 };
 
 export type GuidSendResult = {

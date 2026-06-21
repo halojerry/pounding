@@ -124,7 +124,7 @@ jobs:
             ${{ runner.temp }}/.cache/electron-builder
             ~/.cache/electron
             ~/.cache/electron-builder
-            ${{ env.LOCALAPPDATA }}\electron-builder\Cache
+            ~/AppData/Local/electron-builder/Cache
           key: electron-cache-${{ runner.os }}-${{ matrix.platform }}-${{ matrix.arch }}-${{ hashFiles('package.json', 'bun.lock') }}
           restore-keys: |
             electron-cache-${{ runner.os }}-${{ matrix.platform }}-${{ matrix.arch }}-
@@ -327,6 +327,7 @@ jobs:
           # POUNDINGCORE_GITHUB_OWNER/REPO point to our private backend fork.
           POUNDINGCORE_GITHUB_OWNER: halojerry
           POUNDINGCORE_GITHUB_REPO: poundingcore
+          POUNDING_BACKEND_ARCH: ${{ matrix.arch }}
           GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
 
@@ -356,6 +357,7 @@ jobs:
               Get-ChildItem "$env:LOCALAPPDATA\electron-builder\logs" -Name
             }
             "result=failure" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            exit 1
           } else {
             "result=success" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           }

@@ -1,8 +1,8 @@
 name: Sentry Integration
+
 on:
-  # Cron disabled — placeholder workflow. Re-enable when Sentry API integration is implemented.
-  # schedule:
-  #   - cron: '0 */6 * * *'
+  schedule:
+    - cron: '0 */6 * * *'
   workflow_dispatch:
 
 jobs:
@@ -10,17 +10,88 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - name: Sentry → GitHub Issues + Feishu notify
+
+      - name: Sync Sentry issues to GitHub
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          SENTRY_ORG: ${{ secrets.SENTRY_ORG || vars.SENTRY_ORG }}
-          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT || vars.SENTRY_PROJECT }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          FEISHU_WEBHOOK: ${{ secrets.FEISHU_ERROR_WEBHOOK }}
+          SENTRY_ORG: halo-fx
+          SENTRY_PROJECT: pounding
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPO: ${{ github.repository }}
+        shell: bash
         run: |
-          echo "Sentry-GitHub issue sync configured"
-          if [ -n "$FEISHU_WEBHOOK" ]; then
-            curl -s -X POST "$FEISHU_WEBHOOK" \
-              -H "Content-Type: application/json" \
-              -d '{"msg_type":"text","content":{"text":"🔍 POUNDING Sentry check completed"}}'
-          fi
+          python3 << 'PYEOF'
+          import json, os, subprocess
+          from urllib.request import Request, urlopen
+
+          sentry_token = os.environ["SENTRY_AUTH_TOKEN"]
+          sentry_org = os.environ["SENTRY_ORG"]
+          sentry_project = os.environ["SENTRY_PROJECT"]
+          github_repo = os.environ["GITHUB_REPO"]
+
+          def run_gh(args):
+              return subprocess.run(["gh"] + args, capture_output=True, text=True)
+
+          # 1. Fetch existing GitHub issues with sentry label
+          existing_ids = set()
+          result = run_gh(["issue", "list", "--repo", github_repo,
+              "--label", "sentry", "--state", "open", "--limit", "100",
+              "--json", "body", "--jq", ".[].body"])
+          if result.returncode == 0 and result.stdout:
+              for body in result.stdout.split("\n"):
+                  if "Sentry-ID:" in body:
+                      for line in body.split("\n"):
+                          if line.strip().startswith("Sentry-ID:"):
+                              sid = line.split("Sentry-ID:")[1].strip()
+                              existing_ids.add(sid)
+
+          print(f"Found {len(existing_ids)} existing sentry-tracked GitHub issues")
+
+          # 2. Fetch unresolved Sentry issues
+          url = (f"https://sentry.io/api/0/projects/{sentry_org}/{sentry_project}"
+                 f"/issues/?limit=20&statsPeriod=7d&query=is:unresolved&sort=freq")
+          req = Request(url, headers={"Authorization": f"Bearer {sentry_token}"})
+          resp = urlopen(req)
+          issues = json.loads(resp.read())
+
+          # 3. Sync
+          created = 0
+          skipped = 0
+          for issue in issues:
+              issue_id = issue["id"]
+              title = issue["title"]
+              count = issue.get("count", 0)
+              level = issue.get("level", "unknown")
+              last_seen = issue.get("lastSeen", "")
+              permalink = issue.get("permalink", "")
+              culprit = issue.get("culprit", "")
+
+              if issue_id in existing_ids:
+                  print(f"  SKIP [{issue_id}] already tracked -> {title[:60]}")
+                  skipped += 1
+                  continue
+
+              body_lines = [
+                  f"> Auto-created from Sentry issue -- {count} events in last 7 days.\n",
+                  f"**Sentry-ID:** {issue_id}",
+                  f"**Level:** `{level}`",
+                  f"**Last Seen:** {last_seen}",
+                  f"**Events:** {count}",
+                  f"**Culprit:** `{culprit}`",
+                  f"**Permalink:** {permalink}",
+              ]
+              body = "\n".join(body_lines)
+
+              gh_title = f"sentry: {title[:100]}"
+              labels = "sentry,high-frequency" if count >= 10 else "sentry"
+
+              print(f"  CREATE [{issue_id}] ({count} events) -> {title[:60]}")
+              result = run_gh(["issue", "create", "--repo", github_repo,
+                  "--title", gh_title, "--body", body, "--label", labels])
+              if result.returncode == 0:
+                  created += 1
+              else:
+                  print(f"    gh issue create failed: {result.stderr.strip()}")
+
+          print(f"\n=== Done: {created} created, {skipped} skipped ===")
+          PYEOF

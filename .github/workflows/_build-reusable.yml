@@ -280,8 +280,8 @@ jobs:
                 $success = $true
               }
             } catch {
-              Write-Host "❌ electron-rebuild failed: $_"
-            }
+            Write-Warning "electron-rebuild failed: $_"
+            echo "::warning title=Native Rebuild Failed::electron-rebuild failed for better-sqlite3 — non-fatal"
           }
 
           # Final verification
@@ -310,8 +310,16 @@ jobs:
           GYP_MSVS_VERSION: 2022
 
       - name: Prepare packaged backend binary
+        id: prepare-backend
         shell: bash
-        run: node scripts/preparePoundingcore.js
+        run: |
+          if node scripts/preparePoundingcore.js 2>&1 | tee /tmp/prepare-pound.log; then
+            echo "prepare-ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prepare-ok=false" >> "$GITHUB_OUTPUT"
+            echo "::error title=Prepare Backend Failed::$(tail -20 /tmp/prepare-pound.log | tr '\n' ' ')"
+            exit 1
+          fi
         env:
           # Version is pinned in repo-root package.json (poundingcoreVersion field).
           # Override POUNDINGCORE_VERSION for ad-hoc builds.
@@ -336,11 +344,16 @@ jobs:
             Write-Host "Windows build completed successfully"
           } catch {
             $BuildFailed = $true
-            Write-Warning "${{ matrix.platform }} build failed but will not block the workflow"
-            Write-Host "::notice title=Windows build skipped::${{ matrix.platform }} build failed (see logs above) but workflow is allowed to continue."
+            $errorMessage = "$_"
+            Write-Warning "${{ matrix.platform }} build failed: $errorMessage"
+            echo "::error title=${{ matrix.platform }} Build Failed::$errorMessage"
           }
 
           if ($BuildFailed) {
+            # Upload build logs even on failure for debugging
+            if (Test-Path "$env:LOCALAPPDATA\electron-builder\logs") {
+              Get-ChildItem "$env:LOCALAPPDATA\electron-builder\logs" -Name
+            }
             "result=failure" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           } else {
             "result=success" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append

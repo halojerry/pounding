@@ -23,6 +23,10 @@ on:
         description: 'Only upload primary installers (exe/msi/dmg/deb), skip zip/yml/blockmap'
         type: boolean
         default: false
+      poundingcore_run_id:
+        description: 'Optional poundingcore Manual Build workflow run id to bundle instead of the pinned release'
+        type: string
+        default: ''
 
 env:
   BUN_INSTALL_REGISTRY: 'https://registry.npmjs.org/'

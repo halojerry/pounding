@@ -1,7 +1,8 @@
 name: Sentry Integration
 on:
-  schedule:
-    - cron: '0 */6 * * *'
+  # Cron disabled — placeholder workflow. Re-enable when Sentry API integration is implemented.
+  # schedule:
+  #   - cron: '0 */6 * * *'
   workflow_dispatch:
 
 jobs:

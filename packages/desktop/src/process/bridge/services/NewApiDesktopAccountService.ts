@@ -1020,6 +1020,7 @@ function buildCcSwitchSettingsConfig(
         api_key: apiKey,
         base_url: baseUrl,
         api: profile.protocol === 'anthropic' ? 'anthropic-messages' : 'openai-completions',
+        gateway_token: `${profile.managedProviderId}-gw`,
       };
     default:
       return null;
@@ -2028,16 +2029,15 @@ async function syncManagedProviderRuntimeConfigs(
     },
     {
       cliTarget: 'openclaw',
-      run: async (providerWithModel) => {
-        // Ensure the OpenClaw Gateway daemon is running before writing config.
-        // The ACP bridge (`openclaw acp`) needs a live gateway at
-        // ws://127.0.0.1:18789 to complete its stdio initialize handshake.
-        try {
-          const { ensureOpenClawGatewayRunning } = await import('../../services/OpenClawGatewayManager');
-          await ensureOpenClawGatewayRunning();
-        } catch (error) {
-          console.warn('[POUNDING] OpenClaw gateway preflight failed:', error);
-        }
+      run: (providerWithModel) => {
+        // Fire-and-forget: gateway is only needed when the ACP bridge connects.
+        // Config write does not need the gateway running. Start it in background
+        // so it's ready by the time the user opens an OpenClaw conversation.
+        import('../../services/OpenClawGatewayManager')
+          .then((m) => m.ensureOpenClawGatewayRunning())
+          .catch((error) => {
+            console.warn('[POUNDING] OpenClaw gateway preflight failed:', error);
+          });
         writeOpenClawManagedProviderModel(providerWithModel, provider);
       },
     },
@@ -2055,14 +2055,16 @@ async function syncManagedProviderRuntimeConfigs(
   }
 
   // Start the Codex API proxy and WAIT for it to become ready.
-  // This MUST happen before writeCodexConfigForProviderSync is called,
-  // otherwise resolveCodexBaseUrl() falls back to the hardcoded 18792
-  // and Codex config.toml points at a dead port.
-  try {
-    await ensureCodexProxyRunning();
-  } catch (error) {
-    console.warn('[POUNDING] Codex proxy start failed (Codex will be unavailable):', error);
-  }
+  // Fire-and-forget: proxy is started at backend-ready time (index.ts:311).
+  // If API key changed (re-login), ensureCodexProxyRunning detects this
+  // internally and triggers an async restart. The restart handler at
+  // CodexProxyManager.ts:327 already calls reconcileManagedRuntimeState
+  // to fix any stale port references in Codex config.toml.
+  // No need to block login on this — the config write uses the port file
+  // (which exists from the proxy started at backend-ready time).
+  ensureCodexProxyRunning().catch((error) => {
+    console.warn('[POUNDING] Codex proxy restart failed (Codex will be unavailable):', error);
+  });
 
   await Promise.all(
     cliTasks.map(async ({ cliTarget: target, run }) => {

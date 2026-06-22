@@ -121,7 +121,7 @@ function peekWsRoute(buf: Buffer): boolean | null {
   const newlineIdx = buf.indexOf(0x0a); // \n
   if (newlineIdx < 0) return null;
   const firstLine = buf.slice(0, newlineIdx).toString('ascii');
-  return /^GET\s+\/ws(?:\?[^\s]*)?\s+HTTP\/1\.[01]\r?$/.test(firstLine);
+  return /^GET\s+\/(?:ws|api\/stt\/stream)(?:\?[^\s]*)?\s+HTTP\/1\.[01]\r?$/.test(firstLine);
 }
 
 export async function startStaticServer(opts: StaticServerOptions): Promise<StaticServerHandle> {
@@ -161,16 +161,24 @@ export async function startStaticServer(opts: StaticServerOptions): Promise<Stat
       // In dev mode, proxy SPA requests to electron-vite dev server
       if (spaProxyPort) {
         const proxyReq = http.request(
-          { hostname: '127.0.0.1', port: spaProxyPort, path: req.url, method: req.method, headers: req.headers },
+          { hostname: '::1', port: spaProxyPort, path: req.url, method: req.method, headers: req.headers, family: 6 },
           (proxyRes) => {
             res.writeHead(proxyRes.statusCode ?? 200, proxyRes.headers);
             proxyRes.pipe(res);
           }
         );
-        proxyReq.on('error', () => {
+        proxyReq.on('error', (_err) => {
+          // Vite dev server may not be running; fall through to static files
           if (!res.headersSent) {
-            res.writeHead(502, { 'content-type': 'application/json' });
-            res.end(JSON.stringify({ error: 'DEV_PROXY_UNREACHABLE' }));
+            serveHandler(req, res, {
+              public: opts.staticDir,
+              rewrites: [{ source: '**', destination: '/index.html' }],
+            }).catch(() => {
+              if (!res.headersSent) {
+                res.writeHead(502, { 'content-type': 'application/json' });
+                res.end(JSON.stringify({ error: 'DEV_PROXY_UNREACHABLE' }));
+              }
+            });
           } else {
             res.destroy();
           }

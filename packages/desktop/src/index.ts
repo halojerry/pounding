@@ -693,6 +693,11 @@ const handleAppReady = async (): Promise<void> => {
         staticDir: path.join(__dirname, '../renderer'),
         port: resolvedPort,
         allowRemote,
+        // In dev mode, proxy SPA requests to the Vite dev server when
+        // out/renderer/index.html doesn't exist (electron-vite serves in-memory).
+        spaDevProxyPort: app.isPackaged
+          ? undefined
+          : (fs.existsSync(path.join(__dirname, '../renderer', 'index.html')) ? undefined : 5173),
         dataDir: getDataPath(),
         logDir: sysDirWebUI.logDir,
         // Expose the same AIONUI_{CACHE,WORK,LOG}_DIR env the desktop IPC path

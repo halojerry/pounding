@@ -63,6 +63,8 @@ type SpawnConfig = {
   workDir?: string;
   appVersion: string;
   isPackaged: boolean;
+  /** PID of the parent process. The backend exits when this process dies. */
+  parentPid?: number;
 };
 
 export type BackendDirConfig = {
@@ -187,6 +189,7 @@ export function buildSpawnArgs(config: SpawnConfig): string[] {
   if (config.logDir) args.push('--log-dir', config.logDir);
   if (config.workDir) args.push('--work-dir', config.workDir);
   if (config.local) args.push('--local');
+  if (typeof config.parentPid === 'number') args.push('--parent-pid', String(config.parentPid));
   return args;
 }
 
@@ -517,6 +520,7 @@ export class BackendLifecycleManager {
       workDir: dirs?.workDir,
       appVersion,
       isPackaged: this.appMeta.isPackaged,
+      parentPid: process.pid,
     });
     console.log(`[poundingcore] starting: ${binaryPath} ${args.join(' ')}`);
 

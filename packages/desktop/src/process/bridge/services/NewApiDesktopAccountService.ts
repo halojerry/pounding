@@ -187,6 +187,10 @@ type ClaudeSettings = {
 
 type CcSwitchSettings = {
   currentProviderClaude?: string;
+  currentProviderCodex?: string;
+  currentProviderHermes?: string;
+  currentProviderOpencode?: string;
+  currentProviderOpenclaw?: string;
   claudeConfigDir?: string | null;
   [key: string]: unknown;
 };
@@ -970,6 +974,20 @@ function writeProvidersToCcSwitchDb(
         settingsConfig: JSON.stringify(settingsConfig),
       });
     }
+    // Write currentProvider for all 5 CLI types to settings.json so the Rust
+    // cc_switch module (provider_env.rs) can find the active provider per app_type.
+    const settingsPath = path.join(homeDir, '.cc-switch', 'settings.json');
+    let settings: CcSwitchSettings = {};
+    try {
+      settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+    } catch {}
+    settings.currentProviderClaude = managedProviderId;
+    settings.currentProviderCodex = managedProviderId;
+    settings.currentProviderHermes = managedProviderId;
+    settings.currentProviderOpencode = managedProviderId;
+    settings.currentProviderOpenclaw = managedProviderId;
+    fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
   } finally {
     db.close();
   }
@@ -2029,15 +2047,15 @@ async function syncManagedProviderRuntimeConfigs(
     },
     {
       cliTarget: 'openclaw',
-      run: (providerWithModel) => {
-        // Fire-and-forget: gateway is only needed when the ACP bridge connects.
-        // Config write does not need the gateway running. Start it in background
-        // so it's ready by the time the user opens an OpenClaw conversation.
-        import('../../services/OpenClawGatewayManager')
-          .then((m) => m.ensureOpenClawGatewayRunning())
-          .catch((error) => {
-            console.warn('[POUNDING] OpenClaw gateway preflight failed:', error);
-          });
+      run: async (providerWithModel) => {
+        // Await gateway readiness — the ACP bridge needs ws://127.0.0.1:18789
+        // to be healthy before OpenClaw conversations can spawn.
+        try {
+          const { ensureOpenClawGatewayRunning } = await import('../../services/OpenClawGatewayManager');
+          await ensureOpenClawGatewayRunning();
+        } catch (error) {
+          console.warn('[POUNDING] OpenClaw gateway preflight failed:', error);
+        }
         writeOpenClawManagedProviderModel(providerWithModel, provider);
       },
     },

@@ -201,8 +201,10 @@ async function handleRequest(req, res) {
 
         if (!upstreamResp.ok) {
           console.error(`[proxy] upstream error:`, JSON.stringify(ccResp).slice(0, 200));
+          // Wrap Chat Completions error in Responses API format so Codex can parse it
+          const msg = ccResp?.error?.message ?? ccResp?.error?.code ?? `HTTP ${upstreamResp.status}`;
           res.writeHead(upstreamResp.status, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify(ccResp));
+          res.end(JSON.stringify({ error: { type: 'upstream_error', message: msg } }));
           return;
         }
 
@@ -230,8 +232,14 @@ async function handleRequest(req, res) {
       if (!upstreamResp.ok) {
         const errText = await upstreamResp.text();
         console.error(`[proxy] upstream stream error:`, errText.slice(0, 200));
+        // Wrap in Responses API error format
+        let msg = `HTTP ${upstreamResp.status}`;
+        try {
+          const errJson = JSON.parse(errText);
+          msg = errJson?.error?.message ?? errJson?.error?.code ?? msg;
+        } catch {}
         res.writeHead(upstreamResp.status, { 'Content-Type': 'application/json' });
-        res.end(errText);
+        res.end(JSON.stringify({ error: { type: 'upstream_error', message: msg } }));
         return;
       }
 

@@ -246,7 +246,8 @@ export const conversation = {
     })
   ),
   getSlashCommands: httpGet<AcpSlashCommandApiItem[], { conversation_id: string }>(
-    (p) => `/api/conversations/${p.conversation_id}/slash-commands`
+    (p) => `/api/conversations/${p.conversation_id}/slash-commands`,
+    { silentStatuses: [404] }
   ),
   askSideQuestion: httpPost<ConversationSideQuestionResult, { conversation_id: string; question: string }>(
     (p) => `/api/conversations/${p.conversation_id}/side-question`,
@@ -1281,7 +1282,7 @@ export const newApiAccount = {
   refreshStatus: bridge.buildProvider<IBridgeResponse<NewApiAccountStatus>, void>('new-api-account.refresh-status'),
   login: bridge.buildProvider<IBridgeResponse<NewApiLoginResponse>, NewApiLoginParams>('new-api-account.login'),
   logout: bridge.buildProvider<IBridgeResponse, void>('new-api-account.logout'),
-  reconcileModel: bridge.buildProvider<IBridgeResponse, { cliTarget: ManagedRuntimeCliTarget; modelId?: string }>(
+  reconcileModel: bridge.buildProvider<IBridgeResponse, { cliTarget?: ManagedRuntimeCliTarget; modelId?: string }>(
     'new-api-account.reconcile-model'
   ),
 };

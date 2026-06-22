@@ -28,6 +28,9 @@ import { useFeedback } from '@/renderer/hooks/context/FeedbackContext';
 import { changeLanguage } from '@/renderer/services/i18n';
 import { useNewApiAccount } from '@renderer/hooks/context/NewApiAccountContext';
 import { iconColors } from '@renderer/styles/colors';
+import BalanceCard from './BalanceCard';
+import SubscriptionCard from './SubscriptionCard';
+import { calcSubscription } from '@renderer/utils/quotaUtils';
 import { isElectronDesktop, openExternalUrl } from '@renderer/utils/platform';
 import { useDealerConfig } from '@/renderer/hooks/useDealerConfig';
 import type { SiderTooltipProps } from '@renderer/utils/ui/siderTooltip';
@@ -102,18 +105,6 @@ const SiderFooter: React.FC<SiderFooterProps> = ({
     desktopAccountStatus?.user?.displayName ||
     desktopAccountStatus?.user?.username ||
     t('settings.newApiDefaultUserName');
-  const QUOTA_PER_RMB = 73259; // 1 RMB = 73529 quota units
-  const formatQuota = (n: number): string => {
-    const rmb = n / QUOTA_PER_RMB;
-    if (rmb >= 1_000_000) return `¥${(rmb / 10_000).toFixed(0)}万`;
-    if (rmb >= 10_000) return `¥${(rmb / 10_000).toFixed(1)}万`;
-    if (rmb >= 1_000) return `¥${rmb.toFixed(0)}`;
-    return `¥${rmb.toFixed(2)}`;
-  };
-  const isUnlimited = desktopAccountStatus?.user?.unlimitedQuota === true;
-  const remainQuota = desktopAccountStatus?.user?.quota ?? 0;
-  // quota IS the remaining balance (not total)
-  const remainPercent = isUnlimited ? 100 : remainQuota > 0 ? 100 : 0;
   const [accountPanelStyle, setAccountPanelStyle] = useState<React.CSSProperties>({
     left: 8,
     bottom: 56,
@@ -259,30 +250,22 @@ const SiderFooter: React.FC<SiderFooterProps> = ({
         <div className='h-4px w-36px rd-full bg-fill-3' />
       </div>
       <div className='px-16px py-14px border-b border-[var(--color-border-2)]'>
-        <div className='flex items-center justify-between mb-10px'>
-          <span className='text-16px font-bold text-t-primary'>
-            {isUnlimited
-              ? t('settings.newApiQuotaUnlimited')
-              : `${t('settings.newApiQuotaTitle')} ${formatQuota(remainQuota)}`}
-          </span>
-          <Button
-            size='mini'
-            type='primary'
-            onClick={() => {
-              void openExternalUrl('https://api.mxou.cn/console/topup');
-            }}
-          >
-            {t('settings.newApiUpgrade')}
-          </Button>
-        </div>
-        <div className='h-8px rd-999px bg-fill-2 overflow-hidden'>
-          <div className='h-full bg-[rgb(var(--primary-6))]' style={{ width: `${remainPercent}%` }} />
-        </div>
-        <div className='mt-8px text-14px text-t-secondary'>
-          {isUnlimited
-            ? t('settings.newApiQuotaUnlimitedDesc')
-            : `${t('settings.newApiQuotaSummary')} ${formatQuota(remainQuota)}`}
-        </div>
+        {(() => {
+          const user = desktopAccountStatus?.user;
+          const remainQuota = user?.quota ?? 0;
+          const usedQuota = user?.usedQuota ?? 0;
+          const recharge = () => { void openExternalUrl('https://api.mxou.cn/console/topup'); };
+
+          if (user?.subscription) {
+            const sub = calcSubscription(
+              user.subscription.subscription,
+              user.subscription.plan,
+              usedQuota
+            );
+            return <SubscriptionCard sub={sub} onRecharge={recharge} />;
+          }
+          return <BalanceCard remainQuota={remainQuota} usedQuota={usedQuota} onRecharge={recharge} />;
+        })()}
       </div>
       <div className='py-4px'>
         <div data-testid='desktop-account-settings-trigger'>{desktopSettingsRow}</div>

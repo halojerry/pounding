@@ -9,6 +9,8 @@
  * Design: Node native http + serve-handler. No Express. No business routes.
  */
 
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import http, { type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { networkInterfaces } from 'node:os';
 import net, { type Socket } from 'node:net';
@@ -19,6 +21,12 @@ export type StaticServerOptions = {
   backendPort: number;
   port?: number;
   allowRemote?: boolean;
+  /**
+   * In dev mode, electron-vite serves the renderer from an in-memory dev server
+   * and `staticDir` (typically out/renderer/) is empty. Set this to the Vite dev
+   * server port so SPA requests are proxied there instead of served from disk.
+   */
+  spaDevProxyPort?: number;
 };
 
 export type StaticServerHandle = {
@@ -130,6 +138,11 @@ export async function startStaticServer(opts: StaticServerOptions): Promise<Stat
   // socket delivered to the `upgrade` handler, so the backend's 101 response
   // never reaches the browser (see #2824). Making the outer listener pure
   // TCP avoids touching that code path on both bun and node.
+  // In dev mode electron-vite serves the renderer in-memory; out/renderer/ is empty.
+  // Detect this and proxy SPA requests to the Vite dev server instead.
+  const hasStaticIndex = existsSync(join(opts.staticDir, 'index.html'));
+  const spaProxyPort = !hasStaticIndex && opts.spaDevProxyPort ? opts.spaDevProxyPort : null;
+
   const http_server: Server = http.createServer(async (req, res) => {
     try {
       if (!req.url || !req.method) {
@@ -142,6 +155,27 @@ export async function startStaticServer(opts: StaticServerOptions): Promise<Stat
       // so WebUI browser clients reach the backend without a path-rewrite.
       if (req.url.startsWith('/api/') || req.url.startsWith('/api?') || req.url === '/login' || req.url === '/logout') {
         forwardToBackend(req, res, opts.backendPort);
+        return;
+      }
+
+      // In dev mode, proxy SPA requests to electron-vite dev server
+      if (spaProxyPort) {
+        const proxyReq = http.request(
+          { hostname: '127.0.0.1', port: spaProxyPort, path: req.url, method: req.method, headers: req.headers },
+          (proxyRes) => {
+            res.writeHead(proxyRes.statusCode ?? 200, proxyRes.headers);
+            proxyRes.pipe(res);
+          }
+        );
+        proxyReq.on('error', () => {
+          if (!res.headersSent) {
+            res.writeHead(502, { 'content-type': 'application/json' });
+            res.end(JSON.stringify({ error: 'DEV_PROXY_UNREACHABLE' }));
+          } else {
+            res.destroy();
+          }
+        });
+        req.pipe(proxyReq);
         return;
       }
 

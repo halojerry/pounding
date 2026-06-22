@@ -13,6 +13,8 @@ import { httpRequest } from '@/common/adapter/httpBridge';
 import { startWebHost, type WebHostHandle } from '@aionui/web-host';
 import { getDataPath } from './utils';
 
+const VITE_DEV_SERVER_PORT = 5173;
+
 const WEBUI_CONFIG_FILE = 'webui.config.json';
 const DESKTOP_WEBUI_ENABLED_KEY = 'webui.desktop.enabled';
 const DESKTOP_WEBUI_ALLOW_REMOTE_KEY = 'webui.desktop.allowRemote';
@@ -247,6 +249,11 @@ export async function startDesktopWebUI(opts: { port?: number; allowRemote?: boo
     staticDir: path.join(__dirname, '../renderer'),
     port: preferredPort,
     allowRemote,
+    // In dev mode electron-vite serves the renderer in-memory; out/renderer/ is empty.
+    // Proxy SPA requests to the Vite dev server so WebUI works during development.
+    spaDevProxyPort: app.isPackaged
+      ? undefined
+      : (fs.existsSync(path.join(__dirname, '../renderer', 'index.html')) ? undefined : VITE_DEV_SERVER_PORT),
     // Must align with the desktop IPC path's backend dataDir (src/index.ts), otherwise
     // users see divergent SQLite state between desktop app and bundled WebUI.
     dataDir: getDataPath(),

@@ -1,5 +1,34 @@
 # Changelog
 
+## [Unreleased] — POUNDING
+
+### Desktop
+
+#### Features
+
+- **quota:** redesign balance card with dual bar and subscription support
+  - Use `used_quota` from `/api/user/self` to show real remaining percentage
+  - Progress bar changes color (green → red) when balance drops below 10%
+  - Subscription mode with daily + total progress bars when `/api/user/subscription/self` returns active subscriptions
+  - Unlimited mode for new users without consumption history
+- **ci:** auto-trigger frontend build after backend release completes
+- **ci:** Sentry → GitHub Issues sync every 6 hours
+
+#### Bug Fixes
+
+- **windows:** fix prepare-managed-resources EISDIR by co-locating npm config on staging drive (NpmConfig struct + Path::is_absolute + smoke test non-fatal)
+- **ci:** prevent `-Pounding` suffix infinite loop in release workflow
+- **nsis:** search for POUNDING.exe instead of AionUi.exe on installer upgrade
+- **ci:** Windows build step exits non-zero on failure (was exiting 0 silently)
+- **ci:** use windows-11-arm runner for ARM64 release builds
+- **ci:** fix electron-builder cache path on Windows
+- **ci:** avoid double poundcore download with --skip-prepare
+- **types:** add missing logDir, turn_id, isSetting, persistGlobalPreference type properties
+
+#### Styling
+
+- **ci:** annotate build failures with ::error XML for visibility in Actions UI
+
 ## [2.1.18](https://github.com/iOfficeAI/AionUi/compare/v2.1.17...v2.1.18) (2026-06-12)
 
 ### Desktop

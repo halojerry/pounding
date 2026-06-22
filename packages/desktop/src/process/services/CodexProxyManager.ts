@@ -40,6 +40,13 @@ function resolveProxyPortFile(): string {
   return path.join(os.homedir(), '.pounding', 'codex-proxy-port');
 }
 
+/** File where the proxy's PID is stored. Used to detect and kill stale
+ *  proxy processes left behind by a previous app session.
+ *  Written alongside the port file so both are always in sync. */
+function resolveProxyPidFile(): string {
+  return path.join(os.homedir(), '.pounding', 'codex-proxy-pid');
+}
+
 function resolveBundledNode(): string {
   try {
     const resourcesPath = process.resourcesPath;
@@ -124,15 +131,63 @@ function parsePortFromLine(line: string): number | null {
 }
 
 /** Write the proxy port to the well-known file. Synchronous so callers can rely
- *  on the file being present immediately after this returns. */
+ *  on the file being present immediately after this returns.
+ *  Writes to BOTH the Electron userData path AND ~/.pounding/ so that
+ *  non-Electron consumers (CLI tools, codexApiProxy.mjs itself) can find it.
+ *  Also writes a PID file so stale processes can be detected and killed. */
 function writePortFile(port: number): void {
+  const paths = [resolveProxyPortFile(), path.join(os.homedir(), '.pounding', 'codex-proxy-port')];
+  for (const portFile of paths) {
+    try {
+      const dir = path.dirname(portFile);
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(portFile, String(port), 'utf-8');
+    } catch (err: unknown) {
+      console.error(`[CodexProxyManager] Failed to write port file ${portFile}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+  // Write PID file alongside port file
   try {
-    const portFile = resolveProxyPortFile();
-    const dir = path.dirname(portFile);
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(portFile, String(port), 'utf-8');
+    const pidFile = resolveProxyPidFile();
+    fs.mkdirSync(path.dirname(pidFile), { recursive: true });
+    fs.writeFileSync(pidFile, String(process.pid), 'utf-8');
   } catch (err: unknown) {
-    console.error(`[CodexProxyManager] Failed to write port file: ${err instanceof Error ? err.message : String(err)}`);
+    console.error(`[CodexProxyManager] Failed to write PID file: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+/** Kill a stale proxy process from a previous app session.
+ *  Reads the PID file, checks if the process is still alive,
+ *  and kills it if so. Cleans up the PID file afterwards. */
+function killStaleProxyIfRunning(): void {
+  const pidFile = resolveProxyPidFile();
+  try {
+    if (!fs.existsSync(pidFile)) return;
+    const pidStr = fs.readFileSync(pidFile, 'utf-8').trim();
+    const pid = parseInt(pidStr, 10);
+    if (!pid || pid <= 0) {
+      fs.rmSync(pidFile, { force: true });
+      return;
+    }
+    // Don't kill our own process
+    if (pid === process.pid) return;
+    try {
+      // Signal 0 checks if the process exists without killing it
+      process.kill(pid, 0);
+      // Process exists — kill it
+      console.log(`[CodexProxyManager] Killing stale proxy (PID ${pid}) from previous session`);
+      try { process.kill(pid, 'SIGTERM'); } catch { /* vanished during check */ }
+    } catch (err: unknown) {
+      const errCode = (err as NodeJS.ErrnoException)?.code;
+      if (errCode === 'ESRCH') {
+        // Process doesn't exist — clean up stale PID file
+        console.log(`[CodexProxyManager] Stale PID file (process ${pid} not found), cleaning up`);
+      }
+      // Process not found or no permission — either way, PID file is stale
+    }
+    fs.rmSync(pidFile, { force: true });
+  } catch {
+    /* best-effort cleanup */
   }
 }
 
@@ -357,7 +412,9 @@ export async function ensureCodexProxyRunning(): Promise<{ port: number } | null
     state.port = null;
   }
 
-  // Start fresh
+  // Start fresh — first kill any stale proxy from a previous session
+  killStaleProxyIfRunning();
+
   state.status = 'starting';
   state.restartCount = 0;
   state.restartWindowStart = Date.now();
@@ -391,9 +448,10 @@ export function stopCodexProxy(): void {
     state.port = null;
     state.status = 'stopped';
   }
-  // Remove port file on clean shutdown
+  // Remove port file and PID file on clean shutdown
   try {
     fs.rmSync(resolveProxyPortFile(), { force: true });
+    fs.rmSync(resolveProxyPidFile(), { force: true });
   } catch {
     /* ignore */
   }
@@ -413,18 +471,25 @@ export function getCodexProxyPort(): number | null {
  * creating a circular dependency on CodexProxyManager.
  */
 export function readCodexProxyPort(): number | null {
-  const portFile = resolveProxyPortFile();
-  try {
-    const content = fs.readFileSync(portFile, 'utf-8').trim();
-    const port = parseInt(content, 10);
-    if (port > 0 && port < 65536) {
-      console.log(`[CodexProxyManager] Read port ${port} from ${portFile}`);
-      return port;
+  // Read from both the Electron userData path AND ~/.pounding/ so the port is
+  // discoverable regardless of context (Electron main process vs CLI tools).
+  const portFiles = [
+    resolveProxyPortFile(),
+    path.join(os.homedir(), '.pounding', 'codex-proxy-port'),
+  ];
+  for (const portFile of portFiles) {
+    try {
+      const content = fs.readFileSync(portFile, 'utf-8').trim();
+      const port = parseInt(content, 10);
+      if (port > 0 && port < 65536) {
+        console.log(`[CodexProxyManager] Read port ${port} from ${portFile}`);
+        return port;
+      }
+      console.warn(`[CodexProxyManager] Invalid port content "${content}" in ${portFile}`);
+    } catch {
+      // File doesn't exist — try next path
     }
-    console.warn(`[CodexProxyManager] Invalid port content "${content}" in ${portFile}`);
-    return null;
-  } catch {
-    console.warn(`[CodexProxyManager] Port file not found: ${portFile}`);
-    return null;
   }
+  console.warn(`[CodexProxyManager] Port file not found in any location`);
+  return null;
 }

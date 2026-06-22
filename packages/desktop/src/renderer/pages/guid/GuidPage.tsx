@@ -8,6 +8,7 @@ import { ipcBridge } from '@/common';
 import type { IMcpServer, TProviderWithModel } from '@/common/config/storage';
 import { resolveLocaleKey } from '@/common/utils';
 import type { Assistant, AssistantDetail } from '@/common/types/agent/assistantTypes';
+import { resolveManagedRuntimeCliTarget } from '@/common/types/agent/managedRuntimeCli';
 
 import { useInputFocusRing } from '@/renderer/hooks/chat/useInputFocusRing';
 import { openExternalUrl, resolveExtensionAssetUrl } from '@/renderer/utils/platform';
@@ -497,8 +498,17 @@ const GuidPage: React.FC = () => {
     [agentSelection]
   );
   const setGuidCurrentModel = useCallback(
-    (model: TProviderWithModel) => {
-      return modelSelection.setCurrentModel(model, { persistPreference: !agentSelection.is_presetAgent });
+    async (model: TProviderWithModel) => {
+      await modelSelection.setCurrentModel(model, { persistPreference: !agentSelection.is_presetAgent });
+
+      // First-use model selection — configure all 5 managed CLIs with this model.
+      // Subsequent per-conversation switches go through useAcpModelInfo.reconcileModel
+      // which targets only the active CLI.
+      void ipcBridge.newApiAccount.reconcileModel
+        .invoke({ modelId: model.use_model })
+        .catch((err) => {
+          console.warn('[GuidPage] reconcileModel failed:', err);
+        });
     },
     [agentSelection.is_presetAgent, modelSelection]
   );

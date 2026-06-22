@@ -12,6 +12,7 @@ import type {
   NewApiDesktopUser,
   NewApiLoginParams,
   NewApiLoginResponse,
+  NewApiSubscription,
   NewApiTokenPayload,
   NewApiUserPayload,
 } from '@/common/types/newApiAccount';
@@ -27,7 +28,7 @@ import type { CreateProviderRequest, UpdateProviderRequest } from '@/common/type
 import { getProviderAuthType } from '@/common/utils/platformAuthType';
 import { AuthType } from '@office-ai/aioncli-core';
 import { ProcessConfig, getSystemDir } from '@process/utils/initStorage';
-import { readCodexProxyPort } from '@process/services/CodexProxyManager';
+import { readCodexProxyPort, ensureCodexProxyRunning } from '@process/services/CodexProxyManager';
 import { createRequire } from 'node:module';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -42,6 +43,8 @@ const NEW_API_MANAGED_PROVIDER_ID = 'desktop-newapi-managed-provider';
 const NEW_API_PROVIDER_NAME = 'New API';
 const NEW_API_PROVIDER_DISPLAY_NAME = 'POUNDING API';
 const OPENCODE_SCHEMA_URL = 'https://opencode.ai/config.json';
+const DEFAULT_MODEL = 'deepseek-v4-pro';
+const DEFAULT_IMAGE_MODEL = 'gpt-image-2';
 const HERMES_API_KEY_ENV = 'AIONUI_HERMES_API_KEY';
 const OPENCODE_CONFIG_ENV = 'OPENCODE_CONFIG';
 const OPENCODE_MANAGED_FALLBACK_DIR_NAME = 'managed-opencode';
@@ -49,15 +52,18 @@ const OPENCODE_MANAGED_FALLBACK_FILE_NAME = 'opencode.json';
 const CLAUDE_MANAGED_ENV_KEYS = [
   'ANTHROPIC_BASE_URL',
   'ANTHROPIC_MODEL',
+  'ANTHROPIC_DEFAULT_FABLE_MODEL',
+  'ANTHROPIC_DEFAULT_FABLE_MODEL_NAME',
   'ANTHROPIC_DEFAULT_SONNET_MODEL',
+  'ANTHROPIC_DEFAULT_SONNET_MODEL_NAME',
   'ANTHROPIC_DEFAULT_OPUS_MODEL',
+  'ANTHROPIC_DEFAULT_OPUS_MODEL_NAME',
   'ANTHROPIC_DEFAULT_HAIKU_MODEL',
   'ANTHROPIC_AUTH_TOKEN',
   'ANTHROPIC_API_KEY',
-  // Legacy keys from the _NAME suffix bug — included for cleanup so old
-  // installs don't carry orphaned env entries forever.
-  'ANTHROPIC_DEFAULT_SONNET_MODEL_NAME',
-  'ANTHROPIC_DEFAULT_OPUS_MODEL_NAME',
+  'CLAUDE_CODE_EFFORT_LEVEL',
+  'CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS',
+  'ENABLE_TOOL_SEARCH',
 ] as const;
 
 /** Model-scoped env keys written into cc-switch.db for model_info.rs to
@@ -66,11 +72,13 @@ const CLAUDE_MANAGED_ENV_KEYS = [
  *  must NOT be written into ~/.claude/settings.json env block (model
  *  selection is managed via the "model" slot field). */
 const CLAUDE_MODEL_ENV_KEYS = [
+  'ANTHROPIC_DEFAULT_FABLE_MODEL',
   'ANTHROPIC_DEFAULT_SONNET_MODEL',
   'ANTHROPIC_DEFAULT_OPUS_MODEL',
   'ANTHROPIC_DEFAULT_HAIKU_MODEL',
   'ANTHROPIC_MODEL',
   // Legacy keys from the _NAME suffix bug — included so old installs get cleaned up.
+  'ANTHROPIC_DEFAULT_FABLE_MODEL_NAME',
   'ANTHROPIC_DEFAULT_SONNET_MODEL_NAME',
   'ANTHROPIC_DEFAULT_OPUS_MODEL_NAME',
 ] as const;
@@ -588,6 +596,27 @@ async function resolveManagedToken(
   };
 }
 
+const FETCH_TIMEOUT_MS = 30_000;
+const FETCH_MAX_RETRIES = 2;
+const RETRYABLE_ERROR_PATTERNS = [/fetch failed/i, /network/i, /ECONNREFUSED/i, /ETIMEDOUT/i, /ENOTFOUND/i, /timeout/i];
+
+function isRetryableError(error: unknown): boolean {
+  if (error instanceof DOMException && error.name === 'AbortError') return true;
+  const message = error instanceof Error ? error.message : String(error);
+  return RETRYABLE_ERROR_PATTERNS.some((p) => p.test(message));
+}
+
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(new DOMException('Request timed out', 'TimeoutError')), timeoutMs);
+  try {
+    const response = await fetch(url, { ...init, signal: controller.signal });
+    return response;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function fetchJson<T>(requestPath: string, options: NewApiRequestOptions = {}): Promise<FetchResult<T>> {
   const headers: Record<string, string> = {};
   if (options.body) {
@@ -604,38 +633,61 @@ async function fetchJson<T>(requestPath: string, options: NewApiRequestOptions =
     headers['New-Api-User'] = options.userId.trim();
   }
 
-  const response = await fetch(`${normalizeBaseUrl(NEW_API_BASE_URL)}${requestPath}`, {
+  const url = `${normalizeBaseUrl(NEW_API_BASE_URL)}${requestPath}`;
+  const fetchInit: RequestInit = {
     method: options.method ?? 'GET',
     headers,
     body: options.body ? JSON.stringify(options.body) : undefined,
-  });
+  };
 
-  const cookies = normalizeCookies(getSetCookieValues(response));
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= FETCH_MAX_RETRIES; attempt++) {
+    try {
+      const response = await fetchWithTimeout(url, fetchInit, FETCH_TIMEOUT_MS);
 
-  if (response.status === 429) {
-    console.warn('[POUNDING] fetchJson: rate limited by NewAPI, request:', requestPath);
-    throw new Error('Rate limited by NewAPI — too many requests. Please wait and try again.');
+      const cookies = normalizeCookies(getSetCookieValues(response));
+
+      if (response.status === 429) {
+        console.warn('[POUNDING] fetchJson: rate limited by NewAPI, request:', requestPath);
+        throw new Error('Rate limited by NewAPI — too many requests. Please wait and try again.');
+      }
+
+      let content: T;
+      try {
+        content = (await response.json()) as T;
+      } catch (jsonError) {
+        const text = await response.text().catch(() => '<unreadable>');
+        console.error('[POUNDING] fetchJson: failed to parse JSON response', {
+          url: requestPath,
+          status: response.status,
+          contentType: response.headers.get('content-type'),
+          bodyPreview: text.slice(0, 500),
+          error: jsonError instanceof Error ? jsonError.message : String(jsonError),
+        });
+        content = {} as T;
+      }
+      if (!response.ok) {
+        throw new Error(extractMessage(content, `Request failed with status ${response.status}`));
+      }
+
+      return { data: content, cookies };
+    } catch (error) {
+      lastError = error;
+      if (attempt < FETCH_MAX_RETRIES && isRetryableError(error)) {
+        const delayMs = (attempt + 1) * 1000;
+        console.warn(`[POUNDING] fetchJson: retrying after ${delayMs}ms (attempt ${attempt + 1}/${FETCH_MAX_RETRIES}) for ${requestPath}:`, getErrorMessage(error));
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        continue;
+      }
+      throw error;
+    }
   }
+  throw lastError;
+}
 
-  let content: T;
-  try {
-    content = (await response.json()) as T;
-  } catch (jsonError) {
-    const text = await response.text().catch(() => '<unreadable>');
-    console.error('[POUNDING] fetchJson: failed to parse JSON response', {
-      url: requestPath,
-      status: response.status,
-      contentType: response.headers.get('content-type'),
-      bodyPreview: text.slice(0, 500),
-      error: jsonError instanceof Error ? jsonError.message : String(jsonError),
-    });
-    content = {} as T;
-  }
-  if (!response.ok) {
-    throw new Error(extractMessage(content, `Request failed with status ${response.status}`));
-  }
-
-  return { data: content, cookies };
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error);
 }
 
 function detectNewApiProtocol(modelName: string): string {
@@ -716,15 +768,28 @@ function buildClaudeRuntimeProviderEnv(profile: ProviderSyncProfile): ClaudeProv
     resolveClaudeModelSlot(models, sonnetModel, 'flash') === sonnetModel
       ? resolveClaudeModelSlot(models, sonnetModel, 'lite')
       : resolveClaudeModelSlot(models, sonnetModel, 'flash');
+  // fable → opus fallback (cc-switch pattern: Claude Code degrades fable→opus)
+  const fableModel = opusModel;
   // Strip /v1 suffix — Anthropic protocol doesn't use it
   const baseUrl = profile.normalizedBaseUrl.replace(/\/v1\/?$/, '');
+  // Suffix [1M] for 1M-context models on Sonnet/Opus/Fable slots (not Haiku)
+  const sonnetWithContext = `${sonnetModel}[1M]`;
+  const opusWithContext = `${opusModel}[1M]`;
+  const fableWithContext = `${fableModel}[1M]`;
   return {
     ANTHROPIC_BASE_URL: baseUrl,
-    ANTHROPIC_DEFAULT_SONNET_MODEL: sonnetModel,
-    ANTHROPIC_DEFAULT_OPUS_MODEL: opusModel,
+    ANTHROPIC_DEFAULT_FABLE_MODEL: fableWithContext,
+    ANTHROPIC_DEFAULT_FABLE_MODEL_NAME: fableModel,
+    ANTHROPIC_DEFAULT_SONNET_MODEL: sonnetWithContext,
+    ANTHROPIC_DEFAULT_SONNET_MODEL_NAME: sonnetModel,
+    ANTHROPIC_DEFAULT_OPUS_MODEL: opusWithContext,
+    ANTHROPIC_DEFAULT_OPUS_MODEL_NAME: opusModel,
     ANTHROPIC_DEFAULT_HAIKU_MODEL: haikuModel,
     ANTHROPIC_AUTH_TOKEN: profile.provider.api_key,
     ANTHROPIC_API_KEY: profile.provider.api_key,
+    CLAUDE_CODE_EFFORT_LEVEL: 'max',
+    CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1',
+    ENABLE_TOOL_SEARCH: 'true',
   };
 }
 
@@ -842,13 +907,132 @@ function ensureCcSwitchDatabase(profile: ProviderSyncProfile, homeDir = os.homed
   }
 }
 
+/** Write all 5 managed CLI providers into the cc-switch SQLite database.
+ *  The Rust cc_switch module reads this DB at session-build time to inject
+ *  env vars (Claude, Hermes) or write live config files (Codex, OpenCode,
+ *  OpenClaw) before spawning the CLI process.
+ *
+ *  This runs ALONGSIDE the existing direct file writers — the DB is the SSOT
+ *  and future path; the file writers remain as the battle-tested fallback. */
+function writeProvidersToCcSwitchDb(
+  apiKey: string,
+  baseUrl: string,
+  models: string[],
+  managedProviderId: string,
+  homeDir = os.homedir()
+): void {
+  const { databasePath } = getCcSwitchPaths(homeDir);
+  fs.mkdirSync(path.dirname(databasePath), { recursive: true });
+  const db = openBetterSqliteDb(databasePath);
+  if (!db) return;
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS providers (
+        id TEXT NOT NULL,
+        app_type TEXT NOT NULL,
+        name TEXT NOT NULL,
+        settings_config TEXT NOT NULL,
+        PRIMARY KEY (id, app_type)
+      );
+    `);
+
+    const profile = buildProviderSyncProfile({
+      id: managedProviderId,
+      platform: 'new-api',
+      name: NEW_API_PROVIDER_DISPLAY_NAME,
+      base_url: baseUrl,
+      api_key: apiKey,
+      models,
+      use_model: DEFAULT_MODEL,
+    } as TProviderWithModel, models);
+
+    if (!profile) return;
+
+    // N.B.: The ORDER matters for the CLI_ID_REGEX used in this function. If you add or remove app_types, ensure that the
+    // corresponding Regular Expression is updated with the CLI ID before adding the app_type value to this array.
+    const TARGET_APP_TYPES = ['claude', 'codex', 'hermes', 'opencode', 'openclaw'] as const;
+
+    const insertStmt = db.prepare(
+      `INSERT INTO providers (id, app_type, name, settings_config)
+       VALUES (@id, @appType, @name, @settingsConfig)
+       ON CONFLICT(id, app_type) DO UPDATE SET
+        name = excluded.name,
+        settings_config = excluded.settings_config`
+    );
+
+    for (const appType of TARGET_APP_TYPES) {
+      const settingsConfig = buildCcSwitchSettingsConfig(profile, appType);
+      if (!settingsConfig) continue;
+      insertStmt.run({
+        id: profile.managedProviderId,
+        appType,
+        name: profile.provider.name || profile.managedProviderId,
+        settingsConfig: JSON.stringify(settingsConfig),
+      });
+    }
+  } finally {
+    db.close();
+  }
+}
+
+/** Build the cc-switch settings_config JSON per CLI app_type.
+ *  Each CLI has a different config shape matching what the Rust
+ *  cc_switch module reads at session-build time. */
+function buildCcSwitchSettingsConfig(
+  profile: ProviderSyncProfile,
+  appType: string
+): Record<string, unknown> | null {
+  const baseUrl = profile.normalizedBaseUrl;
+  const apiKey = profile.provider.api_key;
+  const modelId = profile.normalizedModelId;
+
+  switch (appType) {
+    case 'claude':
+      return {
+        env: buildClaudeRuntimeProviderEnv(profile),
+        model: 'default',
+      };
+    case 'codex':
+      return {
+        model: modelId,
+        model_provider: profile.managedProviderId,
+        base_url: resolveCodexBaseUrl(profile),
+        wire_api: 'responses',
+        auth: { OPENAI_API_KEY: apiKey },
+      };
+    case 'hermes':
+      return {
+        model: `default: ${modelId}`,
+        api_key: apiKey,
+        base_url: baseUrl,
+        protocol: profile.protocol,
+      };
+    case 'opencode':
+      return {
+        model: `${profile.managedProviderId}/${modelId}`,
+        api_key: apiKey,
+        base_url: baseUrl,
+        npm: resolveOpencodeNpmPackage(profile),
+      };
+    case 'openclaw':
+      return {
+        model: `${profile.managedProviderId}/${modelId}`,
+        api_key: apiKey,
+        base_url: baseUrl,
+        api: profile.protocol === 'anthropic' ? 'anthropic-messages' : 'openai-completions',
+      };
+    default:
+      return null;
+  }
+}
+
 function removeManagedCcSwitchProvider(managedProviderId: string, homeDir = os.homedir()): void {
   const { databasePath } = getCcSwitchPaths(homeDir);
   if (!fs.existsSync(databasePath)) return;
   const db = openBetterSqliteDb(databasePath);
   if (!db) return;
   try {
-    db.prepare(`DELETE FROM providers WHERE id = @id AND app_type = 'claude'`).run({ id: managedProviderId });
+    db.prepare(`DELETE FROM providers WHERE id = @id`).run({ id: managedProviderId });
   } finally {
     db.close();
   }
@@ -1391,14 +1575,24 @@ function resolveCodexWireApi(_profile: ProviderSyncProfile): string {
   return 'responses';
 }
 
-function resolveCodexBaseUrl(profile: ProviderSyncProfile): string {
+function resolveCodexBaseUrl(_profile: ProviderSyncProfile): string {
   // Route Codex through the local API proxy so Requests API format gets
   // translated to Chat Completions API format for the POUNDING API.
   //
-  // The proxy is started by CodexProxyManager alongside poundingcore.
-  // Read the actual port from the well-known port file (written by the
-  // proxy manager on startup) so we handle port conflicts transparently.
-  const proxyPort = readCodexProxyPort() ?? 18792;
+  // The proxy is started by CodexProxyManager before this function is called
+  // (see syncManagedProviderRuntimeConfigs ordering). Read the actual port
+  // from the well-known port file to handle port conflicts transparently.
+  //
+  // Fallback to 18792 only if the port file is missing (proxy failed to start
+  // or was killed). In that case Codex won't work regardless of the port value.
+  const proxyPort = readCodexProxyPort();
+  if (proxyPort === null) {
+    console.warn(
+      '[POUNDING] Codex proxy port file not found — proxy may have failed to start. ' +
+        'Falling back to default port 18792. Codex CLI will be unavailable until proxy is restarted.'
+    );
+    return 'http://127.0.0.1:18792/v1';
+  }
   return `http://127.0.0.1:${proxyPort}/v1`;
 }
 
@@ -1807,8 +2001,12 @@ function clearPoundingConfig(): void {
   }
 }
 
-async function syncManagedProviderRuntimeConfigs(provider: IProvider, prefs: ManagedCliModelPrefs): Promise<void> {
-  const cliTasks: Array<{
+async function syncManagedProviderRuntimeConfigs(
+  provider: IProvider,
+  prefs: ManagedCliModelPrefs,
+  cliTarget?: ManagedRuntimeCliTarget
+): Promise<void> {
+  const allCliTasks: Array<{
     cliTarget: ManagedRuntimeCliTarget;
     run: (providerWithModel: TProviderWithModel) => Promise<void> | void;
   }> = [
@@ -1845,36 +2043,38 @@ async function syncManagedProviderRuntimeConfigs(provider: IProvider, prefs: Man
     },
   ];
 
-  await Promise.all(
-    cliTasks.map(async ({ cliTarget, run }) => {
-      const providerWithModel = buildProviderWithModel(provider, resolveManagedCliModelId(provider, prefs, cliTarget));
-      if (!providerWithModel) return;
-      try {
-        await run(providerWithModel);
-      } catch (error) {
-        console.error(`[POUNDING] Managed NewAPI runtime sync target failed for ${cliTarget}:`, error);
-      }
-    })
-  );
+  // If a specific CLI target is requested, only sync that one.
+  const cliTasks = cliTarget ? allCliTasks.filter((t) => t.cliTarget === cliTarget) : allCliTasks;
 
-  // Write ~/.pounding/config.json for skills to read the API key
+  // Write ~/.pounding/config.json FIRST so the proxy can read the API key.
+  // The proxy is started before CLI config writes so that
+  // resolveCodexBaseUrl() reads the actual port from the port file.
   const apiKey = provider.api_key;
   if (apiKey) {
     writePoundingConfig(apiKey, provider.base_url || undefined);
   }
 
-  // After syncing configs (e.g. after login), restart the Codex API proxy
-  // so it picks up the new API key from config.json. The proxy may have
-  // started before login without a valid key.
-  import('@process/services/CodexProxyManager')
-    .then((m) => {
-      void m.ensureCodexProxyRunning().catch(() => {
-        /* best-effort */
-      });
+  // Start the Codex API proxy and WAIT for it to become ready.
+  // This MUST happen before writeCodexConfigForProviderSync is called,
+  // otherwise resolveCodexBaseUrl() falls back to the hardcoded 18792
+  // and Codex config.toml points at a dead port.
+  try {
+    await ensureCodexProxyRunning();
+  } catch (error) {
+    console.warn('[POUNDING] Codex proxy start failed (Codex will be unavailable):', error);
+  }
+
+  await Promise.all(
+    cliTasks.map(async ({ cliTarget: target, run }) => {
+      const providerWithModel = buildProviderWithModel(provider, resolveManagedCliModelId(provider, prefs, target));
+      if (!providerWithModel) return;
+      try {
+        await run(providerWithModel);
+      } catch (error) {
+        console.error(`[POUNDING] Managed NewAPI runtime sync target failed for ${target}:`, error);
+      }
     })
-    .catch(() => {
-      /* proxy manager may not be available */
-    });
+  );
 }
 
 async function getStoredStatus(): Promise<NewApiAccountStatus> {
@@ -2254,7 +2454,17 @@ export class NewApiDesktopAccountService {
       await saveManagedModelPrefs(nextPrefs);
     }
 
-    await syncManagedProviderRuntimeConfigs(provider, nextPrefs);
+    await syncManagedProviderRuntimeConfigs(provider, nextPrefs, cliTarget || undefined);
+
+    // Sync to cc-switch DB for Rust-side session-build injection
+    if (provider.api_key && !isMaskedToken(provider.api_key)) {
+      writeProvidersToCcSwitchDb(
+        provider.api_key,
+        provider.base_url || status.baseUrl || NEW_API_BASE_URL,
+        provider.models || status.models,
+        status.managedProviderId || NEW_API_MANAGED_PROVIDER_ID
+      );
+    }
   }
 
   async refreshStatus(): Promise<BridgeResponse<NewApiAccountStatus>> {
@@ -2268,6 +2478,24 @@ export class NewApiDesktopAccountService {
         userId: String(status.user?.id ?? ''),
       });
       const updatedUser = normalizeUser(selfResult.data?.data ?? selfResult.data, status.user?.username ?? '');
+
+      // Fetch subscription info (non-fatal — if it fails, balance card still works)
+      try {
+        const subResult = await fetchJson<NewApiResponse<unknown>>('/api/user/subscription/self', {
+          cookies: status.cookies,
+          userId: String(status.user?.id ?? ''),
+        });
+        const subPayload = (subResult.data?.data ?? subResult.data ?? null) as Record<string, unknown> | null;
+        if (subPayload?.subscription || subPayload?.subscriptions) {
+          const subs = (Array.isArray(subPayload.subscriptions) ? subPayload.subscriptions : [subPayload.subscription ?? subPayload]).filter(Boolean);
+          if (subs.length > 0) {
+            updatedUser.subscription = subs[0] as NewApiSubscription;
+          }
+        }
+      } catch (_subError) {
+        // Non-fatal: balance card works without subscription
+      }
+
       const freshStatus = { ...status, user: updatedUser, updatedAt: Date.now() };
       await saveStatus(freshStatus);
       return { success: true, data: freshStatus };
@@ -2336,25 +2564,35 @@ export class NewApiDesktopAccountService {
       });
       const models = normalizeModelList(modelsResult.data?.data ?? modelsResult.data);
 
-      const provider = await upsertManagedProvider({
+      await upsertManagedProvider({
         apiKey: token,
         models,
         baseUrl: providerBaseUrl,
       });
+
+      // Set all CLIs to deepseek-v4-pro by default. Write config files immediately
+      // so CLI processes (Claude Code, Codex, etc.) can read them on first launch.
+      // Individual CLI configs are rewritten later when the user picks a different model.
       const currentPrefs = await getSavedManagedModelPrefs();
-      const nextPrefs: ManagedCliModelPrefs = { ...currentPrefs };
-      for (const cliTarget of MANAGED_RUNTIME_CLI_TARGETS) {
-        if (!resolveManagedCliModelId(provider, nextPrefs, cliTarget)) continue;
-        nextPrefs[cliTarget] = resolveManagedCliModelId(provider, nextPrefs, cliTarget);
-      }
-      await saveManagedModelPrefs(nextPrefs);
-      // Write config.json IMMEDIATELY with the full key from login.
-      // token is the verified, unmasked API key from resolveManagedToken.
-      // Do NOT wait for syncManagedProviderRuntimeConfigs — that path may
-      // receive a masked key from findManagedProvider if reconciliation
-      // runs before the backend has the full key.
+      const defaults: ManagedCliModelPrefs = Object.fromEntries(
+        MANAGED_RUNTIME_CLI_TARGETS.map((t) => [t, DEFAULT_MODEL])
+      ) as ManagedCliModelPrefs;
+      await saveManagedModelPrefs({ ...defaults, ...currentPrefs });
+
+      // Write ~/.pounding/config.json immediately so skills (pounding-ozon etc.)
+      // can read the API key even before the user configures any CLI.
       writePoundingConfig(token, providerBaseUrl);
-      await syncManagedProviderRuntimeConfigs(provider, nextPrefs);
+
+      // Phase 1 (keep): Write all 5 CLI config files directly — battle-tested fallback.
+      await syncManagedProviderRuntimeConfigs(
+        { api_key: token, base_url: providerBaseUrl, models, id: NEW_API_MANAGED_PROVIDER_ID } as IProvider,
+        defaults
+      );
+
+      // Phase 2 (new): Write all 5 CLI providers to cc-switch DB — future SSOT path.
+      // The Rust cc_switch module reads this at session-build time and ensures
+      // each CLI's config file is fresh before spawning the CLI process.
+      writeProvidersToCcSwitchDb(token, providerBaseUrl, models, NEW_API_MANAGED_PROVIDER_ID);
 
       const status: NewApiAccountStatus = {
         loggedIn: true,

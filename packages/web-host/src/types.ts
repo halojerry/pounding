@@ -39,6 +39,8 @@ export type WebHostOptions = {
   logDir?: string;
   dirs?: BackendSystemDirs;
   backend: { kind: 'ownBackend'; resolveBackend: BackendBinaryResolver } | { kind: 'useExistingBackend'; port: number };
+  /** Dev mode: proxy SPA requests to Vite dev server when staticDir has no index.html */
+  spaDevProxyPort?: number;
 };
 
 /**

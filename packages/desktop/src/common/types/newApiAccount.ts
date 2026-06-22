@@ -30,6 +30,18 @@ export interface NewApiDesktopUser {
   usedQuota?: number;
   unlimitedQuota?: boolean;
   avatarLetter?: string;
+  subscription?: NewApiSubscription;
+}
+
+export interface NewApiSubscription {
+  subscription: {
+    amount_total: number;
+    amount_used: number;
+    next_reset_time?: number;
+  };
+  plan: {
+    total_amount: number;
+  };
 }
 
 export interface NewApiLoginParams {

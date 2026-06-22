@@ -2614,6 +2614,20 @@ export class NewApiDesktopAccountService {
       // each CLI's config file is fresh before spawning the CLI process.
       writeProvidersToCcSwitchDb(token, providerBaseUrl, models, NEW_API_MANAGED_PROVIDER_ID);
 
+      // Sync WebUI local user credentials so the bundled WebUI login accepts
+      // the same username/password as the POUNDING API account.  The backend
+      // bcrypt-hashes the password server-side and writes to the users table.
+      // This does NOT create providers or touch _managed_runtime — it only
+      // updates the local user record so POST /login works.
+      try {
+        await httpRequest('POST', '/api/auth/internal/users/sync-credentials', {
+          username: username.trim(),
+          password, // plaintext — backend hashes it
+        });
+      } catch (error) {
+        console.warn('[POUNDING] Failed to sync WebUI credentials:', (error as Error)?.message ?? error);
+      }
+
       const status: NewApiAccountStatus = {
         loggedIn: true,
         baseUrl: providerBaseUrl,

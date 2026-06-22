@@ -408,13 +408,13 @@ jobs:
                         -r "${{ secrets.TENCENT_COS_REGION != '' && secrets.TENCENT_COS_REGION || vars.TENCENT_COS_REGION }}"
 
       - name: Mirror release assets to COS (versioned)
-        timeout-minutes: 30
+        timeout-minutes: 120
         shell: bash
         run: |
           coscmd upload -r release-assets/ "pounding/releases/download/${{ steps.version.outputs.tag_name }}/"
 
       - name: Mirror release assets to COS (latest)
-        timeout-minutes: 30
+        timeout-minutes: 120
         shell: bash
         run: |
           coscmd delete -r -f "pounding/releases/latest/"

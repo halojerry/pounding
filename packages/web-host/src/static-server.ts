@@ -163,6 +163,22 @@ export async function startStaticServer(opts: StaticServerOptions): Promise<Stat
         const proxyReq = http.request(
           { hostname: '::1', port: spaProxyPort, path: req.url, method: req.method, headers: req.headers, family: 6 },
           (proxyRes) => {
+            // Vite returns 404 for SPA routes that only exist in the React
+            // router (e.g. /qr-login?token=...). Fall through to index.html
+            // so the SPA router handles them.
+            if (proxyRes.statusCode === 404) {
+              proxyRes.resume(); // drain the 404 body
+              serveHandler(req, res, {
+                public: opts.staticDir,
+                rewrites: [{ source: '**', destination: '/index.html' }],
+              }).catch(() => {
+                if (!res.headersSent) {
+                  res.writeHead(502, { 'content-type': 'application/json' });
+                  res.end(JSON.stringify({ error: 'DEV_PROXY_UNREACHABLE' }));
+                }
+              });
+              return;
+            }
             res.writeHead(proxyRes.statusCode ?? 200, proxyRes.headers);
             proxyRes.pipe(res);
           }

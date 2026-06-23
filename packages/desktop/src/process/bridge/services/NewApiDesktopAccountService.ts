@@ -1540,6 +1540,13 @@ function buildManagedOpenClawConfig(
         mode: 'token',
         token: gatewayToken,
       },
+      // gateway.remote.token must match gateway.auth.token — the ACP bridge
+      // presents this token when connecting to the gateway WebSocket. Without
+      // it the gateway rejects connections with "token_mismatch".
+      remote: {
+        ...(isRecord(currentGateway.remote) ? currentGateway.remote : {}),
+        token: gatewayToken,
+      },
     },
     models,
     agents,
@@ -2519,6 +2526,13 @@ export class NewApiDesktopAccountService {
 
       const freshStatus = { ...status, user: updatedUser, updatedAt: Date.now() };
       await saveStatus(freshStatus);
+
+      // Keep ~/.pounding/config.json in sync with the current API key.
+      // The Codex proxy reads this file at startup; without this, the key
+      // can go stale between login() calls and cause 401 from mxou.cn.
+      if (status.token) {
+        writePoundingConfig(status.token, status.baseUrl || undefined);
+      }
 
       // Sync WebUI credentials on every startup refresh, not just login.
       // Uses the API token as the WebUI password — same credential the user

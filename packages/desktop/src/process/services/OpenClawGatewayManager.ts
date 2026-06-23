@@ -104,8 +104,8 @@ function startGateway(port: number): ChildProcess {
     env: {
       ...process.env,
       OPENCLAW_GATEWAY_PORT: String(port),
-      OPENCLAW_GATEWAY_BIND: 'lan',
-      OPENCLAW_HOME: openclawHome,
+      // NOTE: Do NOT set OPENCLAW_HOME. OpenClaw treats it as a home-directory
+      // override and appends .openclaw/ → double-nested path → can't find config.
     },
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: false,

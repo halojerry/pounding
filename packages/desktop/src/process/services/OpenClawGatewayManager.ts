@@ -100,7 +100,7 @@ function startGateway(port: number): ChildProcess {
 
   console.log(`[OpenClawGatewayManager] Starting gateway: ${binary} on port ${port}`);
 
-  const proc = spawn(binary, ['gateway', 'run', '--force'], {
+  const proc = spawn(binary, ['gateway', 'run', '--force', '--allow-unconfigured'], {
     env: {
       ...process.env,
       OPENCLAW_GATEWAY_PORT: String(port),

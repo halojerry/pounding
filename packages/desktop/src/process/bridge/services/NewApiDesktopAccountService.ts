@@ -1537,6 +1537,7 @@ function buildManagedOpenClawConfig(
       mode: 'local',
       auth: {
         ...gatewayAuth,
+        mode: 'token',
         token: gatewayToken,
       },
     },

@@ -365,7 +365,7 @@ export async function ensureCodexProxyRunning(): Promise<{ port: number } | null
   // Already running — but check if API key has changed (e.g. after login)
   if (state.status === 'running' && state.process && state.port) {
     const currentApiKey = readApiKeyFromConfig() || process.env.POUNDING_API_KEY || '';
-    if (currentApiKey && state.apiKey && currentApiKey !== state.apiKey) {
+    if (currentApiKey !== state.apiKey) {
       console.log('[CodexProxyManager] API key changed, restarting proxy...');
       try {
         state.process.kill();

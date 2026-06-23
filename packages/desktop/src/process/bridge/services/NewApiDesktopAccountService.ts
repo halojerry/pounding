@@ -2068,15 +2068,20 @@ async function syncManagedProviderRuntimeConfigs(
     {
       cliTarget: 'openclaw',
       run: async (providerWithModel) => {
-        // Await gateway readiness — the ACP bridge needs ws://127.0.0.1:18789
-        // to be healthy before OpenClaw conversations can spawn.
+        // Write config FIRST — the gateway reads ~/.openclaw/openclaw.json at
+        // startup. If the gateway starts before the config exists, it exits with
+        // "Missing config". Start the gateway fire-and-forget AFTER writing config
+        // so login is not blocked; the gateway health poll in ensureOpenClawGatewayRunning
+        // handles the case where the gateway is already running from a previous session.
+        writeOpenClawManagedProviderModel(providerWithModel, provider);
         try {
           const { ensureOpenClawGatewayRunning } = await import('../../services/OpenClawGatewayManager');
-          await ensureOpenClawGatewayRunning();
+          ensureOpenClawGatewayRunning().catch((error) => {
+            console.warn('[POUNDING] OpenClaw gateway startup failed (agent will be unavailable):', error);
+          });
         } catch (error) {
           console.warn('[POUNDING] OpenClaw gateway preflight failed:', error);
         }
-        writeOpenClawManagedProviderModel(providerWithModel, provider);
       },
     },
   ];

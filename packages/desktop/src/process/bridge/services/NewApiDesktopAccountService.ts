@@ -1501,7 +1501,7 @@ function buildManagedOpenClawConfig(
     api: resolveOpenClawApiProtocol(profile),
     headers: {},
     authHeader: true,
-    models: (profile.modelList || [profile.normalizedModelId]).map((id) => ({ id, name: id })),
+    models: (profile.modelList?.length ? profile.modelList : [profile.normalizedModelId]).map((id) => ({ id, name: id })),
   };
   models.mode = 'merge';
   models.providers = providers;

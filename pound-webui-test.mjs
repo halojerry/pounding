@@ -44,8 +44,11 @@ async function api(method, path, body = null) {
   try {
     const res = await fetch(`${BASE}${path}`, opts);
     const text = await res.text();
-    try { return { status: res.status, data: JSON.parse(text) }; }
-    catch { return { status: res.status, data: text }; }
+    try {
+      return { status: res.status, data: JSON.parse(text) };
+    } catch {
+      return { status: res.status, data: text };
+    }
   } catch (e) {
     return { status: 0, error: e.message };
   }
@@ -60,8 +63,13 @@ backend = spawn(BACKEND_BIN, ['--port', String(PORT), '--local', '--data-dir', t
 
 await new Promise((resolve, reject) => {
   const t = setTimeout(() => reject(new Error('Backend timeout')), 20000);
-  backend.stdout.on('data', d => { if (d.toString().includes('POUNDINGCORE_LISTENING')) { clearTimeout(t); resolve(); } });
-  backend.stderr.on('data', d => process.stderr.write(d));
+  backend.stdout.on('data', (d) => {
+    if (d.toString().includes('POUNDINGCORE_LISTENING')) {
+      clearTimeout(t);
+      resolve();
+    }
+  });
+  backend.stderr.on('data', (d) => process.stderr.write(d));
   backend.on('error', reject);
 });
 
@@ -75,7 +83,10 @@ console.log('─── T1: Auth & Login ───');
   else fail('T1.1 auth/status', r.data?.error || r.error || `${r.status}`);
 
   // Sync credentials
-  const sync = await api('POST', '/api/auth/internal/users/sync-credentials', { username: 'test', password: 'test123' });
+  const sync = await api('POST', '/api/auth/internal/users/sync-credentials', {
+    username: 'test',
+    password: 'test123',
+  });
   if (sync.status === 200 && sync.data?.success) ok('T1.2 sync-credentials');
   else fail('T1.2 sync-credentials', sync.data?.error || sync.error || `${sync.status}`);
 
@@ -83,7 +94,7 @@ console.log('─── T1: Auth & Login ───');
   const login = await api('POST', '/login', { username: 'test', password: 'test123' });
   if (login.status === 200 && login.data?.success) {
     authToken = login.data.token;
-    ok('T1.3 login with synced pw', `token=${authToken?.slice(0,20)}...`);
+    ok('T1.3 login with synced pw', `token=${authToken?.slice(0, 20)}...`);
   } else fail('T1.3 login', login.data?.error || login.error || `${login.status}`);
 }
 
@@ -123,7 +134,9 @@ console.log('\n─── T3: Skills ───');
     if (assts.length > 0) {
       const first = assts[0];
       const skillIds = first.default_skill_ids || first.enabled_skills || [];
-      console.log(`      Assistant "${first.name}": skills=${skillIds.length > 0 ? skillIds.slice(0,5).join(',') + '...' : 'NONE ⚠️'}`);
+      console.log(
+        `      Assistant "${first.name}": skills=${skillIds.length > 0 ? skillIds.slice(0, 5).join(',') + '...' : 'NONE ⚠️'}`
+      );
       if (skillIds.length === 0) fail('T3.3 assistant skills', `${first.name} has no skills`);
       else ok('T3.3 assistant skills', `${first.name}: ${skillIds.length} skills`);
     }
@@ -135,13 +148,13 @@ console.log('\n─── T4: CLI Conversations ───');
 
 // Find available CLI agents first
 const agentsRes = await api('GET', '/api/agents');
-const availableAgents = (agentsRes.data?.data || []).filter(a => a.available && a.agent_type === 'acp');
+const availableAgents = (agentsRes.data?.data || []).filter((a) => a.available && a.agent_type === 'acp');
 
 // Test Claude, Codex, OpenCode, Hermes, OpenClaw
 const CLI_TARGETS = ['claude', 'codex', 'opencode', 'hermes', 'openclaw'];
 
 for (const target of CLI_TARGETS) {
-  const agent = availableAgents.find(a => a.backend === target);
+  const agent = availableAgents.find((a) => a.backend === target);
   if (!agent) {
     console.log(`  ⏭️ ${target}: agent not available, skipping`);
     results.push({ test: `cli:${target}`, status: 'SKIP', detail: 'agent unavailable' });
@@ -158,7 +171,10 @@ for (const target of CLI_TARGETS) {
 
   const statusOk = create.status === 200 || create.status === 201;
   if (!statusOk || !(create.data?.success || create.status === 201)) {
-    fail(`T4 conv:${target} create`, `${create.status}: ${create.data?.error || JSON.stringify(create.data).slice(0,80)}`);
+    fail(
+      `T4 conv:${target} create`,
+      `${create.status}: ${create.data?.error || JSON.stringify(create.data).slice(0, 80)}`
+    );
     continue;
   }
 
@@ -171,17 +187,19 @@ for (const target of CLI_TARGETS) {
 
   // T4.2: Check config-options (should not 404)
   const co = await api('GET', `/api/conversations/${convId}/config-options`);
-  if (co.status === 200 && co.data?.success) ok(`T4 config:${target}`, `config_options=${(co.data?.data?.config_options||[]).length}`);
+  if (co.status === 200 && co.data?.success)
+    ok(`T4 config:${target}`, `config_options=${(co.data?.data?.config_options || []).length}`);
   else fail(`T4 config:${target}`, `HTTP ${co.status}: ${co.data?.error || co.error || ''}`);
 
   // T4.3: Get model info
   const model = await api('GET', `/api/conversations/${convId}/model`);
-  if (model.status === 200 && model.data?.success !== false) ok(`T4 model:${target}`, `model=${JSON.stringify(model.data?.data?.model_info || model.data).slice(0,50)}`);
+  if (model.status === 200 && model.data?.success !== false)
+    ok(`T4 model:${target}`, `model=${JSON.stringify(model.data?.data?.model_info || model.data).slice(0, 50)}`);
   else fail(`T4 model:${target}`, `HTTP ${model.status}`);
 
   // T4.4: Get slash-commands
   const sc = await api('GET', `/api/conversations/${convId}/slash-commands`);
-  if (sc.status === 200 && sc.data?.success) ok(`T4 slash:${target}`, `${(sc.data?.data||[]).length} commands`);
+  if (sc.status === 200 && sc.data?.success) ok(`T4 slash:${target}`, `${(sc.data?.data || []).length} commands`);
   else fail(`T4 slash:${target}`, `HTTP ${sc.status}`);
 
   // T4.5: Send a message to the CLI agent
@@ -196,11 +214,11 @@ for (const target of CLI_TARGETS) {
     else if (send.data?.success === false) fail(`T4 result:${target}`, 'unknown error');
     else ok(`T4 result:${target}`, 'message sent');
   } else {
-    fail(`T4 send:${target}`, `HTTP ${send.status}: ${send.data?.error || JSON.stringify(send.data).slice(0,100)}`);
+    fail(`T4 send:${target}`, `HTTP ${send.status}: ${send.data?.error || JSON.stringify(send.data).slice(0, 100)}`);
   }
 
   // Briefly wait for agent to process, then check turn status
-  await new Promise(r => setTimeout(r, 3000));
+  await new Promise((r) => setTimeout(r, 3000));
 
   // Check conversation status
   const conv = await api('GET', `/api/conversations/${convId}`);
@@ -231,9 +249,9 @@ console.log('\n─── T5: Model Switching ───');
 
 // ── Summary ──
 console.log('\n═══ RESULTS ═══');
-const pass = results.filter(r => r.status === 'PASS').length;
-const failN = results.filter(r => r.status === 'FAIL').length;
-const skip = results.filter(r => r.status === 'SKIP' || r.status === 'AVAILABLE').length;
+const pass = results.filter((r) => r.status === 'PASS').length;
+const failN = results.filter((r) => r.status === 'FAIL').length;
+const skip = results.filter((r) => r.status === 'SKIP' || r.status === 'AVAILABLE').length;
 
 for (const r of results) {
   const icon = r.status === 'PASS' ? '✅' : r.status === 'FAIL' ? '❌' : r.status === 'SKIP' ? '⏭️' : '  ';

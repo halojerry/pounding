@@ -65,7 +65,7 @@ function connect() {
 }
 
 async function wait(ms) {
-  return new Promise(r => setTimeout(r, ms));
+  return new Promise((r) => setTimeout(r, ms));
 }
 
 async function main() {
@@ -79,11 +79,11 @@ async function main() {
 
   let loginInfo = await evaluate(
     'JSON.stringify({' +
-    'url: location.href,' +
-    'hasForm: !!document.querySelector("form"),' +
-    'inputs: Array.from(document.querySelectorAll("input")).map(function(i) { return {type:i.type, placeholder:i.placeholder, name:i.name}; }),' +
-    'buttons: Array.from(document.querySelectorAll("button")).map(function(b) { return {text:b.innerText.substring(0,30), type:b.type}; })' +
-    '})'
+      'url: location.href,' +
+      'hasForm: !!document.querySelector("form"),' +
+      'inputs: Array.from(document.querySelectorAll("input")).map(function(i) { return {type:i.type, placeholder:i.placeholder, name:i.name}; }),' +
+      'buttons: Array.from(document.querySelectorAll("button")).map(function(b) { return {text:b.innerText.substring(0,30), type:b.type}; })' +
+      '})'
   );
 
   let id1 = await waitForMsg(loginInfo);
@@ -98,23 +98,23 @@ async function main() {
     // Fill username
     const setUser = await evaluate(
       'var inputs = document.querySelectorAll("input");' +
-      'if (inputs[0]) {' +
-      '  var nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;' +
-      '  nativeSetter.call(inputs[0], "haloclawroot");' +
-      '  inputs[0].dispatchEvent(new Event("input", {bubbles: true}));' +
-      '  "username set";' +
-      '} else { "no input"; }'
+        'if (inputs[0]) {' +
+        '  var nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;' +
+        '  nativeSetter.call(inputs[0], "haloclawroot");' +
+        '  inputs[0].dispatchEvent(new Event("input", {bubbles: true}));' +
+        '  "username set";' +
+        '} else { "no input"; }'
     );
     await waitForMsg(setUser);
 
     const setPw = await evaluate(
       'var inputs = document.querySelectorAll("input");' +
-      'if (inputs[1]) {' +
-      '  var nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;' +
-      '  nativeSetter.call(inputs[1], "Haloclaw2026!");' +
-      '  inputs[1].dispatchEvent(new Event("input", {bubbles: true}));' +
-      '  "password set";' +
-      '} else { "no password input"; }'
+        'if (inputs[1]) {' +
+        '  var nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;' +
+        '  nativeSetter.call(inputs[1], "Haloclaw2026!");' +
+        '  inputs[1].dispatchEvent(new Event("input", {bubbles: true}));' +
+        '  "password set";' +
+        '} else { "no password input"; }'
     );
     await waitForMsg(setPw);
     ok('T1.1', 'credentials filled');
@@ -122,7 +122,7 @@ async function main() {
     // Click login button
     const clickLogin = await evaluate(
       'var btn = document.querySelector("button[type=submit]") || document.querySelector("button");' +
-      'if (btn) { btn.click(); "clicked"; } else { "no button"; }'
+        'if (btn) { btn.click(); "clicked"; } else { "no button"; }'
     );
     await waitForMsg(clickLogin);
     ok('T1.2', 'login submitted');
@@ -140,7 +140,7 @@ async function main() {
       // Check for error message
       const checkErr = await evaluate(
         'var err = document.querySelector(".arco-message-error, .arco-notification-error, [class*=error]");' +
-        'err ? err.innerText : "no visible error"'
+          'err ? err.innerText : "no visible error"'
       );
       const errText = (await waitForMsg(checkErr)).result?.result?.value || '';
       fail('T1.3', 'login failed: ' + errText);
@@ -166,20 +166,28 @@ async function main() {
     // Create conversation via API
     const tokenRes = await evaluate(
       'JSON.stringify({' +
-      'token: localStorage.getItem("token") || "",' +
-      'baseUrl: localStorage.getItem("baseUrl") || window.location.origin' +
-      '})'
+        'token: localStorage.getItem("token") || "",' +
+        'baseUrl: localStorage.getItem("baseUrl") || window.location.origin' +
+        '})'
     );
     const tokenInfo = JSON.parse((await waitForMsg(tokenRes)).result?.result?.value || '{}');
     const baseUrl = tokenInfo.baseUrl || 'http://localhost:25809';
 
     // Use fetch to create conversation
     const createConv = await evaluate(
-      'fetch("' + baseUrl + '/api/conversations", {' +
-      '  method: "POST",' +
-      '  headers: {"Content-Type":"application/json", "Authorization":"Bearer ' + (tokenInfo.token || '') + '"},' +
-      '  body: JSON.stringify({type:"acp", name:"WebUI test ' + cli.backend + '", extra:{backend:"' + cli.backend + '"}})' +
-      '}).then(function(r) { return r.json(); }).then(function(d) { return JSON.stringify({id:d.id||d.data?.id, status:r}); }).catch(function(e) { return JSON.stringify({error:e.message}); })'
+      'fetch("' +
+        baseUrl +
+        '/api/conversations", {' +
+        '  method: "POST",' +
+        '  headers: {"Content-Type":"application/json", "Authorization":"Bearer ' +
+        (tokenInfo.token || '') +
+        '"},' +
+        '  body: JSON.stringify({type:"acp", name:"WebUI test ' +
+        cli.backend +
+        '", extra:{backend:"' +
+        cli.backend +
+        '"}})' +
+        '}).then(function(r) { return r.json(); }).then(function(d) { return JSON.stringify({id:d.id||d.data?.id, status:r}); }).catch(function(e) { return JSON.stringify({error:e.message}); })'
     );
 
     try {
@@ -191,11 +199,17 @@ async function main() {
 
         // Send a message
         const sendMsg = await evaluate(
-          'fetch("' + baseUrl + '/api/conversations/' + convId + '/messages", {' +
-          '  method: "POST",' +
-          '  headers: {"Content-Type":"application/json", "Authorization":"Bearer ' + (tokenInfo.token || '') + '"},' +
-          '  body: JSON.stringify({content:"Say hello in one sentence."})' +
-          '}).then(function(r) { return r.status; }).catch(function(e) { return "error:" + e.message; })'
+          'fetch("' +
+            baseUrl +
+            '/api/conversations/' +
+            convId +
+            '/messages", {' +
+            '  method: "POST",' +
+            '  headers: {"Content-Type":"application/json", "Authorization":"Bearer ' +
+            (tokenInfo.token || '') +
+            '"},' +
+            '  body: JSON.stringify({content:"Say hello in one sentence."})' +
+            '}).then(function(r) { return r.status; }).catch(function(e) { return "error:" + e.message; })'
         );
         const msgStatus = (await waitForMsg(sendMsg, 15000)).result?.result?.value;
 
@@ -207,13 +221,19 @@ async function main() {
 
           // Check messages
           const checkMsgs = await evaluate(
-            'fetch("' + baseUrl + '/api/conversations/' + convId + '/messages", {' +
-            '  headers: {"Authorization":"Bearer ' + (tokenInfo.token || '') + '"}' +
-            '}).then(function(r) { return r.json(); }).then(function(d) {' +
-            '  var msgs = d.data?.items || d.data || [];' +
-            '  var hasReply = msgs.some(function(m) { return m.role === "assistant"; });' +
-            '  return JSON.stringify({count:msgs.length, hasReply:hasReply, lastRole:msgs[msgs.length-1]?.role});' +
-            '}).catch(function(e) { return JSON.stringify({error:e.message}); })'
+            'fetch("' +
+              baseUrl +
+              '/api/conversations/' +
+              convId +
+              '/messages", {' +
+              '  headers: {"Authorization":"Bearer ' +
+              (tokenInfo.token || '') +
+              '"}' +
+              '}).then(function(r) { return r.json(); }).then(function(d) {' +
+              '  var msgs = d.data?.items || d.data || [];' +
+              '  var hasReply = msgs.some(function(m) { return m.role === "assistant"; });' +
+              '  return JSON.stringify({count:msgs.length, hasReply:hasReply, lastRole:msgs[msgs.length-1]?.role});' +
+              '}).catch(function(e) { return JSON.stringify({error:e.message}); })'
           );
           const msgInfo = JSON.parse((await waitForMsg(checkMsgs, 10000)).result?.result?.value || '{}');
 
@@ -239,12 +259,16 @@ async function main() {
   console.log('\n─── T3: Model Switching ───');
 
   const listConvs = await evaluate(
-    'fetch("' + (tokenInfo?.baseUrl || 'http://localhost:25809') + '/api/conversations", {' +
-    '  headers: {"Authorization":"Bearer ' + (tokenInfo?.token || '') + '"}' +
-    '}).then(function(r) { return r.json(); }).then(function(d) {' +
-    '  var items = d.data?.items || d.data || [];' +
-    '  return JSON.stringify({count:items.length, firstId:items[0]?.id});' +
-    '}).catch(function(e) { return JSON.stringify({error:e.message}); })'
+    'fetch("' +
+      (tokenInfo?.baseUrl || 'http://localhost:25809') +
+      '/api/conversations", {' +
+      '  headers: {"Authorization":"Bearer ' +
+      (tokenInfo?.token || '') +
+      '"}' +
+      '}).then(function(r) { return r.json(); }).then(function(d) {' +
+      '  var items = d.data?.items || d.data || [];' +
+      '  return JSON.stringify({count:items.length, firstId:items[0]?.id});' +
+      '}).catch(function(e) { return JSON.stringify({error:e.message}); })'
   );
 
   try {
@@ -254,11 +278,19 @@ async function main() {
       const models = ['deepseek-v4-pro', 'deepseek-v4-flash'];
       for (const model of models) {
         const switchModel = await evaluate(
-          'fetch("' + (tokenInfo?.baseUrl || 'http://localhost:25809') + '/api/conversations/' + convList.firstId + '/model", {' +
-          '  method: "PUT",' +
-          '  headers: {"Content-Type":"application/json", "Authorization":"Bearer ' + (tokenInfo?.token || '') + '"},' +
-          '  body: JSON.stringify({model_id:"' + model + '"})' +
-          '}).then(function(r) { return r.status; }).catch(function(e) { return "error:" + e.message; })'
+          'fetch("' +
+            (tokenInfo?.baseUrl || 'http://localhost:25809') +
+            '/api/conversations/' +
+            convList.firstId +
+            '/model", {' +
+            '  method: "PUT",' +
+            '  headers: {"Content-Type":"application/json", "Authorization":"Bearer ' +
+            (tokenInfo?.token || '') +
+            '"},' +
+            '  body: JSON.stringify({model_id:"' +
+            model +
+            '"})' +
+            '}).then(function(r) { return r.status; }).catch(function(e) { return "error:" + e.message; })'
         );
         const switchStatus = (await waitForMsg(switchModel, 10000)).result?.result?.value;
         if (switchStatus === 200) {
@@ -276,8 +308,8 @@ async function main() {
 
   // ── Summary ──
   console.log('\n═══ RESULTS ═══');
-  const pass = results.filter(r => r.status === 'PASS').length;
-  const failN = results.filter(r => r.status === 'FAIL').length;
+  const pass = results.filter((r) => r.status === 'PASS').length;
+  const failN = results.filter((r) => r.status === 'FAIL').length;
   for (const r of results) {
     const icon = r.status === 'PASS' ? '✅' : '❌';
     console.log(icon + ' ' + r.test + ': ' + r.detail);
@@ -289,7 +321,7 @@ async function main() {
   process.exit(failN > 0 ? 1 : 0);
 }
 
-main().catch(err => {
+main().catch((err) => {
   console.error('Fatal:', err.message);
   process.exit(1);
 });

@@ -15,25 +15,25 @@
 纯函数，输入 API 返回的原始数字，输出组件需要的衍生值：
 
 ```ts
-calcBalance(remainQuota, usedQuota)
+calcBalance(remainQuota, usedQuota);
 // → { remainRmb, remainPct, isLow, isUnlimited, ... }
 
-calcSubscription(sub, plan, totalUsedQuota)
+calcSubscription(sub, plan, totalUsedQuota);
 // → { dailyTotal, dailyRemain, dailyPct, totalPct, ... }
 ```
 
 ### UI Layer — BalanceCard / SubscriptionCard
 
-| Component | File | When |
-|-----------|------|------|
-| `BalanceCard` | `components/layout/Sider/BalanceCard.tsx` | 普通用户（无订阅） |
-| `SubscriptionCard` | `components/layout/Sider/SubscriptionCard.tsx` | 订阅用户 |
+| Component          | File                                           | When               |
+| ------------------ | ---------------------------------------------- | ------------------ |
+| `BalanceCard`      | `components/layout/Sider/BalanceCard.tsx`      | 普通用户（无订阅） |
+| `SubscriptionCard` | `components/layout/Sider/SubscriptionCard.tsx` | 订阅用户           |
 
 **BalanceCard 三种状态**：
 
 ```
 正常 (>10%):    余额 ¥1060.4万  [充值]    绿色进度条
-低余额 (<10%):  余额 ¥3.2万    [充值]    红色进度条  
+低余额 (<10%):  余额 ¥3.2万    [充值]    红色进度条
 无限制:         无限制           [充值]    全宽进度条
 ```
 
@@ -56,11 +56,11 @@ Subscription fetch is **non-fatal** — if it fails, balance card still works.
 
 ## Files Changed
 
-| File | Change |
-|------|--------|
-| `renderer/utils/quotaUtils.ts` | New: calcBalance, calcSubscription, formatRmb, formatWan |
-| `renderer/components/layout/Sider/BalanceCard.tsx` | New: balance card component |
-| `renderer/components/layout/Sider/SubscriptionCard.tsx` | New: subscription card component |
-| `renderer/components/layout/Sider/SiderFooter.tsx` | Replace inline balance JSX with BalanceCard/SubscriptionCard |
-| `common/types/newApiAccount.ts` | Add `NewApiSubscription` type, `subscription` field on `NewApiDesktopUser` |
-| `process/bridge/services/NewApiDesktopAccountService.ts` | Fetch `/api/user/subscription/self` in `refreshStatus()` |
+| File                                                     | Change                                                                     |
+| -------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `renderer/utils/quotaUtils.ts`                           | New: calcBalance, calcSubscription, formatRmb, formatWan                   |
+| `renderer/components/layout/Sider/BalanceCard.tsx`       | New: balance card component                                                |
+| `renderer/components/layout/Sider/SubscriptionCard.tsx`  | New: subscription card component                                           |
+| `renderer/components/layout/Sider/SiderFooter.tsx`       | Replace inline balance JSX with BalanceCard/SubscriptionCard               |
+| `common/types/newApiAccount.ts`                          | Add `NewApiSubscription` type, `subscription` field on `NewApiDesktopUser` |
+| `process/bridge/services/NewApiDesktopAccountService.ts` | Fetch `/api/user/subscription/self` in `refreshStatus()`                   |

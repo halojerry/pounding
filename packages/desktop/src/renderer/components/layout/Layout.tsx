@@ -367,7 +367,14 @@ const Layout: React.FC<{
               {newApiStatus?.envConflicts && newApiStatus.envConflicts.length > 0 && (
                 <EnvConflictBanner conflicts={newApiStatus.envConflicts} onDismiss={() => {}} />
               )}
-              {shouldShowDesktopGate ? <DesktopLoginGate /> : <Outlet />}
+              {shouldShowDesktopGate ? <DesktopLoginGate /> : null}
+              {/* Keep <Outlet /> always mounted (hidden when gate is visible) so that
+                  React.lazy() Suspense boundaries are never torn down during auth
+                  transitions. Tearing down a Suspense resets the lazy import state
+                  and can cause a permanent spinner if the dynamic import() hangs. */}
+              <div style={{ display: shouldShowDesktopGate ? 'none' : undefined, flex: 1, minHeight: 0 }}>
+                <Outlet />
+              </div>
               {directorySelectionContextHolder}
               <PwaPullToRefresh />
               <Suspense fallback={null}>

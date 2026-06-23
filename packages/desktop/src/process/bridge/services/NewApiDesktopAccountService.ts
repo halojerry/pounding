@@ -430,6 +430,18 @@ function extractUserId(payload: unknown): string | undefined {
   if (!payload) return undefined;
   if (typeof payload === 'string' || typeof payload === 'number') {
     const value = String(payload).trim();
+    // Try JWT decode: if the string looks like a JWT (3 dot-separated segments),
+    // extract the user/sub claim from the payload.
+    if (value && value.split('.').length === 3) {
+      try {
+        const jwtPayload = JSON.parse(Buffer.from(value.split('.')[1], 'base64url').toString('utf8'));
+        const jwtId = jwtPayload.sub ?? jwtPayload.id ?? jwtPayload.user_id ?? jwtPayload.userId;
+        if (typeof jwtId === 'string' && jwtId.trim()) return jwtId.trim();
+        if (typeof jwtId === 'number') return String(jwtId);
+      } catch {
+        // Not a valid base64url-encoded JSON — fall through to plain string return
+      }
+    }
     return value || undefined;
   }
   if (typeof payload === 'object') {
@@ -2590,14 +2602,11 @@ export class NewApiDesktopAccountService {
       const cookies = loginResult.cookies;
       const loginPayload = loginResult.data?.data ?? loginResult.data;
       const loginToken = extractToken(loginPayload) ?? extractToken(loginResult.data);
-      const resolvedUserId = extractUserId(loginPayload);
-
-      if (!resolvedUserId) {
-        return {
-          success: false,
-          msg: 'Failed to resolve NewAPI user id from login response',
-        };
-      }
+      // Try to resolve the user ID from the login payload or the login token (JWT fallback).
+      // If neither provides it, use an empty string — fetchJson skips the New-Api-User
+      // header when the value is empty, and the /api/user/self endpoint authenticates via
+      // cookies + Bearer token alone. The real user ID is extracted from the self response.
+      const resolvedUserId = extractUserId(loginPayload) ?? extractUserId(loginToken) ?? '';
 
       const { token, baseUrl: providerBaseUrl } = await resolveManagedToken(cookies, loginToken, resolvedUserId);
 

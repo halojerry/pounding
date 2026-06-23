@@ -19,7 +19,28 @@ function getArg(flag) {
 }
 const PORT = parseInt(getArg('--port') || '18792', 10);
 const UPSTREAM = (getArg('--upstream') || 'https://api.mxou.cn/v1').replace(/\/+$/, '');
-const API_KEY = getArg('--api-key') || process.env.POUNDING_API_KEY || '';
+
+// Read API key from ~/.pounding/config.json as a last-resort fallback.
+// The parent process (CodexProxyManager) passes POUNDING_API_KEY via env,
+// but on first startup before login the file may not exist yet. When the
+// proxy is restarted post-login, this ensures it can still find the key
+// even if the env var wasn't set for any reason.
+function readApiKeyFromDisk() {
+  try {
+    const { join } = require('path');
+    const { homedir } = require('os');
+    const { existsSync, readFileSync } = require('fs');
+    const configPath = join(homedir(), '.pounding', 'config.json');
+    if (existsSync(configPath)) {
+      const config = JSON.parse(readFileSync(configPath, 'utf-8'));
+      return (config.api && config.api.key) || '';
+    }
+  } catch {
+    /* best-effort — env var and --api-key are the primary sources */
+  }
+  return '';
+}
+const API_KEY = getArg('--api-key') || process.env.POUNDING_API_KEY || readApiKeyFromDisk();
 
 // ── Translation: Responses API → Chat Completions ──────────────────────────
 

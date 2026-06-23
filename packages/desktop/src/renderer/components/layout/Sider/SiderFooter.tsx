@@ -254,14 +254,12 @@ const SiderFooter: React.FC<SiderFooterProps> = ({
           const user = desktopAccountStatus?.user;
           const remainQuota = user?.quota ?? 0;
           const usedQuota = user?.usedQuota ?? 0;
-          const recharge = () => { void openExternalUrl('https://api.mxou.cn/console/topup'); };
+          const recharge = () => {
+            void openExternalUrl('https://api.mxou.cn/console/topup');
+          };
 
           if (user?.subscription) {
-            const sub = calcSubscription(
-              user.subscription.subscription,
-              user.subscription.plan,
-              usedQuota
-            );
+            const sub = calcSubscription(user.subscription.subscription, user.subscription.plan, usedQuota);
             return <SubscriptionCard sub={sub} onRecharge={recharge} />;
           }
           return <BalanceCard remainQuota={remainQuota} usedQuota={usedQuota} onRecharge={recharge} />;

@@ -504,11 +504,9 @@ const GuidPage: React.FC = () => {
       // First-use model selection — configure all 5 managed CLIs with this model.
       // Subsequent per-conversation switches go through useAcpModelInfo.reconcileModel
       // which targets only the active CLI.
-      void ipcBridge.newApiAccount.reconcileModel
-        .invoke({ modelId: model.use_model })
-        .catch((err) => {
-          console.warn('[GuidPage] reconcileModel failed:', err);
-        });
+      void ipcBridge.newApiAccount.reconcileModel.invoke({ modelId: model.use_model }).catch((err) => {
+        console.warn('[GuidPage] reconcileModel failed:', err);
+      });
     },
     [agentSelection.is_presetAgent, modelSelection]
   );

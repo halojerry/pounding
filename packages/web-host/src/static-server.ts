@@ -153,7 +153,7 @@ export async function startStaticServer(opts: StaticServerOptions): Promise<Stat
       // /api/* — reverse proxy to backend (includes /api/auth/*).
       // /login and /logout are aionui-auth's top-level auth endpoints: proxy them too
       // so WebUI browser clients reach the backend without a path-rewrite.
-      if (req.url.startsWith('/api/') || req.url.startsWith('/api?') || req.url === '/login' || req.url === '/logout') {
+      if (req.url.startsWith('/api/') || req.url.startsWith('/api?') || req.url === '/login' || req.url === '/logout' || req.url.startsWith('/qr-login')) {
         forwardToBackend(req, res, opts.backendPort);
         return;
       }
@@ -163,23 +163,6 @@ export async function startStaticServer(opts: StaticServerOptions): Promise<Stat
         const proxyReq = http.request(
           { hostname: '::1', port: spaProxyPort, path: req.url, method: req.method, headers: req.headers, family: 6 },
           (proxyRes) => {
-            // Vite returns 404 for SPA routes that only exist in the React
-            // router (e.g. /qr-login?token=...). Redirect to hash route:
-            // the WebUI uses HashRouter so /qr-login becomes /#/qr-login.
-            if (proxyRes.statusCode === 404) {
-              proxyRes.resume(); // drain the 404 body
-              const path = req.url || '/';
-              const qIdx = path.indexOf('?');
-              const route = qIdx >= 0 ? path.substring(0, qIdx) : path;
-              const query = qIdx >= 0 ? path.substring(qIdx) : '';
-              // Only redirect if not already a hash route
-              if (!route.startsWith('/#')) {
-                res.writeHead(302, { Location: '/#/' + route.replace(/^\//, '') + query }).end();
-              } else {
-                res.writeHead(404).end();
-              }
-              return;
-            }
             res.writeHead(proxyRes.statusCode ?? 200, proxyRes.headers);
             proxyRes.pipe(res);
           }

@@ -421,11 +421,15 @@ export async function ensureCodexProxyRunning(): Promise<{ port: number } | null
   // Start fresh — first kill any stale proxy from a previous session
   killStaleProxyIfRunning();
 
+  const apiKey = readApiKeyFromConfig() || process.env.POUNDING_API_KEY || '';
+  if (!apiKey) {
+    console.log('[CodexProxyManager] No API key yet — deferring proxy start until login');
+    return null;
+  }
+
   state.status = 'starting';
   state.restartCount = 0;
   state.restartWindowStart = Date.now();
-
-  const apiKey = readApiKeyFromConfig() || process.env.POUNDING_API_KEY || '';
   state.apiKey = apiKey;
   const upstream = 'https://api.mxou.cn/v1';
 

@@ -263,7 +263,9 @@ export async function startDesktopWebUI(opts: { port?: number; allowRemote?: boo
     // Proxy SPA requests to the Vite dev server so WebUI works during development.
     spaDevProxyPort: app.isPackaged
       ? undefined
-      : (fs.existsSync(path.join(__dirname, '../renderer', 'index.html')) ? undefined : resolveViteDevServerPort()),
+      : fs.existsSync(path.join(__dirname, '../renderer', 'index.html'))
+        ? undefined
+        : resolveViteDevServerPort(),
     // Must align with the desktop IPC path's backend dataDir (src/index.ts), otherwise
     // users see divergent SQLite state between desktop app and bundled WebUI.
     dataDir: getDataPath(),

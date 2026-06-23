@@ -482,9 +482,11 @@ const WebuiModalContent: React.FC = () => {
         // allowRemote is enabled), otherwise construct it from the cached LAN IP.
         const lanIP = getLocalIP();
         const baseUrl =
-          (status.allowRemote && status.networkUrl) ? status.networkUrl
-          : lanIP ? `http://${lanIP}:${status.port ?? port}`
-          : (status.localUrl ?? `http://localhost:${status.port ?? port}`);
+          status.allowRemote && status.networkUrl
+            ? status.networkUrl
+            : lanIP
+              ? `http://${lanIP}:${status.port ?? port}`
+              : (status.localUrl ?? `http://localhost:${status.port ?? port}`);
         setQrUrl(`${baseUrl}/qr-login?token=${qrData.token}`);
         setQrExpiresAt(qrData.expires_at_ms);
 

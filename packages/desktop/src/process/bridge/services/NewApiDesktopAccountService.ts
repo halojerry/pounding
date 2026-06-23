@@ -691,7 +691,10 @@ async function fetchJson<T>(requestPath: string, options: NewApiRequestOptions =
       lastError = error;
       if (attempt < FETCH_MAX_RETRIES && isRetryableError(error)) {
         const delayMs = (attempt + 1) * 1000;
-        console.warn(`[POUNDING] fetchJson: retrying after ${delayMs}ms (attempt ${attempt + 1}/${FETCH_MAX_RETRIES}) for ${requestPath}:`, getErrorMessage(error));
+        console.warn(
+          `[POUNDING] fetchJson: retrying after ${delayMs}ms (attempt ${attempt + 1}/${FETCH_MAX_RETRIES}) for ${requestPath}:`,
+          getErrorMessage(error)
+        );
         await new Promise((resolve) => setTimeout(resolve, delayMs));
         continue;
       }
@@ -952,15 +955,18 @@ function writeProvidersToCcSwitchDb(
       );
     `);
 
-    const profile = buildProviderSyncProfile({
-      id: managedProviderId,
-      platform: 'new-api',
-      name: NEW_API_PROVIDER_DISPLAY_NAME,
-      base_url: baseUrl,
-      api_key: apiKey,
-      models,
-      use_model: DEFAULT_MODEL,
-    } as TProviderWithModel, models);
+    const profile = buildProviderSyncProfile(
+      {
+        id: managedProviderId,
+        platform: 'new-api',
+        name: NEW_API_PROVIDER_DISPLAY_NAME,
+        base_url: baseUrl,
+        api_key: apiKey,
+        models,
+        use_model: DEFAULT_MODEL,
+      } as TProviderWithModel,
+      models
+    );
 
     if (!profile) return;
 
@@ -1008,10 +1014,7 @@ function writeProvidersToCcSwitchDb(
 /** Build the cc-switch settings_config JSON per CLI app_type.
  *  Each CLI has a different config shape matching what the Rust
  *  cc_switch module reads at session-build time. */
-function buildCcSwitchSettingsConfig(
-  profile: ProviderSyncProfile,
-  appType: string
-): Record<string, unknown> | null {
+function buildCcSwitchSettingsConfig(profile: ProviderSyncProfile, appType: string): Record<string, unknown> | null {
   const baseUrl = profile.normalizedBaseUrl;
   const apiKey = profile.provider.api_key;
   const modelId = profile.normalizedModelId;
@@ -1513,7 +1516,10 @@ function buildManagedOpenClawConfig(
     api: resolveOpenClawApiProtocol(profile),
     headers: {},
     authHeader: true,
-    models: (profile.modelList?.length ? profile.modelList : [profile.normalizedModelId]).map((id) => ({ id, name: id })),
+    models: (profile.modelList?.length ? profile.modelList : [profile.normalizedModelId]).map((id) => ({
+      id,
+      name: id,
+    })),
   };
   models.mode = 'merge';
   models.providers = providers;
@@ -2070,9 +2076,8 @@ async function syncManagedProviderRuntimeConfigs(
       run: async (providerWithModel) => {
         // Write config FIRST — the gateway reads ~/.openclaw/openclaw.json at
         // startup. If the gateway starts before the config exists, it exits with
-        // "Missing config". Start the gateway fire-and-forget AFTER writing config
-        // so login is not blocked; the gateway health poll in ensureOpenClawGatewayRunning
-        // handles the case where the gateway is already running from a previous session.
+        // "Missing config". Fire-and-forget startup (don't block login); the Rust
+        // ACP spawn path has a retry loop that waits for the gateway if needed.
         writeOpenClawManagedProviderModel(providerWithModel, provider);
         try {
           const { ensureOpenClawGatewayRunning } = await import('../../services/OpenClawGatewayManager');
@@ -2532,7 +2537,9 @@ export class NewApiDesktopAccountService {
         });
         const subPayload = (subResult.data?.data ?? subResult.data ?? null) as Record<string, unknown> | null;
         if (subPayload?.subscription || subPayload?.subscriptions) {
-          const subs = (Array.isArray(subPayload.subscriptions) ? subPayload.subscriptions : [subPayload.subscription ?? subPayload]).filter(Boolean);
+          const subs = (
+            Array.isArray(subPayload.subscriptions) ? subPayload.subscriptions : [subPayload.subscription ?? subPayload]
+          ).filter(Boolean);
           if (subs.length > 0) {
             updatedUser.subscription = subs[0] as NewApiSubscription;
           }

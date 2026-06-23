@@ -339,6 +339,29 @@ export const restoreDesktopWebUIFromPreferences = async (): Promise<void> => {
   const preferredPort = port ?? DEFAULT_WEBUI_PORT;
 
   try {
+    // Seed WebUI credentials before starting the static server.  The
+    // auto-restore path does NOT go through the IPC webui.start handler
+    // (which calls maybeSeedInitialPassword), so the WebUI would start
+    // with needs_setup=true and show "Create Admin Account".  Sync the
+    // stored API token as the admin password so the login page works.
+    const backendPort = (globalThis as typeof globalThis & { __backendPort?: number }).__backendPort;
+    if (backendPort) {
+      try {
+        const ProcessConfig = await import('../bridge/ProcessConfig');
+        const storedStatus = ProcessConfig.default?.get?.('newApi.desktop.account');
+        const token = storedStatus?.token;
+        const username = storedStatus?.user?.username?.trim();
+        if (username && token) {
+          await fetch(`http://127.0.0.1:${backendPort}/api/auth/internal/users/sync-credentials`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password: token }),
+          });
+        }
+      } catch {
+        // Non-fatal — maybeSeedInitialPassword in the IPC path handles the fallback
+      }
+    }
     const handle = await startDesktopWebUI({ port: preferredPort, allowRemote });
     console.log(
       `[WebUI] Auto-restored from desktop preferences (port=${handle.port}, allowRemote=${handle.allowRemote})`

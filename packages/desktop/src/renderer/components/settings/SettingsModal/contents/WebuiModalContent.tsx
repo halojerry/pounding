@@ -477,10 +477,14 @@ const WebuiModalContent: React.FC = () => {
       const qrData = await webui.generateQRToken.invoke();
 
       if (qrData) {
+        // Always prefer the LAN IP for QR codes — a phone scanning the code
+        // can't resolve "localhost". Use networkUrl if available (set when
+        // allowRemote is enabled), otherwise construct it from the cached LAN IP.
+        const lanIP = getLocalIP();
         const baseUrl =
-          status.allowRemote && status.networkUrl
-            ? status.networkUrl
-            : (status.localUrl ?? `http://localhost:${status.port ?? port}`);
+          (status.allowRemote && status.networkUrl) ? status.networkUrl
+          : lanIP ? `http://${lanIP}:${status.port ?? port}`
+          : (status.localUrl ?? `http://localhost:${status.port ?? port}`);
         setQrUrl(`${baseUrl}/qr-login?token=${qrData.token}`);
         setQrExpiresAt(qrData.expires_at_ms);
 

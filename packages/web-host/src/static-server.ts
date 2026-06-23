@@ -164,19 +164,20 @@ export async function startStaticServer(opts: StaticServerOptions): Promise<Stat
           { hostname: '::1', port: spaProxyPort, path: req.url, method: req.method, headers: req.headers, family: 6 },
           (proxyRes) => {
             // Vite returns 404 for SPA routes that only exist in the React
-            // router (e.g. /qr-login?token=...). Fall through to index.html
-            // so the SPA router handles them.
+            // router (e.g. /qr-login?token=...). Redirect to hash route:
+            // the WebUI uses HashRouter so /qr-login becomes /#/qr-login.
             if (proxyRes.statusCode === 404) {
               proxyRes.resume(); // drain the 404 body
-              serveHandler(req, res, {
-                public: opts.staticDir,
-                rewrites: [{ source: '**', destination: '/index.html' }],
-              }).catch(() => {
-                if (!res.headersSent) {
-                  res.writeHead(502, { 'content-type': 'application/json' });
-                  res.end(JSON.stringify({ error: 'DEV_PROXY_UNREACHABLE' }));
-                }
-              });
+              const path = req.url || '/';
+              const qIdx = path.indexOf('?');
+              const route = qIdx >= 0 ? path.substring(0, qIdx) : path;
+              const query = qIdx >= 0 ? path.substring(qIdx) : '';
+              // Only redirect if not already a hash route
+              if (!route.startsWith('/#')) {
+                res.writeHead(302, { Location: '/#/' + route.replace(/^\//, '') + query }).end();
+              } else {
+                res.writeHead(404).end();
+              }
               return;
             }
             res.writeHead(proxyRes.statusCode ?? 200, proxyRes.headers);

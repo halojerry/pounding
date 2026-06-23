@@ -143,7 +143,9 @@ function writePortFile(port: number): void {
       fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(portFile, String(port), 'utf-8');
     } catch (err: unknown) {
-      console.error(`[CodexProxyManager] Failed to write port file ${portFile}: ${err instanceof Error ? err.message : String(err)}`);
+      console.error(
+        `[CodexProxyManager] Failed to write port file ${portFile}: ${err instanceof Error ? err.message : String(err)}`
+      );
     }
   }
   // Write PID file alongside port file
@@ -176,7 +178,11 @@ function killStaleProxyIfRunning(): void {
       process.kill(pid, 0);
       // Process exists — kill it
       console.log(`[CodexProxyManager] Killing stale proxy (PID ${pid}) from previous session`);
-      try { process.kill(pid, 'SIGTERM'); } catch { /* vanished during check */ }
+      try {
+        process.kill(pid, 'SIGTERM');
+      } catch {
+        /* vanished during check */
+      }
     } catch (err: unknown) {
       const errCode = (err as NodeJS.ErrnoException)?.code;
       if (errCode === 'ESRCH') {
@@ -473,10 +479,7 @@ export function getCodexProxyPort(): number | null {
 export function readCodexProxyPort(): number | null {
   // Read from both the Electron userData path AND ~/.pounding/ so the port is
   // discoverable regardless of context (Electron main process vs CLI tools).
-  const portFiles = [
-    resolveProxyPortFile(),
-    path.join(os.homedir(), '.pounding', 'codex-proxy-port'),
-  ];
+  const portFiles = [resolveProxyPortFile(), path.join(os.homedir(), '.pounding', 'codex-proxy-port')];
   for (const portFile of portFiles) {
     try {
       const content = fs.readFileSync(portFile, 'utf-8').trim();

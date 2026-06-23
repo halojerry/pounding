@@ -2518,6 +2518,22 @@ export class NewApiDesktopAccountService {
 
       const freshStatus = { ...status, user: updatedUser, updatedAt: Date.now() };
       await saveStatus(freshStatus);
+
+      // Sync WebUI credentials on every startup refresh, not just login.
+      // Uses the API token as the WebUI password — same credential the user
+      // already has from the desktop login flow. No separate WebUI password needed.
+      try {
+        const username = updatedUser.username?.trim() || status.user?.username?.trim();
+        if (username && status.token) {
+          await httpRequest('POST', '/api/auth/internal/users/sync-credentials', {
+            username,
+            password: status.token,
+          });
+        }
+      } catch (_err) {
+        // Non-fatal — WebUI password sync is best-effort on refresh
+      }
+
       return { success: true, data: freshStatus };
     } catch (error) {
       console.warn('[POUNDING] Failed to refresh status from API:', error);

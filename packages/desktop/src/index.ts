@@ -17,6 +17,7 @@ import { app, BrowserWindow, ipcMain, nativeImage, powerMonitor } from 'electron
 import fixPath from 'fix-path';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 import { initMainAdapterWithWindow } from './common/adapter/main';
 import { ipcBridge } from './common';
 import { initializeProcess } from './process';
@@ -136,6 +137,67 @@ if (process.platform === 'darwin' || process.platform === 'linux') {
     } catch {
       // Ignore errors when reading nvm directory
     }
+  }
+}
+
+// All platforms: supplement bundled runtimes into PATH so CLI tools
+// and MCP servers can find node, npx, python, uv, and bun out-of-box.
+{
+  const pathParts: string[] = [];
+
+  // 1. Bundled runtimes from managed-resources (highest priority)
+  const platformKey = `${process.platform}-${process.arch}`;
+  const bundledDir = path.join(process.resourcesPath, 'bundled-poundingcore', platformKey, 'managed-resources');
+  if (fs.existsSync(bundledDir)) {
+    // Bundled Node.js (node + npx)
+    const nodeDir = path.join(bundledDir, 'node');
+    if (fs.existsSync(nodeDir)) {
+      // Node layout: Unix = bin/node, Windows = node.exe at root
+      const nodeBin = process.platform === 'win32' ? nodeDir : path.join(nodeDir, 'bin');
+      if (fs.existsSync(nodeBin)) pathParts.push(nodeBin);
+      else if (fs.existsSync(nodeDir)) pathParts.push(nodeDir);
+    }
+    // Bundled runtimes (python, uv)
+    const runtimesDir = path.join(bundledDir, 'runtimes');
+    if (fs.existsSync(runtimesDir)) {
+      for (const name of ['python', 'uv']) {
+        const d = path.join(runtimesDir, name);
+        if (fs.existsSync(d)) {
+          const sub = process.platform === 'win32' ? d : path.join(d, 'bin');
+          pathParts.push(fs.existsSync(sub) ? sub : d);
+        }
+      }
+    }
+  }
+
+  // 2. Bun bin directory (where CLI binaries are installed)
+  const bunBin = path.join(os.homedir(), '.bun', 'bin');
+  if (fs.existsSync(bunBin)) pathParts.push(bunBin);
+
+  // 3. Platform-specific system paths (fallback)
+  if (process.platform === 'win32') {
+    const appData = process.env.APPDATA;
+    if (appData) {
+      const npmGlobal = path.join(appData, 'npm');
+      if (fs.existsSync(npmGlobal)) pathParts.push(npmGlobal);
+    }
+    const nvmHome = process.env.NVM_HOME;
+    if (nvmHome && fs.existsSync(nvmHome)) pathParts.push(nvmHome);
+    const nvmSymlink = process.env.NVM_SYMLINK;
+    if (nvmSymlink && fs.existsSync(nvmSymlink)) pathParts.push(nvmSymlink);
+    const localAppData = process.env.LOCALAPPDATA;
+    if (localAppData) {
+      const voltaBin = path.join(localAppData, 'Volta', 'bin');
+      if (fs.existsSync(voltaBin)) pathParts.push(voltaBin);
+    }
+  }
+
+  // Merge: bundled first, then existing PATH
+  const existingPath = process.env.PATH || '';
+  const missing = pathParts.filter(p => !existingPath.includes(p));
+  if (missing.length > 0) {
+    process.env.PATH = [...missing, existingPath].join(path.delimiter);
+    console.log('[POUNDING] PATH supplemented:', missing.join(', '));
   }
 }
 
@@ -318,6 +380,20 @@ function markBackendReady(backendPort: number, source: string): void {
     })
     .catch((err) => {
       console.warn('[POUNDING] Codex API proxy startup failed:', err.message || err);
+    });
+
+  // Auto-install managed CLI tools from bundled resources (offline-first).
+  // This ensures claude, codex, hermes, opencode, and openclaw are
+  // available before the user creates their first conversation.
+  void import('./process/bridge/managedCliInstallerBridge')
+    .then(({ installManagedCliBatch }) =>
+      installManagedCliBatch(['hermes', 'openclaw', 'claude', 'codex', 'opencode'])
+    )
+    .then(() => {
+      console.log('[POUNDING] Managed CLI tools ready');
+    })
+    .catch((err) => {
+      console.warn('[POUNDING] CLI auto-install incomplete:', err.message || err);
     });
 }
 

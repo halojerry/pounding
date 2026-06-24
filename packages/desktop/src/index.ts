@@ -194,7 +194,7 @@ if (process.platform === 'darwin' || process.platform === 'linux') {
 
   // Merge: bundled first, then existing PATH
   const existingPath = process.env.PATH || '';
-  const missing = pathParts.filter(p => !existingPath.includes(p));
+  const missing = pathParts.filter((p) => !existingPath.includes(p));
   if (missing.length > 0) {
     process.env.PATH = [...missing, existingPath].join(path.delimiter);
     console.log('[POUNDING] PATH supplemented:', missing.join(', '));
@@ -386,9 +386,7 @@ function markBackendReady(backendPort: number, source: string): void {
   // This ensures claude, codex, hermes, opencode, and openclaw are
   // available before the user creates their first conversation.
   void import('./process/bridge/managedCliInstallerBridge')
-    .then(({ installManagedCliBatch }) =>
-      installManagedCliBatch(['hermes', 'openclaw', 'claude', 'codex', 'opencode'])
-    )
+    .then(({ installManagedCliBatch }) => installManagedCliBatch(['hermes', 'openclaw', 'claude', 'codex', 'opencode']))
     .then(() => {
       console.log('[POUNDING] Managed CLI tools ready');
     })

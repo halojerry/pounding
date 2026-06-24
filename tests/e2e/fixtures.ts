@@ -114,6 +114,20 @@ function shouldUsePackagedMode(): boolean {
   return !!process.env.CI;
 }
 
+/**
+ * Resolve the direct Electron binary path (bypasses bun wrapper to avoid SIGSEGV).
+ */
+function resolveElectronBinary(): string {
+  const electronModulePath = path.dirname(require.resolve('electron'));
+  const pathFile = path.join(electronModulePath, 'path.txt');
+  if (fs.existsSync(pathFile)) {
+    const relPath = fs.readFileSync(pathFile, 'utf-8').trim();
+    return path.join(electronModulePath, 'dist', relPath);
+  }
+  // Fallback: rely on PATH
+  return 'electron';
+}
+
 async function launchApp(): Promise<ElectronApplication> {
   const projectRoot = path.resolve(__dirname, '../..');
   const usePackaged = shouldUsePackagedMode();
@@ -167,6 +181,7 @@ async function launchApp(): Promise<ElectronApplication> {
   }
 
   const electronApp = await electron.launch({
+    executablePath: resolveElectronBinary(),
     args: launchArgs,
     cwd: projectRoot,
     env: {

@@ -182,6 +182,7 @@ export type I18nKey =
   | 'common.browse'
   | 'common.cancel'
   | 'common.clear'
+  | 'common.cli.prepOffice'
   | 'common.close'
   | 'common.collapse'
   | 'common.confirm'

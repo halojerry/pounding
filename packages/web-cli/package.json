@@ -4,7 +4,7 @@
   "private": true,
   "description": "AionUi WebUI CLI - standalone web runtime (no Electron)",
   "bin": {
-    "aionui-web": "./bin/aionui-web.js"
+    "pounding-web": "./bin/pounding-web.js"
   },
   "type": "module",
   "exports": {

@@ -6,14 +6,14 @@
 !ifndef AIONUI_APP_PROCESS_CHECK_DEFINED
 !define AIONUI_APP_PROCESS_CHECK_DEFINED
 !define AIONUI_APP_EXECUTABLE_FILENAME "POUNDING.exe"
-!define AIONUI_PROCESS_CHECK_LOG "aionui-installer-process-check.log"
+!define AIONUI_PROCESS_CHECK_LOG "pounding-installer-process-check.log"
 
 !ifndef BUILD_UNINSTALLER
-  Var /GLOBAL AionUiUninstallHadErrors
-  Var /GLOBAL AionUiUninstallLogResult
+  Var /GLOBAL PoundingUninstallHadErrors
+  Var /GLOBAL PoundingUninstallLogResult
 !endif
 
-!macro AIONUI_LOG_UNINSTALLER_REPAIR _PHASE
+!macro POUNDING_LOG_UNINSTALLER_REPAIR _PHASE
   nsExec::Exec `"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -Command "& { \
     $$ErrorActionPreference = 'SilentlyContinue'; \
     $$log = Join-Path $$env:TEMP '${AIONUI_PROCESS_CHECK_LOG}'; \
@@ -23,45 +23,45 @@
     $$length = if ($$item) { $$item.Length } else { '' }; \
     Add-Content -LiteralPath $$log -Encoding UTF8 -Value ('[' + (Get-Date -Format o) + '] uninstaller-repair phase=${_PHASE} instDir=$INSTDIR path=' + $$path + ' exists=' + [bool]$$item + ' version=' + $$version + ' length=' + $$length) \
   }"`
-  Pop $AionUiRepairLogResult
+  Pop $PoundingRepairLogResult
 !macroend
 
-!macro AIONUI_REPAIR_INSTALLED_UNINSTALLER
-  Var /GLOBAL AionUiInstalledUninstaller
-  Var /GLOBAL AionUiBundledUninstaller
-  Var /GLOBAL AionUiRepairLogResult
+!macro POUNDING_REPAIR_INSTALLED_UNINSTALLER
+  Var /GLOBAL PoundingInstalledUninstaller
+  Var /GLOBAL PoundingBundledUninstaller
+  Var /GLOBAL PoundingRepairLogResult
 
-  !insertmacro AIONUI_LOG_UNINSTALLER_REPAIR "before"
-  StrCpy $AionUiInstalledUninstaller "$INSTDIR\${UNINSTALL_FILENAME}"
+  !insertmacro POUNDING_LOG_UNINSTALLER_REPAIR "before"
+  StrCpy $PoundingInstalledUninstaller "$INSTDIR\${UNINSTALL_FILENAME}"
 
-  ${If} ${FileExists} "$AionUiInstalledUninstaller"
+  ${If} ${FileExists} "$PoundingInstalledUninstaller"
     InitPluginsDir
-    StrCpy $AionUiBundledUninstaller "$PLUGINSDIR\AionUi-fixed-uninstaller.exe"
+    StrCpy $PoundingBundledUninstaller "$PLUGINSDIR\POUNDING-fixed-uninstaller.exe"
     SetOverwrite on
-    File "/oname=$PLUGINSDIR\AionUi-fixed-uninstaller.exe" "${UNINSTALLER_OUT_FILE}"
+    File "/oname=$PLUGINSDIR\POUNDING-fixed-uninstaller.exe" "${UNINSTALLER_OUT_FILE}"
 
     ClearErrors
-    CopyFiles /SILENT "$AionUiBundledUninstaller" "$AionUiInstalledUninstaller"
+    CopyFiles /SILENT "$PoundingBundledUninstaller" "$PoundingInstalledUninstaller"
     ${If} ${Errors}
-      !insertmacro AIONUI_LOG_UNINSTALLER_REPAIR "copy-failed"
+      !insertmacro POUNDING_LOG_UNINSTALLER_REPAIR "copy-failed"
     ${Else}
-      !insertmacro AIONUI_LOG_UNINSTALLER_REPAIR "after-copy"
+      !insertmacro POUNDING_LOG_UNINSTALLER_REPAIR "after-copy"
     ${EndIf}
   ${Else}
-    !insertmacro AIONUI_LOG_UNINSTALLER_REPAIR "missing"
+    !insertmacro POUNDING_LOG_UNINSTALLER_REPAIR "missing"
   ${EndIf}
 !macroend
 
-!macro AIONUI_LOG_UNINSTALL_RESULT _ROOT_KEY _HAD_ERRORS
+!macro POUNDING_LOG_UNINSTALL_RESULT _ROOT_KEY _HAD_ERRORS
   nsExec::Exec `"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -Command "& { \
     $$ErrorActionPreference = 'SilentlyContinue'; \
     $$log = Join-Path $$env:TEMP '${AIONUI_PROCESS_CHECK_LOG}'; \
     Add-Content -LiteralPath $$log -Encoding UTF8 -Value ('[' + (Get-Date -Format o) + '] uninstall-result root=${_ROOT_KEY} launchErrors=${_HAD_ERRORS} exitCode=$R0 instDir=$INSTDIR') \
   }"`
-  Pop $AionUiUninstallLogResult
+  Pop $PoundingUninstallLogResult
 !macroend
 
-!macro AIONUI_LOG_EVENT _MESSAGE
+!macro POUNDING_LOG_EVENT _MESSAGE
   Push $9
   nsExec::Exec `"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -Command "& { \
     $$ErrorActionPreference = 'SilentlyContinue'; \
@@ -72,7 +72,7 @@
   Pop $9
 !macroend
 
-!macro AIONUI_LOG_ATOMIC_REMOVE_FAILURE
+!macro POUNDING_LOG_ATOMIC_REMOVE_FAILURE
   Push $9
   nsExec::Exec `"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -Command "& { \
     $$ErrorActionPreference = 'SilentlyContinue'; \
@@ -90,7 +90,7 @@
   Pop $9
 !macroend
 
-!macro AIONUI_FIND_APP_PROCESS _RETURN
+!macro POUNDING_FIND_APP_PROCESS _RETURN
   nsExec::Exec `"$PowerShellPath" -NoProfile -ExecutionPolicy Bypass -Command "& { \
     $$ErrorActionPreference = 'SilentlyContinue'; \
     $$log = Join-Path $$env:TEMP '${AIONUI_PROCESS_CHECK_LOG}'; \
@@ -115,7 +115,7 @@
   Pop ${_RETURN}
 !macroend
 
-!macro AIONUI_STOP_APP_PROCESSES
+!macro POUNDING_STOP_APP_PROCESSES
   nsExec::Exec `"$PowerShellPath" -NoProfile -ExecutionPolicy Bypass -Command "& { \
     $$ErrorActionPreference = 'SilentlyContinue'; \
     $$log = Join-Path $$env:TEMP '${AIONUI_PROCESS_CHECK_LOG}'; \
@@ -146,54 +146,54 @@
     foreach ($$id in ($$ids | Sort-Object -Descending)) { Stop-Process -Id $$id -Force -ErrorAction SilentlyContinue } \
     exit 0 \
   }"`
-  Pop $AionUiStopResult
+  Pop $PoundingStopResult
 !macroend
 
 !macro customCheckAppRunning
-  Var /GLOBAL AionUiCheckResult
-  Var /GLOBAL AionUiCloseRetries
-  Var /GLOBAL AionUiStopResult
+  Var /GLOBAL PoundingCheckResult
+  Var /GLOBAL PoundingCloseRetries
+  Var /GLOBAL PoundingStopResult
 
-  !insertmacro AIONUI_FIND_APP_PROCESS $AionUiCheckResult
-  ${If} $AionUiCheckResult == 0
-    MessageBox MB_OKCANCEL|MB_ICONEXCLAMATION "$(appRunning)" /SD IDOK IDOK aionui_do_stop_process
+  !insertmacro POUNDING_FIND_APP_PROCESS $PoundingCheckResult
+  ${If} $PoundingCheckResult == 0
+    MessageBox MB_OKCANCEL|MB_ICONEXCLAMATION "$(appRunning)" /SD IDOK IDOK pounding_do_stop_process
     Quit
 
-    aionui_do_stop_process:
+    pounding_do_stop_process:
       DetailPrint "$(appClosing)"
-      !insertmacro AIONUI_STOP_APP_PROCESSES
-      StrCpy $AionUiCloseRetries 0
+      !insertmacro POUNDING_STOP_APP_PROCESSES
+      StrCpy $PoundingCloseRetries 0
 
-    aionui_wait_for_close:
+    pounding_wait_for_close:
       Sleep 1000
-      !insertmacro AIONUI_FIND_APP_PROCESS $AionUiCheckResult
-      ${If} $AionUiCheckResult == 0
-        IntOp $AionUiCloseRetries $AionUiCloseRetries + 1
-        ${If} $AionUiCloseRetries > 10
-          MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "$(appCannotBeClosed)" /SD IDCANCEL IDRETRY aionui_wait_for_close
+      !insertmacro POUNDING_FIND_APP_PROCESS $PoundingCheckResult
+      ${If} $PoundingCheckResult == 0
+        IntOp $PoundingCloseRetries $PoundingCloseRetries + 1
+        ${If} $PoundingCloseRetries > 10
+          MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "$(appCannotBeClosed)" /SD IDCANCEL IDRETRY pounding_wait_for_close
           Quit
         ${Else}
-          !insertmacro AIONUI_STOP_APP_PROCESSES
-          Goto aionui_wait_for_close
+          !insertmacro POUNDING_STOP_APP_PROCESSES
+          Goto pounding_wait_for_close
         ${EndIf}
       ${EndIf}
   ${EndIf}
 !macroend
 
 !macro customInit
-  !insertmacro AIONUI_REPAIR_INSTALLED_UNINSTALLER
+  !insertmacro POUNDING_REPAIR_INSTALLED_UNINSTALLER
 !macroend
 
-!macro AIONUI_HANDLE_UNINSTALL_RESULT _ROOT_KEY
+!macro POUNDING_HANDLE_UNINSTALL_RESULT _ROOT_KEY
   ${If} ${Errors}
-    StrCpy $AionUiUninstallHadErrors "1"
+    StrCpy $PoundingUninstallHadErrors "1"
   ${Else}
-    StrCpy $AionUiUninstallHadErrors "0"
+    StrCpy $PoundingUninstallHadErrors "0"
   ${EndIf}
 
-  !insertmacro AIONUI_LOG_UNINSTALL_RESULT "${_ROOT_KEY}" "$AionUiUninstallHadErrors"
+  !insertmacro POUNDING_LOG_UNINSTALL_RESULT "${_ROOT_KEY}" "$PoundingUninstallHadErrors"
 
-  ${If} $AionUiUninstallHadErrors == "1"
+  ${If} $PoundingUninstallHadErrors == "1"
     DetailPrint `Uninstall was not successful. Not able to launch uninstaller!`
     Return
   ${EndIf}
@@ -207,23 +207,23 @@
 !macroend
 
 !macro customUnInstallCheck
-  !insertmacro AIONUI_HANDLE_UNINSTALL_RESULT "SHELL_CONTEXT"
+  !insertmacro POUNDING_HANDLE_UNINSTALL_RESULT "SHELL_CONTEXT"
 !macroend
 
 !macro customUnInstallCheckCurrentUser
-  !insertmacro AIONUI_HANDLE_UNINSTALL_RESULT "HKEY_CURRENT_USER"
+  !insertmacro POUNDING_HANDLE_UNINSTALL_RESULT "HKEY_CURRENT_USER"
 !macroend
 
 !macro customUnInit
-  !insertmacro AIONUI_LOG_EVENT "uninit instDir=$INSTDIR"
+  !insertmacro POUNDING_LOG_EVENT "uninit instDir=$INSTDIR"
 !macroend
 
 !macro customUnInstall
-  !insertmacro AIONUI_LOG_EVENT "uninstall-section start instDir=$INSTDIR"
+  !insertmacro POUNDING_LOG_EVENT "uninstall-section start instDir=$INSTDIR"
 !macroend
 
 !macro customRemoveFiles
-  !insertmacro AIONUI_LOG_EVENT "remove-start instDir=$INSTDIR"
+  !insertmacro POUNDING_LOG_EVENT "remove-start instDir=$INSTDIR"
 
   ${if} ${isUpdated}
     CreateDirectory "$PLUGINSDIR\old-install"
@@ -231,16 +231,16 @@
     Push ""
     Call un.atomicRMDir
     Pop $R0
-    !insertmacro AIONUI_LOG_EVENT "remove-atomic result=$R0"
+    !insertmacro POUNDING_LOG_EVENT "remove-atomic result=$R0"
 
     ${if} $R0 != 0
       DetailPrint "Atomic update cleanup failed; falling back to recursive removal: $R0"
-      !insertmacro AIONUI_LOG_ATOMIC_REMOVE_FAILURE
+      !insertmacro POUNDING_LOG_ATOMIC_REMOVE_FAILURE
 
       Push ""
       Call un.restoreFiles
       Pop $R0
-      !insertmacro AIONUI_LOG_EVENT "remove-restore result=$R0"
+      !insertmacro POUNDING_LOG_EVENT "remove-restore result=$R0"
     ${endif}
   ${endif}
 
@@ -248,10 +248,10 @@
   ClearErrors
   RMDir /r "$INSTDIR"
   ${if} ${Errors}
-    !insertmacro AIONUI_LOG_EVENT "remove-rmdir errors=1 instDir=$INSTDIR"
+    !insertmacro POUNDING_LOG_EVENT "remove-rmdir errors=1 instDir=$INSTDIR"
     ClearErrors
   ${else}
-    !insertmacro AIONUI_LOG_EVENT "remove-rmdir errors=0 instDir=$INSTDIR"
+    !insertmacro POUNDING_LOG_EVENT "remove-rmdir errors=0 instDir=$INSTDIR"
   ${endif}
 !macroend
 !endif

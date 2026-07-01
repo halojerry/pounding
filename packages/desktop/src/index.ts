@@ -6,7 +6,7 @@
 
 // configureChromium sets app name (dev isolation) and Chromium flags — must run before
 // ANY module that calls app.getPath('userData'), because Electron caches the path on first call.
-import './process/utils/configureChromium';
+import { showPortableStorageChoice } from './process/utils/configureChromium';
 import { installGpuCrashHandler } from './process/utils/gpuRecovery';
 import { captureBackendStartupFailure, initSentry, scheduleStartupLogReport, setSentryDeviceId } from './sentry';
 
@@ -17,6 +17,7 @@ import { app, BrowserWindow, ipcMain, nativeImage, powerMonitor } from 'electron
 import fixPath from 'fix-path';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 import { initMainAdapterWithWindow } from './common/adapter/main';
 import { ipcBridge } from './common';
 import { initializeProcess } from './process';
@@ -136,6 +137,67 @@ if (process.platform === 'darwin' || process.platform === 'linux') {
     } catch {
       // Ignore errors when reading nvm directory
     }
+  }
+}
+
+// All platforms: supplement bundled runtimes into PATH so CLI tools
+// and MCP servers can find node, npx, python, uv, and bun out-of-box.
+{
+  const pathParts: string[] = [];
+
+  // 1. Bundled runtimes from managed-resources (highest priority)
+  const platformKey = `${process.platform}-${process.arch}`;
+  const bundledDir = path.join(process.resourcesPath, 'bundled-poundingcore', platformKey, 'managed-resources');
+  if (fs.existsSync(bundledDir)) {
+    // Bundled Node.js (node + npx)
+    const nodeDir = path.join(bundledDir, 'node');
+    if (fs.existsSync(nodeDir)) {
+      // Node layout: Unix = bin/node, Windows = node.exe at root
+      const nodeBin = process.platform === 'win32' ? nodeDir : path.join(nodeDir, 'bin');
+      if (fs.existsSync(nodeBin)) pathParts.push(nodeBin);
+      else if (fs.existsSync(nodeDir)) pathParts.push(nodeDir);
+    }
+    // Bundled runtimes (python, uv)
+    const runtimesDir = path.join(bundledDir, 'runtimes');
+    if (fs.existsSync(runtimesDir)) {
+      for (const name of ['python', 'uv']) {
+        const d = path.join(runtimesDir, name);
+        if (fs.existsSync(d)) {
+          const sub = process.platform === 'win32' ? d : path.join(d, 'bin');
+          pathParts.push(fs.existsSync(sub) ? sub : d);
+        }
+      }
+    }
+  }
+
+  // 2. Bun bin directory (where CLI binaries are installed)
+  const bunBin = path.join(os.homedir(), '.bun', 'bin');
+  if (fs.existsSync(bunBin)) pathParts.push(bunBin);
+
+  // 3. Platform-specific system paths (fallback)
+  if (process.platform === 'win32') {
+    const appData = process.env.APPDATA;
+    if (appData) {
+      const npmGlobal = path.join(appData, 'npm');
+      if (fs.existsSync(npmGlobal)) pathParts.push(npmGlobal);
+    }
+    const nvmHome = process.env.NVM_HOME;
+    if (nvmHome && fs.existsSync(nvmHome)) pathParts.push(nvmHome);
+    const nvmSymlink = process.env.NVM_SYMLINK;
+    if (nvmSymlink && fs.existsSync(nvmSymlink)) pathParts.push(nvmSymlink);
+    const localAppData = process.env.LOCALAPPDATA;
+    if (localAppData) {
+      const voltaBin = path.join(localAppData, 'Volta', 'bin');
+      if (fs.existsSync(voltaBin)) pathParts.push(voltaBin);
+    }
+  }
+
+  // Merge: bundled first, then existing PATH
+  const existingPath = process.env.PATH || '';
+  const missing = pathParts.filter((p) => !existingPath.includes(p));
+  if (missing.length > 0) {
+    process.env.PATH = [...missing, existingPath].join(path.delimiter);
+    console.log('[POUNDING] PATH supplemented:', missing.join(', '));
   }
 }
 
@@ -417,20 +479,48 @@ const createWindow = ({ showOnReady = true }: { showOnReady?: boolean } = {}): v
   const disableAutoUpdater =
     process.env.POUNDING_DISABLE_AUTO_UPDATE === '1' || process.env.POUNDING_E2E_TEST === '1' || isCiRuntime;
   if (!disableAutoUpdater) {
-    Promise.all([import('./process/services/autoUpdaterService'), import('./process/bridge/updateBridge')])
-      .then(([{ autoUpdaterService }, { createAutoUpdateStatusBroadcast }]) => {
-        // Create status broadcast callback that emits via ipcBridge (pure emitter, no window binding)
-        const statusBroadcast = createAutoUpdateStatusBroadcast();
-        autoUpdaterService.initialize(statusBroadcast);
-        autoUpdaterService.setBeforeQuitAndInstall(async () => {
-          await backendManager.stop();
-        });
-        // Check for updates after 3 seconds delay
-        // 3秒后检查更新
-        setTimeout(() => {
-          void autoUpdaterService.checkForUpdatesAndNotify();
-        }, 3000);
-      })
+    Promise.all([
+      import('./process/services/portableUpdater'),
+      import('./process/services/autoUpdaterService'),
+      import('./process/bridge/updateBridge'),
+    ])
+      .then(
+        ([
+          { isPortable, fetchPortableUpdate, performPortableUpdate },
+          { autoUpdaterService },
+          { createAutoUpdateStatusBroadcast },
+        ]) => {
+          if (isPortable()) {
+            // Portable (USB) mode: download zip from COS, extract in-place, restart
+            console.log('[POUNDING] Portable mode — checking for zip updates via COS...');
+            setTimeout(() => {
+              fetchPortableUpdate()
+                .then((info) => {
+                  if (info) {
+                    console.log(`[POUNDING] Portable update available: v${info.version}`);
+                    void performPortableUpdate(info);
+                  }
+                })
+                .catch((err) => {
+                  console.warn('[POUNDING] Portable update check failed:', err.message || err);
+                });
+            }, 5000);
+            return;
+          }
+
+          // Installed mode: use electron-updater (NSIS/DMG)
+          const statusBroadcast = createAutoUpdateStatusBroadcast();
+          autoUpdaterService.initialize(statusBroadcast);
+          autoUpdaterService.setBeforeQuitAndInstall(async () => {
+            await backendManager.stop();
+          });
+          // Check for updates after 3 seconds delay
+          // 3秒后检查更新
+          setTimeout(() => {
+            void autoUpdaterService.checkForUpdatesAndNotify();
+          }, 3000);
+        }
+      )
       .catch((error) => {
         console.error('[App] Failed to initialize autoUpdaterService:', error);
       });
@@ -762,6 +852,10 @@ const handleAppReady = async (): Promise<void> => {
     createWindow({ showOnReady: showMainWindowOnReady });
     appReadyDone = true;
     mark('createWindow');
+
+    // Show portable storage choice dialog on first USB launch.
+    // Self-guarding: returns immediately if no pending choice exists.
+    void showPortableStorageChoice();
 
     // Initialize desktop pet (delayed to not block main window)
     setTimeout(() => {

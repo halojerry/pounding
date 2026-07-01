@@ -44,10 +44,13 @@ export function applyTheme(theme: Theme, root: Document = document): void {
 }
 
 /** Resolve `activeId` locally, apply, persist, and publish to main for cross-window broadcast. */
-export async function setActiveTheme(activeId: string): Promise<void> {
+export async function setActiveTheme(activeId: string): Promise<Theme> {
   const userThemes = (configService.get('theme.userThemes') as Theme[] | undefined) ?? [];
   const resolved = resolveActiveTheme(activeId, [...BUILTIN_THEMES, ...userThemes], getSystemPrefersDark());
   applyTheme(resolved);
-  await configService.set('theme.activeId', activeId);
-  await ipcBridge.theme.setActive.invoke(resolved);
+  // Persist and broadcast asynchronously — do NOT block the caller.
+  // Returns the resolved theme immediately so React state can update.
+  void configService.set('theme.activeId', activeId);
+  void ipcBridge.theme.setActive.invoke(resolved).catch(() => {});
+  return resolved;
 }

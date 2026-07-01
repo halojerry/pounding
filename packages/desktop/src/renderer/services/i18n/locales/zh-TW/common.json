@@ -98,5 +98,6 @@
   "import": "匯入",
   "processing": "處理中...",
   "optional": "（選填）",
-  "clear": "清除"
+  "clear": "清除",
+  "cli.prepOffice": "POUNDING 正在為您準備辦公室"
 }

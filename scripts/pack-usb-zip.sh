@@ -1,31 +1,46 @@
 #!/usr/bin/env bash
 # scripts/pack-usb-zip.sh
 #
-# Create a dealer-kit.zip with PORTABLE + dealer-config.json template.
-# Dealers download the platform zip + dealer-kit.zip, extract both to a USB drive.
+# Inject PORTABLE + dealer-config.json into an existing platform zip.
+# The platform zip is produced by electron-builder (zip target in electron-builder.yml).
 #
 # Usage:
-#   bash scripts/pack-usb-zip.sh [OUT_DIR]
+#   bash scripts/pack-usb-zip.sh <PLATFORM_ZIP> <AFF_CODE>
+#
+# Example:
+#   bash scripts/pack-usb-zip.sh out/POUNDING-2.1.5-win-x64.zip MY_AFF_CODE
+#
+# If AFF_CODE is "YOUR_AFF_CODE" (the template placeholder), the script
+# still writes it — dealers can replace the file in the zip manually.
 
 set -euo pipefail
 
-OUT_DIR="$(cd "${1:-out}" && pwd)"
+PLATFORM_ZIP="$1"
+AFF_CODE="${2:-}"
+
+if [ ! -f "$PLATFORM_ZIP" ]; then
+  echo "ERROR: Platform zip not found: $PLATFORM_ZIP" >&2
+  echo "Usage: bash scripts/pack-usb-zip.sh <PLATFORM_ZIP> [AFF_CODE]" >&2
+  exit 1
+fi
+
+ZIP_DIR="$(dirname "$PLATFORM_ZIP")"
+ZIP_NAME="$(basename "$PLATFORM_ZIP")"
 TEMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TEMP_DIR"' EXIT
 
-DEALER_CONFIG='{"aff": "YOUR_AFF_CODE"}'
+# Create dealer files in temp dir
+echo '{"aff": "'"${AFF_CODE}"'"}' > "$TEMP_DIR/dealer-config.json"
+touch "$TEMP_DIR/PORTABLE"
 
-WORKDIR="$TEMP_DIR/dealer-kit"
-mkdir -p "$WORKDIR"
-echo "$DEALER_CONFIG" > "$WORKDIR/dealer-config.json"
-touch "$WORKDIR/PORTABLE"
+echo "==> Injecting PORTABLE + dealer-config.json (aff=${AFF_CODE}) into ${ZIP_NAME}"
 
-# Cross-platform zip: use 7z on Windows, native zip elsewhere
+# Add files to the existing zip (modifies in-place)
 if command -v 7z &>/dev/null; then
-  (cd "$WORKDIR" && 7z a "$OUT_DIR/dealer-kit.zip" . -tzip -mx=5 -bso0 -bsp0 > /dev/null)
+  (cd "$TEMP_DIR" && 7z a "$PLATFORM_ZIP" PORTABLE dealer-config.json -tzip -mx=5 -bso0 -bsp0 > /dev/null)
 else
-  (cd "$WORKDIR" && zip -qr "$OUT_DIR/dealer-kit.zip" .)
+  (cd "$TEMP_DIR" && zip -qr "$PLATFORM_ZIP" PORTABLE dealer-config.json)
 fi
 
-echo "==> Created dealer-kit.zip"
-ls -lh "$OUT_DIR/dealer-kit.zip"
+echo "==> Done: ${ZIP_NAME}"
+ls -lh "$PLATFORM_ZIP"

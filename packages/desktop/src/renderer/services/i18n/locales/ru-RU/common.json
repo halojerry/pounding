@@ -98,5 +98,6 @@
   "optional": "(необязательно)",
   "clear": "Очистить",
   "historyBack": "Назад",
-  "agentMode": "Режим агента"
+  "agentMode": "Режим агента",
+  "cli.prepOffice": "POUNDING готовит ваш офис"
 }

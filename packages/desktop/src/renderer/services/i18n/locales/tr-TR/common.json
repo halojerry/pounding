@@ -98,5 +98,6 @@
   "import": "İçe Aktar",
   "processing": "İşleniyor...",
   "optional": "(isteğe bağlı)",
-  "clear": "Temizle"
+  "clear": "Temizle",
+  "cli.prepOffice": "POUNDING ofisinizi hazırlıyor"
 }

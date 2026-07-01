@@ -105,6 +105,7 @@
   "processing": "Processando...",
   "optional": "(opcional)",
   "clear": "Limpar",
+  "cli.prepOffice": "POUNDING está preparando seu escritório",
   "unit": {
     "minute_short": "m",
     "second_short": "s"

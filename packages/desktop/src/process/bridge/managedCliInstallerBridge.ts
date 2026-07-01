@@ -19,6 +19,16 @@ import os from 'node:os';
 import path from 'node:path';
 import { getEnvAwareName } from '@/common/config/appEnv';
 
+// ── POUNDING managed CLI directory ────────────────────────────────────
+// CLI tools installed by POUNDING live under the data directory, not in
+// the user's global ~/.bun or ~/.local — self-contained, portable-safe,
+// and never conflicts with tools the user already has.
+
+function getCliBinDir(): string {
+  const baseName = getEnvAwareName('.pounding');
+  return path.join(os.homedir(), baseName, 'cli', 'bin');
+}
+
 type ExecCommandOptions = {
   env?: NodeJS.ProcessEnv;
   cwd?: string;
@@ -352,6 +362,29 @@ function materializeFromBundled(descriptor: ManagedCliDescriptor, bundledDir: st
     throw new Error(`Bundle entrypoint not found: ${entrypointAbs}`);
   }
 
+  const kind: string = manifest.kind || 'node'; // default 'node' for backward compat
+
+  if (kind === 'native') {
+    // ── Native binary (e.g. Claude, Codex) ──────────────────────────
+    // Write a direct-exec shim — no Node.js wrapper needed.
+    const shimPath = descriptor.detectPaths?.[0];
+    if (shimPath) {
+      ensureDir(path.dirname(shimPath));
+      if (!fs.existsSync(shimPath)) {
+        if (process.platform === 'win32') {
+          const shim = `@echo off\r\n"${entrypointAbs}" %*\r\n`;
+          fs.writeFileSync(shimPath, shim, { encoding: 'utf8' });
+        } else {
+          const shim = `#!/usr/bin/env bash\nexec ${JSON.stringify(entrypointAbs)} "$@"\n`;
+          fs.writeFileSync(shimPath, shim, { encoding: 'utf8', mode: 0o755 });
+        }
+      }
+    }
+    return;
+  }
+
+  // ── Node.js package (existing path) ──────────────────────────────
+
   // 1. Copy node_modules from bundle to global bun directory so the
   //    CLI can resolve its dependencies at runtime.
   const bundledNodeModules = path.join(bundledDir, 'node_modules');
@@ -378,20 +411,21 @@ function materializeFromBundled(descriptor: ManagedCliDescriptor, bundledDir: st
     }
   }
 
-  // 2. Write a shim at each detectPath that execs the entrypoint via node.
-  for (const detectPath of descriptor.detectPaths ?? []) {
-    ensureDir(path.dirname(detectPath));
-    if (fs.existsSync(detectPath)) {
-      // Don't overwrite a CLI that was already installed by the user.
-      continue;
-    }
-    const nodeCmd = resolveNodeForShim();
-    if (process.platform === 'win32') {
-      const shim = `@echo off\r\n"${nodeCmd}" "${entrypointAbs}" %*\r\n`;
-      fs.writeFileSync(detectPath, shim, { encoding: 'utf8' });
-    } else {
-      const shim = `#!/usr/bin/env bash\nexec ${JSON.stringify(nodeCmd)} ${JSON.stringify(entrypointAbs)} "$@"\n`;
-      fs.writeFileSync(detectPath, shim, { encoding: 'utf8', mode: 0o755 });
+  // 2. Write a shim in POUNDING's managed CLI bin directory.
+  //    The first detectPath is always the POUNDING-managed path;
+  //    we only install there, never polluting the user's global bins.
+  const shimPath = descriptor.detectPaths?.[0];
+  if (shimPath) {
+    ensureDir(path.dirname(shimPath));
+    if (!fs.existsSync(shimPath)) {
+      const nodeCmd = resolveNodeForShim();
+      if (process.platform === 'win32') {
+        const shim = `@echo off\r\n"${nodeCmd}" "${entrypointAbs}" %*\r\n`;
+        fs.writeFileSync(shimPath, shim, { encoding: 'utf8' });
+      } else {
+        const shim = `#!/usr/bin/env bash\nexec ${JSON.stringify(nodeCmd)} ${JSON.stringify(entrypointAbs)} "$@"\n`;
+        fs.writeFileSync(shimPath, shim, { encoding: 'utf8', mode: 0o755 });
+      }
     }
   }
 }
@@ -656,8 +690,8 @@ export async function preinstallHermesFromBundle(bundledResourcesDir: string): P
   if (!fs.existsSync(hermesWheelDir)) return false;
   const wheelFiles = fs.readdirSync(hermesWheelDir).filter((f) => f.endsWith('.whl'));
   if (wheelFiles.length === 0) return false;
-  const wheelPath = path.join(hermesWheelDir, wheelFiles[0]);
 
+  // Require vendored Python to create the venv.
   if (!fs.existsSync(pythonDir)) return false;
   const pythonBinDir = path.join(pythonDir, 'python', 'bin');
   const pythonBinary = path.join(pythonBinDir, process.platform === 'win32' ? 'python3.exe' : 'python3');
@@ -672,10 +706,27 @@ export async function preinstallHermesFromBundle(bundledResourcesDir: string): P
       process.platform === 'win32' ? 'Scripts' : 'bin',
       process.platform === 'win32' ? 'python.exe' : 'python'
     );
-    await runCommand(uvCmd, ['pip', 'install', '--python', venvPython, wheelPath]);
-    // Hermes ACP mode requires agent-client-protocol (the [acp] extra).
-    // Local wheels do not resolve extras metadata, so install explicitly.
-    await runCommand(uvCmd, ['pip', 'install', '--python', venvPython, 'agent-client-protocol']);
+
+    if (wheelFiles.length === 1) {
+      // Legacy: single wheel (old vendor format). Install it, then
+      // explicitly add agent-client-protocol for the [acp] extra.
+      const wheelPath = path.join(hermesWheelDir, wheelFiles[0]);
+      await runCommand(uvCmd, ['pip', 'install', '--python', venvPython, wheelPath]);
+      await runCommand(uvCmd, ['pip', 'install', '--python', venvPython, 'agent-client-protocol']);
+    } else {
+      // Multi-wheel vendor bundle (pip download). Install everything from
+      // the local directory — no network at all.
+      await runCommand(uvCmd, [
+        'pip',
+        'install',
+        '--python',
+        venvPython,
+        '--no-index',
+        '--find-links',
+        hermesWheelDir,
+        'hermes-agent[acp]',
+      ]);
+    }
 
     writeHermesShim();
     console.log('[POUNDING] Hermes installed from bundled resources');
@@ -735,8 +786,8 @@ const DESCRIPTORS: Record<ManagedCliInstallTarget, ManagedCliDescriptor> = {
     target: 'claude',
     detectCommand: 'claude',
     detectPaths: [
-      path.join(BUN_BIN_DIR, process.platform === 'win32' ? 'claude.cmd' : 'claude'),
       path.join(HERMES_BIN_DIR, process.platform === 'win32' ? 'claude.cmd' : 'claude'),
+      path.join(BUN_BIN_DIR, process.platform === 'win32' ? 'claude.cmd' : 'claude'),
     ],
     install: async () => {
       const command = await getGlobalJsCommand();
@@ -754,6 +805,7 @@ const DESCRIPTORS: Record<ManagedCliInstallTarget, ManagedCliDescriptor> = {
     target: 'codex',
     detectCommand: 'codex',
     detectPaths: [
+      path.join(HERMES_BIN_DIR, process.platform === 'win32' ? 'codex.cmd' : 'codex'),
       path.join(
         process.env.HOME || os.homedir(),
         '.codex',
@@ -785,14 +837,21 @@ const DESCRIPTORS: Record<ManagedCliInstallTarget, ManagedCliDescriptor> = {
   opencode: {
     target: 'opencode',
     detectCommand: 'opencode',
-    detectPaths: [getOpencodeBinaryTargetPath(), getOpencodePlatformBinaryPath()],
+    detectPaths: [
+      path.join(HERMES_BIN_DIR, process.platform === 'win32' ? 'opencode.cmd' : 'opencode'),
+      getOpencodeBinaryTargetPath(),
+      getOpencodePlatformBinaryPath(),
+    ],
     install: installOpenCode,
     uninstall: uninstallOpenCode,
   },
   openclaw: {
     target: 'openclaw',
     detectCommand: 'openclaw',
-    detectPaths: [path.join(BUN_BIN_DIR, process.platform === 'win32' ? 'openclaw.cmd' : 'openclaw')],
+    detectPaths: [
+      path.join(HERMES_BIN_DIR, process.platform === 'win32' ? 'openclaw.cmd' : 'openclaw'),
+      path.join(BUN_BIN_DIR, process.platform === 'win32' ? 'openclaw.cmd' : 'openclaw'),
+    ],
     install: async () => {
       const command = await getGlobalJsCommand();
       if (command === getNpmCommand()) {
@@ -859,6 +918,26 @@ async function installManagedCli(input: ManagedCliInstallOptions): Promise<Manag
         status: installed ? 'installed' : 'failed',
         message: installed ? undefined : `${descriptor.detectCommand} still not available`,
       };
+    }
+
+    // Hermes uses a different bundle layout (Python wheels in runtimes/,
+    // not a Node.js package in cli/). Try preinstallHermesFromBundle.
+    if (descriptor.target === 'hermes') {
+      const bundledResourcesDir = resolveBundledResourcesDir();
+      if (bundledResourcesDir) {
+        console.log(`[POUNDING] Installing hermes from bundled Python wheels...`);
+        const ok = await preinstallHermesFromBundle(bundledResourcesDir);
+        if (ok) {
+          writeHermesShim();
+          await syncAfterInstall(descriptor.target);
+          const installed = await isManagedCliInstalled(descriptor);
+          return {
+            success: installed,
+            status: installed ? 'installed' : 'failed',
+            message: installed ? undefined : 'hermes still not available after bundle install',
+          };
+        }
+      }
     }
 
     // Fallback: network install

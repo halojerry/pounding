@@ -99,6 +99,7 @@
   "processing": "Processing...",
   "optional": "(optional)",
   "clear": "Clear",
+  "cli.prepOffice": "POUNDING is preparing your office",
   "unit": {
     "minute_short": "m",
     "second_short": "s"

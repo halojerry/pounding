@@ -88,7 +88,11 @@ const useTheme = (): [Theme | null, (activeId: string) => Promise<void>, string 
   }, []);
 
   const select = useCallback(async (activeId: string) => {
-    await setActiveTheme(activeId);
+    const resolved = await setActiveTheme(activeId);
+    // Update React state immediately. setActiveTheme returns immediately after
+    // applyTheme() — the IPC broadcast is fire-and-forget so the sender window
+    // no longer relies on the BroadcastChannel round-trip.
+    setActive(resolved);
     setActiveId(activeId);
   }, []);
 

@@ -98,5 +98,6 @@
   "import": "インポート",
   "processing": "処理中...",
   "optional": "（任意）",
-  "clear": "クリア"
+  "clear": "クリア",
+  "cli.prepOffice": "POUNDINGがオフィスを準備しています"
 }

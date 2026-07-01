@@ -139,6 +139,24 @@ function prepareManagedResources(binaryPath, targetDir) {
     copyDirectorySync(vendorCliRoot, bundleCliRoot);
   }
 
+  // Copy vendored runtimes (Python, uv) from vendor/managed-resources/runtimes/
+  const vendorRuntimesRoot = path.join(projectRoot, 'vendor', 'managed-resources', 'runtimes');
+  if (fs.existsSync(vendorRuntimesRoot)) {
+    const bundleRuntimesRoot = path.join(bundleOut, 'runtimes');
+    console.log(`  Bundling vendored runtimes from ${path.relative(process.cwd(), vendorRuntimesRoot)}`);
+    ensureDirectory(bundleRuntimesRoot);
+    copyDirectorySync(vendorRuntimesRoot, bundleRuntimesRoot);
+  }
+
+  // Copy vendored MCP servers (chrome-devtools-mcp) from vendor/managed-resources/mcp/
+  const vendorMcpRoot = path.join(projectRoot, 'vendor', 'managed-resources', 'mcp');
+  if (fs.existsSync(vendorMcpRoot)) {
+    const bundleMcpRoot = path.join(bundleOut, 'mcp');
+    console.log(`  Bundling vendored MCP servers from ${path.relative(process.cwd(), vendorMcpRoot)}`);
+    ensureDirectory(bundleMcpRoot);
+    copyDirectorySync(vendorMcpRoot, bundleMcpRoot);
+  }
+
   return bundleOut;
 }
 

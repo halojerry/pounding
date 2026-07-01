@@ -34,6 +34,11 @@ on:
         required: false
         default: true
         type: boolean
+      aff_code:
+        description: 'Dealer affiliate code — when set, injects dealer-config.json into platform zips for invite chain'
+        required: false
+        default: ''
+        type: string
 
 env:
   BUN_INSTALL_REGISTRY: 'https://registry.npmjs.org/'
@@ -100,6 +105,7 @@ jobs:
       )
     with:
       skip_code_quality: true
+      aff_code: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.aff_code || '' }}
       ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.ref || '' }}
       matrix: >-
         {"include":[
@@ -112,7 +118,6 @@ jobs:
 
   pack-web-cli:
     name: Pack Web CLI
-    if: false # Disabled to save CI time — re-enable when web CLI is needed
     uses: ./.github/workflows/pack-web-cli.yml
     needs: code-quality
     with:
@@ -392,30 +397,89 @@ jobs:
             release-assets/**/*.tar.gz
             release-assets/**/*.sha256
             release-assets/install-web.sh
-          generate_release_notes: true
+          body: |
+            **POUNDING Desktop App ${{ steps.version.outputs.tag_name }}**
+
+            See [install-web.sh](https://yss-1256275613.cos.ap-guangzhou.myqcloud.com/pounding/releases/download/${{ steps.version.outputs.tag_name }}/install-web.sh) for Web UI deployment.
           draft: ${{ steps.version.outputs.is_dev == 'true' }}
           prerelease: ${{ steps.version.outputs.is_dev == 'true' || contains(steps.version.outputs.tag_name, 'beta') || contains(steps.version.outputs.tag_name, 'alpha') || contains(steps.version.outputs.tag_name, 'rc') }}
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN != '' && secrets.GH_TOKEN || github.token }}
 
-      - name: Setup coscmd for COS upload
-        shell: bash
+      - name: Validate COS configuration
+        env:
+          TENCENT_COS_BUCKET: ${{ secrets.TENCENT_COS_BUCKET }}
+          TENCENT_COS_REGION: ${{ secrets.TENCENT_COS_REGION }}
+          TENCENT_COS_SECRET_ID: ${{ secrets.TENCENT_COS_SECRET_ID }}
+          TENCENT_COS_SECRET_KEY: ${{ secrets.TENCENT_COS_SECRET_KEY }}
         run: |
-          pip3 install coscmd
-          coscmd config -a "${{ secrets.TENCENT_COS_SECRET_ID }}" \
-                        -s "${{ secrets.TENCENT_COS_SECRET_KEY }}" \
-                        -b "${{ secrets.TENCENT_COS_BUCKET != '' && secrets.TENCENT_COS_BUCKET || vars.TENCENT_COS_BUCKET }}" \
-                        -r "${{ secrets.TENCENT_COS_REGION != '' && secrets.TENCENT_COS_REGION || vars.TENCENT_COS_REGION }}"
+          test -n "$TENCENT_COS_BUCKET" || { echo "::error::Missing repository secret TENCENT_COS_BUCKET"; exit 1; }
+          test -n "$TENCENT_COS_REGION" || { echo "::error::Missing repository secret TENCENT_COS_REGION"; exit 1; }
+          test -n "$TENCENT_COS_SECRET_ID" || { echo "::error::Missing repository secret TENCENT_COS_SECRET_ID"; exit 1; }
+          test -n "$TENCENT_COS_SECRET_KEY" || { echo "::error::Missing repository secret TENCENT_COS_SECRET_KEY"; exit 1; }
+
+      - name: Install COSCLI
+        run: |
+          curl -L --fail --retry 3 --retry-delay 2 \
+            -o coscli \
+            https://cosbrowser.cloud.tencent.com/software/coscli/coscli-linux-amd64
+          # NOTE: This checksum pins a specific coscli binary version from Tencent COS.
+          # Update if Tencent releases a new coscli version or the binary changes.
+          echo '7165f2ae16c5f7ac495864c963ca574a76e04ec72680d7bc8a8eee3234d8cf91  coscli' | sha256sum -c -
+          chmod 755 coscli
+          ./coscli --version
 
       - name: Mirror release assets to COS (versioned)
         timeout-minutes: 120
+        continue-on-error: true
         shell: bash
+        env:
+          COS_BUCKET: ${{ secrets.TENCENT_COS_BUCKET }}
+          COS_REGION: ${{ secrets.TENCENT_COS_REGION }}
+          COS_SECRET_ID: ${{ secrets.TENCENT_COS_SECRET_ID }}
+          COS_SECRET_KEY: ${{ secrets.TENCENT_COS_SECRET_KEY }}
         run: |
-          coscmd upload -r release-assets/ "pounding/releases/download/${{ steps.version.outputs.tag_name }}/"
+          set -euo pipefail
+
+          coscli_cmd() {
+            ./coscli "$@" \
+              -e "cos.${COS_REGION}.myqcloud.com" \
+              -i "$COS_SECRET_ID" \
+              -k "$COS_SECRET_KEY" \
+              --init-skip=true \
+              --disable-log=true
+          }
+
+          coscli_cmd cp -r release-assets/ "cos://${COS_BUCKET}/pounding/releases/download/${{ steps.version.outputs.tag_name }}/"
 
       - name: Mirror release assets to COS (latest)
         timeout-minutes: 120
+        continue-on-error: true
         shell: bash
+        env:
+          COS_BUCKET: ${{ secrets.TENCENT_COS_BUCKET }}
+          COS_REGION: ${{ secrets.TENCENT_COS_REGION }}
+          COS_SECRET_ID: ${{ secrets.TENCENT_COS_SECRET_ID }}
+          COS_SECRET_KEY: ${{ secrets.TENCENT_COS_SECRET_KEY }}
         run: |
-          coscmd delete -r -f "pounding/releases/latest/"
-          coscmd upload -r release-assets/ "pounding/releases/latest/"
+          set -euo pipefail
+
+          coscli_cmd() {
+            ./coscli "$@" \
+              -e "cos.${COS_REGION}.myqcloud.com" \
+              -i "$COS_SECRET_ID" \
+              -k "$COS_SECRET_KEY" \
+              --init-skip=true \
+              --disable-log=true
+          }
+
+          coscli_cmd rm -r -f "cos://${COS_BUCKET}/pounding/releases/latest/" || true
+          coscli_cmd cp -r release-assets/ "cos://${COS_BUCKET}/pounding/releases/latest/"
+
+          find release-assets -maxdepth 1 -type f \( -name '*.yml' -o -name '*.blockmap' \) | sort | while read -r file; do
+            name="$(basename "$file")"
+            coscli_cmd cp \
+              "$file" \
+              "cos://${COS_BUCKET}/pounding/releases/latest/${name}" \
+              --meta 'Cache-Control:no-cache,max-age=0'
+          done

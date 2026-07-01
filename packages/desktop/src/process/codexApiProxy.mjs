@@ -57,23 +57,98 @@ function responsesToChatCompletions(body) {
       } else if (item.role) {
         // Map 'developer' role to 'system' (POUNDING API compatibility)
         const role = item.role === 'developer' ? 'system' : item.role;
-        let content = item.content;
-        if (Array.isArray(content)) {
-          content = content.map((part) => ({
-            ...part,
-            type: part.type === 'input_text' ? 'text' : part.type,
-          }));
+
+        if (Array.isArray(item.content)) {
+          // Separate text from tool_use parts
+          const textParts = [];
+          const toolCalls = [];
+          for (const part of item.content) {
+            if (part.type === 'tool_use') {
+              // Responses API: {type:"tool_use", id, name, input}
+              // → Chat Completions: {id, type:"function", function:{name, arguments}}
+              toolCalls.push({
+                id: part.id,
+                type: 'function',
+                function: {
+                  name: part.name,
+                  arguments: typeof part.input === 'string' ? part.input : JSON.stringify(part.input || {}),
+                },
+              });
+            } else if (part.type === 'input_text') {
+              textParts.push(part.text || '');
+            } else if (part.type === 'text') {
+              textParts.push(part.text || '');
+            } else if (part.type === 'output_text') {
+              // Replayed assistant output in history — treat as text
+              textParts.push(part.text || '');
+            }
+          }
+
+          const msg = { role };
+          if (textParts.length > 0) {
+            msg.content = textParts.join('');
+          }
+          if (toolCalls.length > 0) {
+            msg.tool_calls = toolCalls;
+          }
+          // If neither text nor tool_calls, still include the message with empty content
+          if (!msg.content && !msg.tool_calls) {
+            msg.content = '';
+          }
+          messages.push(msg);
+        } else {
+          // Non-array content (plain string)
+          messages.push({ role, content: item.content ?? '' });
         }
-        messages.push({ role, content });
       } else if (item.content) {
         messages.push({ role: 'user', content: item.content });
       }
     }
   }
 
+  // Second pass: translate tool-role messages (Responses API → Chat Completions)
+  // Responses API: {role:"tool", content:[{type:"tool_result", tool_use_id, content}]}
+  // Chat Completions: {role:"tool", tool_call_id, content: string}
+  messages = messages.map((msg) => {
+    if (msg.role !== 'tool') return msg;
+    if (!Array.isArray(msg.content)) return msg;
+
+    const toolResults = [];
+    for (const part of msg.content) {
+      if (part.type === 'tool_result') {
+        toolResults.push({
+          role: 'tool',
+          tool_call_id: part.tool_use_id || part.tool_call_id,
+          content: typeof part.content === 'string' ? part.content : JSON.stringify(part.content || ''),
+        });
+      }
+    }
+    // A single tool message in Responses API may contain multiple tool_results;
+    // Chat Completions expects one message per tool result. Return the first
+    // one as-is (replacing the original message) and we'll handle multiples
+    // by flattening below.
+    if (toolResults.length === 1) return toolResults[0];
+    if (toolResults.length > 1) {
+      // Replace with first, return others via a marker
+      toolResults[0].__extraToolMessages = toolResults.slice(1);
+      return toolResults[0];
+    }
+    return msg;
+  });
+
+  // Flatten any extra tool messages
+  const flattened = [];
+  for (const msg of messages) {
+    flattened.push(msg);
+    if (msg.__extraToolMessages) {
+      flattened.push(...msg.__extraToolMessages);
+      delete msg.__extraToolMessages;
+    }
+  }
+
   const req = {
     model: body.model,
-    messages,
+    messages: flattened,
   };
 
   if (body.max_output_tokens) req.max_tokens = body.max_output_tokens;
@@ -100,6 +175,18 @@ function chatCompletionToResponse(ccResp, model) {
       role: 'assistant',
       content: [{ type: 'output_text', text: message.content }],
     });
+  }
+  // Translate tool_calls → function_call outputs
+  if (message.tool_calls && Array.isArray(message.tool_calls)) {
+    for (const tc of message.tool_calls) {
+      output.push({
+        id: tc.id,
+        type: 'function_call',
+        name: tc.function?.name || '',
+        arguments: tc.function?.arguments || '',
+        status: 'completed',
+      });
+    }
   }
   if (message.reasoning_content) {
     output.push({
@@ -312,9 +399,15 @@ async function handleRequest(req, res) {
       let fullContent = '';
       let fullReasoning = '';
       let usageInfo = null;
+      // Track tool calls by index for streaming translation:
+      // Chat Completions SSE → Responses API function_call events
+      const toolCallsByIndex = {};
+      let nextOutputIndex = 1; // 0 = the text message item
 
       try {
+        // SSE stream read — await-in-loop is the standard pattern for async iteration
         while (true) {
+          // oxlint-disable-next-line no-await-in-loop
           const { done, value } = await reader.read();
           if (done) break;
           buffer += decoder.decode(value, { stream: true });
@@ -339,15 +432,97 @@ async function handleRequest(req, res) {
                   })}\n\n`
                 );
               }
+              // Handle tool_calls in streaming delta
+              if (delta?.tool_calls) {
+                for (const tc of delta.tool_calls) {
+                  const idx = tc.index ?? 0;
+                  let entry = toolCallsByIndex[idx];
+                  // New tool call — first chunk carries id + function.name
+                  if (tc.id) {
+                    entry = {
+                      id: tc.id,
+                      name: tc.function?.name || '',
+                      arguments: '',
+                      outputIndex: nextOutputIndex++,
+                    };
+                    toolCallsByIndex[idx] = entry;
+                    // Emit output_item.added for this function_call
+                    res.write(
+                      `event: response.output_item.added\ndata: ${JSON.stringify({
+                        type: 'response.output_item.added',
+                        output_index: entry.outputIndex,
+                        item: {
+                          id: entry.id,
+                          type: 'function_call',
+                          name: entry.name,
+                          arguments: '',
+                          status: 'in_progress',
+                        },
+                      })}\n\n`
+                    );
+                  }
+                  if (!entry) continue;
+                  // Accumulate arguments
+                  if (tc.function?.arguments) {
+                    entry.arguments += tc.function.arguments;
+                    // Also update name if provided in follow-up chunks
+                    if (tc.function?.name) entry.name = tc.function.name;
+                    res.write(
+                      `event: response.function_call_arguments.delta\ndata: ${JSON.stringify({
+                        type: 'response.function_call_arguments.delta',
+                        item_id: entry.id,
+                        output_index: entry.outputIndex,
+                        delta: tc.function.arguments,
+                      })}\n\n`
+                    );
+                  }
+                }
+              }
               if (delta?.reasoning_content) fullReasoning += delta.reasoning_content;
               if (chunk.usage) usageInfo = chunk.usage;
-            } catch (e) {
-              /* skip malformed */
+            } catch {
+              /* skip malformed JSON in SSE stream */
             }
           }
         }
       } finally {
         reader.releaseLock();
+      }
+
+      // Emit terminal events for tool calls BEFORE the text message events.
+      // Responses API spec: function_call_arguments.done → output_item.done
+      // for each function_call, in output_index order.
+      const toolCallEntries = Object.values(toolCallsByIndex).toSorted((a, b) => a.outputIndex - b.outputIndex);
+      const functionCallOutputs = [];
+      for (const entry of toolCallEntries) {
+        res.write(
+          `event: response.function_call_arguments.done\ndata: ${JSON.stringify({
+            type: 'response.function_call_arguments.done',
+            item_id: entry.id,
+            output_index: entry.outputIndex,
+            arguments: entry.arguments,
+          })}\n\n`
+        );
+        res.write(
+          `event: response.output_item.done\ndata: ${JSON.stringify({
+            type: 'response.output_item.done',
+            output_index: entry.outputIndex,
+            item: {
+              id: entry.id,
+              type: 'function_call',
+              name: entry.name,
+              arguments: entry.arguments,
+              status: 'completed',
+            },
+          })}\n\n`
+        );
+        functionCallOutputs.push({
+          id: entry.id,
+          type: 'function_call',
+          name: entry.name,
+          arguments: entry.arguments,
+          status: 'completed',
+        });
       }
 
       // Emit terminal lifecycle events required by the Responses API spec.
@@ -394,6 +569,10 @@ async function handleRequest(req, res) {
           status: 'completed',
           content: [{ type: 'output_text', text: fullContent }],
         });
+      // Include function_call outputs from streaming tool calls
+      for (const fc of functionCallOutputs) {
+        output.push(fc);
+      }
       if (fullReasoning) output.push({ type: 'reasoning', summary: [{ type: 'summary_text', text: fullReasoning }] });
 
       res.write(

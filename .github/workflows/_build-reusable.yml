@@ -27,6 +27,10 @@ on:
         description: 'Optional poundingcore Manual Build workflow run id to bundle instead of the pinned release'
         type: string
         default: ''
+      aff_code:
+        description: 'Dealer affiliate code to inject into platform zip as dealer-config.json (enables invite chain binding)'
+        type: string
+        default: ''
 
 env:
   BUN_INSTALL_REGISTRY: 'https://registry.npmjs.org/'
@@ -310,6 +314,16 @@ jobs:
           MSVS_VERSION: 2022
           GYP_MSVS_VERSION: 2022
 
+      - name: Vendor managed runtimes (Python, uv, MCP, ACP, CLI tools)
+        id: vendor-runtimes
+        shell: bash
+        run: |
+          # Output to vendor/managed-resources/ — preparePoundingcore.js
+          # copies from there into the app bundle below.
+          mkdir -p vendor/managed-resources
+          bash scripts/prepare-vendor.sh vendor/managed-resources "${{ matrix.platform == 'macos-arm64' && 'darwin-arm64' || matrix.platform == 'macos-x64' && 'darwin-x64' || matrix.platform == 'windows-x64' && 'win32-x64' || matrix.platform == 'windows-arm64' && 'win32-arm64' }}"
+        continue-on-error: true # non-fatal: if npm/pip fails, CLIs can still be network-installed
+
       - name: Prepare packaged backend binary
         id: prepare-backend
         shell: bash
@@ -565,16 +579,26 @@ jobs:
       # Verify desktop asar does not contain packages/web-cli/ contamination
       # 验证桌面 asar 没有被 web-cli 代码污染
 
-      # Pack USB (dealer) zip for Windows and macOS — injects PORTABLE + dealer-config.json
-      # into the platform zip so dealers can distribute on USB drives.
-      # 打包经销商 U 盘版本 — 在平台 zip 中注入 PORTABLE + dealer-config.json
-      - name: Pack USB dealer zip
+      # Inject dealer invite code into the platform zip.
+      # When AFF_CODE is provided, adds PORTABLE marker + dealer-config.json
+      # to the platform zip root so dealers can distribute USB drives with
+      # invite chain pre-bound.
+      # 经销商邀请码注入 — 将 PORTABLE + dealer-config.json 注入平台 zip
+      - name: Inject dealer invite code
         if: >-
           success() &&
-          matrix.platform == 'windows-x64' &&
-          steps.windows-build.outputs.result == 'success'
+          inputs.aff_code != '' &&
+          (!startsWith(matrix.platform, 'windows') || steps.windows-build.outputs.result == 'success')
         shell: bash
-        run: bash scripts/pack-usb-zip.sh out
+        env:
+          AFF_CODE: ${{ inputs.aff_code }}
+        run: |
+          PLATFORM_ZIP=$(ls out/POUNDING-*-${{ matrix.platform == 'macos-arm64' && 'mac-arm64' || matrix.platform == 'macos-x64' && 'mac-x64' || matrix.platform }}.zip 2>/dev/null | head -1)
+          if [ -z "$PLATFORM_ZIP" ]; then
+            echo "::warning::No platform zip found for ${{ matrix.platform }}, skipping dealer inject"
+            exit 0
+          fi
+          bash scripts/pack-usb-zip.sh "$PLATFORM_ZIP" "$AFF_CODE"
       - name: Verify desktop asar isolation
         if: >-
           success() &&
@@ -629,7 +653,6 @@ jobs:
             out/*.deb
             out/POUNDING-*-win-*.zip
             out/POUNDING-*-mac-*.zip
-            out/dealer-kit.zip
             out/*.yml
           if-no-files-found: warn
           retention-days: 7

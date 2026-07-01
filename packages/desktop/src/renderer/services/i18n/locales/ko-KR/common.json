@@ -98,5 +98,6 @@
   "import": "가져오기",
   "processing": "처리 중...",
   "optional": "(선택 사항)",
-  "clear": "지우기"
+  "clear": "지우기",
+  "cli.prepOffice": "POUNDING이 사무실을 준비하고 있습니다"
 }

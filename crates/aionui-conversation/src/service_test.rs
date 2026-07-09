@@ -2664,6 +2664,15 @@ impl IMockAgent for MockAgent {
         })
     }
 
+    // POUNDING redirects both the dedicated `set_mode` endpoint and
+    // `set_config_option("mode", ...)` to `task.set_mode()`. The mock must
+    // model a mode-capable agent (like the real ACP task) rather than fall
+    // back to the erroring trait default, otherwise every mode switch fails.
+    async fn set_mode(&self, mode: &str) -> Result<(), AgentError> {
+        *self.mode.lock().unwrap() = mode.to_owned();
+        Ok(())
+    }
+
     async fn get_model(&self) -> Result<GetModelInfoResponse, AgentError> {
         let current = self.model_id.lock().unwrap().clone();
         Ok(Self::build_model_response(&current))
@@ -3806,9 +3815,13 @@ async fn set_config_option_evicts_task_when_acp_protocol_is_not_connected() {
     let err = svc
         .set_config_option(
             &conv.id,
-            "model",
+            // POUNDING redirects "model"/"mode" to dedicated CC-Switch
+            // endpoints. The NotConnected-driven task eviction lives only in
+            // the generic config-option path, so use a generic option id to
+            // exercise it.
+            "reasoning_effort",
             SetConfigOptionRequest {
-                value: "gpt-5".to_owned(),
+                value: "high".to_owned(),
             },
         )
         .await
@@ -4325,19 +4338,30 @@ async fn set_config_option_command_ack_does_not_persist_assistant_preference() {
 
     svc.set_config_option(
         &conv.id,
-        "model",
+        // POUNDING routes "model"/"mode" to dedicated CC-Switch endpoints that
+        // always return Observed, so they can never surface a CommandAck. Use a
+        // generic option id whose mock response is a CommandAck to prove the
+        // generic path skips persistence when the agent only acknowledges.
+        "reasoning_effort",
         SetConfigOptionRequest {
-            value: "ack-only-model".to_owned(),
+            value: "ack-only-thought".to_owned(),
         },
     )
     .await
     .unwrap();
 
     let pref = preference_repo.get("asstdef_acp_ack").await.unwrap().unwrap();
+    // CommandAck means the agent merely accepted the request, not that the value
+    // is in effect — the thought-level preference (the field this option maps to)
+    // must stay at the legacy value, and unrelated fields are untouched too.
+    assert_eq!(pref.last_thought_level_value.as_deref(), Some("legacy-ack-thought"));
     assert_eq!(pref.last_model_id.as_deref(), Some("legacy-ack-model"));
     assert_eq!(pref.last_permission_value.as_deref(), Some("legacy-ack-mode"));
     let snapshot = repo.get_assistant_snapshot(&conv.id).await.unwrap().unwrap();
-    assert_eq!(snapshot.resolved_model_id.as_deref(), Some("legacy-ack-model"));
+    assert_eq!(
+        snapshot.resolved_thought_level_value.as_deref(),
+        Some("legacy-ack-thought")
+    );
 }
 
 #[tokio::test]

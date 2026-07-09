@@ -3840,7 +3840,11 @@ async fn command_ack_does_not_persist_assistant_preference_in_core_service() {
     let result = svc
         .set_config_option(
             &conv.id,
-            "model",
+            // POUNDING routes "model"/"mode" to dedicated CC-Switch endpoints
+            // (set_model_confirmed/set_mode, always Observed). Use a generic
+            // option id so this exercises the upstream config-option path where
+            // the agent's CommandAck response flows through unchanged.
+            "thought_level",
             SetConfigOptionRequest {
                 value: "gpt-5.5".to_owned(),
             },

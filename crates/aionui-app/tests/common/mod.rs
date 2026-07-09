@@ -135,6 +135,7 @@ pub async fn build_app_with_mock_agents() -> (axum::Router, AppServices) {
         Box::pin(async move {
             Ok(AgentInstance::Mock(std::sync::Arc::new(NoopMockAgent {
                 conversation_id: opts.conversation_id().to_owned(),
+                model: std::sync::Mutex::new("mock-model".to_owned()),
             })))
         })
     });
@@ -150,6 +151,11 @@ pub async fn build_app_with_mock_agents() -> (axum::Router, AppServices) {
 
 struct NoopMockAgent {
     conversation_id: String,
+    /// Current value of the `model` config option. POUNDING routes
+    /// `set_config_option("model", …)` through `set_model_confirmed` and then
+    /// re-reads `get_config_options()` (see `service_ops.rs`), so this mock must
+    /// be stateful: a set must be observable by the subsequent get.
+    model: std::sync::Mutex<String>,
 }
 
 #[async_trait::async_trait]
@@ -188,7 +194,80 @@ impl IAgentTask for NoopMockAgent {
 }
 
 #[async_trait::async_trait]
-impl IMockAgent for NoopMockAgent {}
+impl IMockAgent for NoopMockAgent {
+    async fn get_model(&self) -> Result<aionui_api_types::GetModelInfoResponse, aionui_ai_agent::AgentError> {
+        let current = self.model.lock().unwrap().clone();
+        Ok(aionui_api_types::GetModelInfoResponse {
+            model_info: Some(aionui_api_types::ModelInfoPayload {
+                current_model_id: Some(current.clone()),
+                current_model_label: Some(current.clone()),
+                available_models: vec![aionui_api_types::ModelInfoEntry {
+                    id: current.clone(),
+                    label: current,
+                }],
+            }),
+        })
+    }
+
+    async fn set_model(&self, model_id: &str) -> Result<(), aionui_ai_agent::AgentError> {
+        *self.model.lock().unwrap() = model_id.to_owned();
+        Ok(())
+    }
+
+    // POUNDING keeps the dedicated `/config-options/model` route, which the
+    // service redirects to `set_model_confirmed`; the subsequent
+    // `get_config_options` must observe the new value. Mutate the shared model
+    // state so the read-back reflects the write.
+    async fn set_model_confirmed(
+        &self,
+        model_id: &str,
+    ) -> Result<aionui_api_types::GetModelInfoResponse, aionui_ai_agent::AgentError> {
+        self.set_model(model_id).await?;
+        self.get_model().await
+    }
+
+    async fn get_config_options(
+        &self,
+    ) -> Result<aionui_api_types::GetConfigOptionsResponse, aionui_ai_agent::AgentError> {
+        Ok(aionui_api_types::GetConfigOptionsResponse {
+            config_options: vec![model_config_option(&self.model.lock().unwrap())],
+        })
+    }
+
+    async fn set_config_option(
+        &self,
+        option_id: &str,
+        value: &str,
+    ) -> Result<aionui_api_types::SetConfigOptionResponse, aionui_ai_agent::AgentError> {
+        if option_id == "model" {
+            *self.model.lock().unwrap() = value.to_owned();
+        }
+        Ok(aionui_api_types::SetConfigOptionResponse {
+            confirmation: aionui_api_types::ConfigOptionConfirmation::Observed,
+            config_options: Some(vec![model_config_option(&self.model.lock().unwrap())]),
+        })
+    }
+}
+
+/// Build the single `model` config option DTO used by the mock agent, with the
+/// given value as both the current value and the sole selectable option.
+fn model_config_option(model: &str) -> aionui_api_types::AcpConfigOptionDto {
+    aionui_api_types::AcpConfigOptionDto {
+        id: "model".to_owned(),
+        name: Some("Model".to_owned()),
+        label: None,
+        description: None,
+        category: Some("model".to_owned()),
+        option_type: "select".to_owned(),
+        current_value: Some(model.to_owned()),
+        options: vec![aionui_api_types::AcpConfigSelectOptionDto {
+            value: model.to_owned(),
+            name: Some(model.to_owned()),
+            label: Some(model.to_owned()),
+            description: None,
+        }],
+    }
+}
 
 pub async fn body_json(resp: axum::response::Response) -> serde_json::Value {
     let bytes = resp.into_body().collect().await.unwrap().to_bytes();

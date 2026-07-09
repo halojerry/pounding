@@ -3891,7 +3891,8 @@ async fn set_model_updates_assistant_preference_only_when_snapshot_model_mode_is
         .await
         .unwrap();
 
-    let auto_conv = create_assistant_backed_conversation(&svc, "user_1", Some("acp"), "claude", "assistant-model-auto").await;
+    let auto_conv =
+        create_assistant_backed_conversation(&svc, "user_1", Some("acp"), "claude", "assistant-model-auto").await;
     task_mgr.insert_agent(
         &auto_conv.id,
         AgentInstance::Mock(Arc::new(MockAgent::new(&auto_conv.id))),
@@ -4012,7 +4013,8 @@ async fn set_mode_updates_assistant_preference_only_when_snapshot_permission_mod
         .await
         .unwrap();
 
-    let auto_conv = create_assistant_backed_conversation(&svc, "user_1", Some("acp"), "claude", "assistant-mode-auto").await;
+    let auto_conv =
+        create_assistant_backed_conversation(&svc, "user_1", Some("acp"), "claude", "assistant-mode-auto").await;
     task_mgr.insert_agent(
         &auto_conv.id,
         AgentInstance::Mock(Arc::new(MockAgent::new(&auto_conv.id))),

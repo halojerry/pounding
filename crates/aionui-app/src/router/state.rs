@@ -925,9 +925,7 @@ mod tests {
         Arc::new(WorkerTaskManagerImpl::new(factory))
     }
 
-    fn capturing_worker_task_manager(
-        captured_env: CapturedEnv,
-    ) -> Arc<dyn IWorkerTaskManager> {
+    fn capturing_worker_task_manager(captured_env: CapturedEnv) -> Arc<dyn IWorkerTaskManager> {
         let factory = Arc::new(move |opts: BuildTaskOptions| {
             let captured_env = captured_env.clone();
             Box::pin(async move {

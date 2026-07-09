@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use aionui_common::AgentKillReason;
+use aionui_common::{AgentKillReason, now_ms};
 use tracing::{debug, info};
 
 use crate::task_manager::IWorkerTaskManager;
@@ -18,7 +18,7 @@ const SCAN_INTERVAL_SECS: u64 = 60;
 /// Start the background idle agent scanner.
 ///
 /// Periodically scans active tasks and kills ACP agents that have been
-/// idle (finished + no activity) beyond the configured threshold.
+/// idle (finished or warmup-only + no activity) beyond the configured threshold.
 ///
 /// The scanner runs until the provided `shutdown` signal resolves.
 pub fn start_idle_scanner(
@@ -58,14 +58,16 @@ pub fn start_idle_scanner(
 
 /// Perform one scan: find idle tasks and kill them.
 fn scan_and_cleanup(manager: &Arc<dyn IWorkerTaskManager>, threshold_ms: i64) {
+    let started_at = now_ms();
     let idle_ids = manager.collect_idle(threshold_ms);
 
     if idle_ids.is_empty() {
-        debug!(active = manager.active_count(), "Idle scan: no idle agents found");
+        debug!(active_count = manager.active_count(), "Idle scan: no idle agents found");
         return;
     }
 
-    info!(count = idle_ids.len(), "Idle scan: cleaning up idle agents");
+    let count = idle_ids.len();
+    info!(count, "Idle scan: cleaning up idle agents");
 
     for id in idle_ids {
         let manager = Arc::clone(manager);
@@ -74,4 +76,10 @@ fn scan_and_cleanup(manager: &Arc<dyn IWorkerTaskManager>, threshold_ms: i64) {
             manager.kill_and_wait(&id, Some(AgentKillReason::IdleTimeout)).await;
         });
     }
+
+    info!(
+        count,
+        elapsed_ms = now_ms().saturating_sub(started_at),
+        "Idle scan: cleanup completed"
+    );
 }

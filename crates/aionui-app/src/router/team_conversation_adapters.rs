@@ -1,26 +1,25 @@
 use std::sync::Arc;
 
 use aionui_ai_agent::IWorkerTaskManager;
-use aionui_api_types::{CreateConversationRequest, WebSocketMessage};
+use aionui_api_types::{AssistantConversationRequest, CreateConversationRequest};
 use aionui_conversation::{
     ConversationAgentTurnRequest, ConversationAgentTurnStarted, ConversationAgentTurnStatus, ConversationError,
     ConversationService,
 };
 use aionui_db::IConversationRepository;
 use aionui_db::models::MessageRow;
-use aionui_realtime::EventBroadcaster;
 use aionui_team::{
     AgentTurnCancellationPort, AgentTurnExecutionError, AgentTurnExecutionPort, AgentTurnOutcome, AgentTurnRequest,
-    AgentTurnStarted, AgentTurnStatus, TeamConversationAdoptRequest, TeamConversationBindingLookup,
-    TeamConversationCreateRequest, TeamConversationLookupPort, TeamConversationProvisioningPort, TeamError,
+    AgentTurnStarted, AgentTurnStatus, TeamConversationBindingLookup, TeamConversationCreateRequest,
+    TeamConversationCreateResult, TeamConversationLookupPort, TeamConversationProvisioningPort, TeamError,
     TeamProjectionMessageStore,
 };
 use async_trait::async_trait;
+use tracing::info;
 
 pub struct TeamConversationAdapters {
     conversation_service: ConversationService,
     conversation_repo: Arc<dyn IConversationRepository>,
-    broadcaster: Arc<dyn EventBroadcaster>,
     task_manager: Arc<dyn IWorkerTaskManager>,
 }
 
@@ -28,13 +27,11 @@ impl TeamConversationAdapters {
     pub fn new(
         conversation_service: ConversationService,
         conversation_repo: Arc<dyn IConversationRepository>,
-        broadcaster: Arc<dyn EventBroadcaster>,
         task_manager: Arc<dyn IWorkerTaskManager>,
     ) -> Self {
         Self {
             conversation_service,
             conversation_repo,
-            broadcaster,
             task_manager,
         }
     }
@@ -73,18 +70,45 @@ impl AgentTurnExecutionPort for TeamConversationAdapters {
                 >
         });
 
-        let outcome = self
-            .conversation_service
-            .run_agent_turn(ConversationAgentTurnRequest {
-                user_id: request.user_id,
-                conversation_id: request.conversation_id,
-                content: request.content,
-                files: request.files,
-                inject_skills: Vec::new(),
-                on_started,
-            })
-            .await
-            .map_err(map_conversation_turn_error)?;
+        let conversation_id = request.conversation_id.clone();
+        let outcome = loop {
+            match self
+                .conversation_service
+                .run_agent_turn(ConversationAgentTurnRequest {
+                    user_id: request.user_id.clone(),
+                    conversation_id: conversation_id.clone(),
+                    content: request.content.clone(),
+                    files: request.files.clone(),
+                    inject_skills: Vec::new(),
+                    required_runtime_mode: None,
+                    persist_user_message: false,
+                    user_message_hidden: false,
+                    on_started: on_started.clone(),
+                })
+                .await
+            {
+                Ok(outcome) => break outcome,
+                Err(error) if is_retryable_conversation_busy(&error) => {
+                    info!(
+                        conversation_id = %conversation_id,
+                        team_run_id = ?request.team_run_id,
+                        slot_id = %request.slot_id,
+                        "team conversation turn waiting for active conversation turn to release"
+                    );
+                    self.conversation_service
+                        .runtime_state()
+                        .wait_until_unclaimed(&conversation_id)
+                        .await;
+                    info!(
+                        conversation_id = %conversation_id,
+                        team_run_id = ?request.team_run_id,
+                        slot_id = %request.slot_id,
+                        "team conversation turn retrying after active conversation turn released"
+                    );
+                }
+                Err(error) => return Err(map_conversation_turn_error(error)),
+            }
+        };
 
         Ok(AgentTurnOutcome {
             conversation_id: outcome.conversation_id,
@@ -142,7 +166,10 @@ impl TeamProjectionMessageStore for TeamConversationAdapters {
 
 #[async_trait]
 impl TeamConversationProvisioningPort for TeamConversationAdapters {
-    async fn create_team_conversation(&self, request: TeamConversationCreateRequest) -> Result<String, TeamError> {
+    async fn create_team_conversation(
+        &self,
+        request: TeamConversationCreateRequest,
+    ) -> Result<TeamConversationCreateResult, TeamError> {
         let response = self
             .conversation_service
             .create(
@@ -151,7 +178,11 @@ impl TeamConversationProvisioningPort for TeamConversationAdapters {
                     r#type: request.agent_type,
                     name: Some(request.name),
                     model: request.top_level_model,
-                    assistant: None,
+                    assistant: request.assistant_id.map(|assistant_id| AssistantConversationRequest {
+                        id: assistant_id,
+                        locale: None,
+                        conversation_overrides: None,
+                    }),
                     source: None,
                     channel_chat_id: None,
                     extra: request.extra,
@@ -159,22 +190,58 @@ impl TeamConversationProvisioningPort for TeamConversationAdapters {
             )
             .await
             .map_err(map_conversation_create_error)?;
-        Ok(response.id)
+        let workspace = response
+            .extra
+            .get("workspace")
+            .and_then(serde_json::Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+            .ok_or_else(|| TeamError::InvalidRequest("created team conversation did not resolve a workspace".into()))?
+            .to_owned();
+        Ok(TeamConversationCreateResult {
+            conversation_id: response.id,
+            workspace,
+        })
     }
 
-    async fn adopt_team_conversation(&self, request: TeamConversationAdoptRequest) -> Result<(), TeamError> {
+    async fn conversation_workspace(&self, conversation_id: &str) -> Result<Option<String>, TeamError> {
+        let Some(row) = self.conversation_repo.get(conversation_id).await? else {
+            return Ok(None);
+        };
+        let extra: serde_json::Value = serde_json::from_str(&row.extra).unwrap_or(serde_json::Value::Null);
+        Ok(extra
+            .get("workspace")
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_owned))
+    }
+
+    async fn conversation_assistant_id(&self, conversation_id: &str) -> Result<Option<String>, TeamError> {
+        if let Some(snapshot) = self.conversation_repo.get_assistant_snapshot(conversation_id).await? {
+            let assistant_id = snapshot.assistant_id.trim();
+            if !assistant_id.is_empty() {
+                return Ok(Some(assistant_id.to_owned()));
+            }
+        }
+
+        let Some(row) = self.conversation_repo.get(conversation_id).await? else {
+            return Ok(None);
+        };
+
+        let extra: serde_json::Value = serde_json::from_str(&row.extra).unwrap_or(serde_json::Value::Null);
+        Ok(extra
+            .get("assistant_id")
+            .or_else(|| extra.get("preset_assistant_id"))
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_owned))
+    }
+
+    async fn create_team_temp_workspace(&self, team_id: &str) -> Result<String, TeamError> {
         self.conversation_service
-            .update_extra(&request.conversation_id, request.extra)
-            .await
-            .map_err(map_conversation_update_error)?;
-        self.broadcaster.broadcast(WebSocketMessage::new(
-            "conversation.listChanged",
-            serde_json::json!({
-                "conversation_id": request.conversation_id,
-                "action": "updated",
-            }),
-        ));
-        Ok(())
+            .create_team_temp_workspace(team_id)
+            .map_err(map_conversation_update_error)
     }
 
     async fn patch_runtime_config(&self, conversation_id: &str, patch: serde_json::Value) -> Result<(), TeamError> {
@@ -241,6 +308,10 @@ impl TeamConversationLookupPort for TeamConversationAdapters {
                 .map(str::to_owned),
         }))
     }
+}
+
+fn is_retryable_conversation_busy(error: &ConversationError) -> bool {
+    matches!(error, ConversationError::Busy { reason } if reason.contains("already running"))
 }
 
 fn map_conversation_create_error(error: ConversationError) -> TeamError {

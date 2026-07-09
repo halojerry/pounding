@@ -447,9 +447,9 @@ async fn run_sdk_background(
             // Step 1 — initialize handshake. main_fn is the canonical place
             // to call `block_task` (see SDK `connect_with` doc example).
             let init_result = {
-                *phase_for_main.lock().unwrap() = AcpConnectionPhase::Initializing;
                 let req = build_initialize_request();
                 log_client_request("initialize", &json_str(&req));
+                *phase_for_main.lock().unwrap() = AcpConnectionPhase::Initializing;
                 let raw = connection.send_request(req).block_task().await;
                 log_agent_response("initialize", &json_or_err(&raw));
                 raw.map_err(|e| AcpError::from_sdk(e, "initialize"))
@@ -484,6 +484,7 @@ async fn run_sdk_background(
             if let Some(rx) = shutdown_rx.take() {
                 *phase_for_main.lock().unwrap() = AcpConnectionPhase::ShuttingDown;
                 let _ = rx.await;
+                *phase_for_main.lock().unwrap() = AcpConnectionPhase::ShuttingDown;
             }
             Ok(())
         })

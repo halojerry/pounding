@@ -1,5 +1,5 @@
 use aionui_common::TimestampMs;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::TeamMcpStdioConfig;
 
@@ -12,21 +12,56 @@ use crate::TeamMcpStdioConfig;
 /// Each agent gets its own conversation; the first agent in a create
 /// request becomes the team lead.
 ///
-/// When `conversation_id` is supplied the existing conversation is adopted
-/// rather than creating a new one (single-chat → team-chat handoff).
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct TeamAgentInput {
     pub name: String,
     pub role: String,
-    pub backend: String,
+    pub backend: Option<String>,
+    pub model: String,
+    pub assistant_id: Option<String>,
+    /// Deprecated request-side field retained so old clients receive a clear
+    /// validation error instead of silently reusing a solo conversation.
+    ///
+    /// New Team creation requests must omit this field or set it to null/empty.
+    pub conversation_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TeamAgentInputCompat {
+    #[serde(default)]
+    pub assistant_id: Option<String>,
+    pub name: String,
+    pub role: String,
     pub model: String,
     #[serde(default)]
-    pub custom_agent_id: Option<String>,
-    /// Adopt an existing conversation instead of creating a new one.
-    /// When present the conversation's `extra` is updated with `teamId`
-    /// and `backend`; no new conversation row is written.
-    #[serde(default)]
     pub conversation_id: Option<String>,
+}
+
+fn normalize_assistant_id(assistant_id: Option<String>) -> Option<String> {
+    assistant_id
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty())
+}
+
+impl<'de> Deserialize<'de> for TeamAgentInput {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let raw = TeamAgentInputCompat::deserialize(deserializer)?;
+        let assistant_id =
+            normalize_assistant_id(raw.assistant_id).ok_or_else(|| serde::de::Error::missing_field("assistant_id"))?;
+
+        Ok(Self {
+            name: raw.name,
+            role: raw.role,
+            backend: None,
+            model: raw.model,
+            assistant_id: Some(assistant_id),
+            conversation_id: raw.conversation_id,
+        })
+    }
 }
 
 /// Request body for `POST /api/teams`.
@@ -36,6 +71,7 @@ pub struct TeamAgentInput {
 #[derive(Debug, Deserialize)]
 pub struct CreateTeamRequest {
     pub name: String,
+    #[serde(alias = "assistants")]
     pub agents: Vec<TeamAgentInput>,
     #[serde(default)]
     pub workspace: Option<String>,
@@ -55,14 +91,60 @@ pub struct RenameTeamRequest {
 ///
 /// Adds a new agent to an existing team. A conversation is
 /// created automatically for the new agent.
-#[derive(Debug, Deserialize)]
+#[derive(Debug)]
 pub struct AddAgentRequest {
     pub name: String,
     pub role: String,
-    pub backend: String,
+    pub backend: Option<String>,
     pub model: String,
+    pub assistant_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AddAgentRequestCompat {
     #[serde(default)]
-    pub custom_agent_id: Option<String>,
+    assistant: Option<TeamAgentInput>,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    role: Option<String>,
+    #[serde(default)]
+    model: Option<String>,
+    #[serde(default)]
+    assistant_id: Option<String>,
+}
+
+impl<'de> Deserialize<'de> for AddAgentRequest {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let raw = AddAgentRequestCompat::deserialize(deserializer)?;
+        if let Some(assistant) = raw.assistant {
+            return Ok(Self {
+                name: assistant.name,
+                role: assistant.role,
+                backend: None,
+                model: assistant.model,
+                assistant_id: assistant.assistant_id,
+            });
+        }
+
+        let name = raw.name.ok_or_else(|| serde::de::Error::missing_field("name"))?;
+        let role = raw.role.ok_or_else(|| serde::de::Error::missing_field("role"))?;
+        let model = raw.model.ok_or_else(|| serde::de::Error::missing_field("model"))?;
+        let assistant_id =
+            normalize_assistant_id(raw.assistant_id).ok_or_else(|| serde::de::Error::missing_field("assistant_id"))?;
+
+        Ok(Self {
+            name,
+            role,
+            backend: None,
+            model,
+            assistant_id: Some(assistant_id),
+        })
+    }
 }
 
 /// Request body for `PATCH /api/teams/:id/agents/:slotId/name`.
@@ -201,6 +283,13 @@ pub enum TeamRunStatus {
     Failed,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TeamRunSource {
+    UserMessage,
+    RecoveryDrain,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct CancelTeamRunRequest {
     #[serde(default)]
@@ -215,27 +304,77 @@ pub struct CancelTeamChildTurnRequest {
     pub reason: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct PauseTeamSlotRequest {
+    #[serde(default)]
+    pub reason: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TeamRunAckResponse {
     pub team_run_id: String,
     pub team_id: String,
+    pub source: TeamRunSource,
+    pub has_user_intervention: bool,
     pub target_slot_id: String,
     pub target_role: TeamRunTargetRole,
+    pub accepted_slot_id: String,
+    pub accepted_role: TeamRunTargetRole,
     pub status: TeamRunStatus,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TeamSlotRuntimeHealth {
+    Disconnected,
+    Unhealthy,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TeamSlotWorkPayload {
+    pub slot_id: String,
+    pub role: TeamRunTargetRole,
+    pub pending_wake_count: usize,
+    pub starting_child_count: usize,
+    #[serde(default)]
+    pub paused: bool,
+    #[serde(default)]
+    pub suppressed_wake_count: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub active_turn_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub active_turn_started_at_ms: Option<TimestampMs>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub active_turn_elapsed_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub active_turn_slow: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub active_turn_slow_threshold_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime_health: Option<TeamSlotRuntimeHealth>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TeamRunPayload {
     pub team_id: String,
     pub team_run_id: String,
+    pub source: TeamRunSource,
+    pub has_user_intervention: bool,
     pub target_slot_id: String,
     pub target_role: TeamRunTargetRole,
     pub status: TeamRunStatus,
     pub active_child_count: usize,
     pub pending_wake_count: usize,
     pub starting_child_count: usize,
+    #[serde(default)]
+    pub slot_work: Vec<TeamSlotWorkPayload>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TeamRunStateResponse {
+    pub active_run: Option<TeamRunPayload>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -249,6 +388,57 @@ pub struct TeamChildTurnPayload {
     pub status: TeamRunStatus,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TeamSendMessageStatus {
+    Queued,
+    Rejected,
+    Error,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TeamSendMessageDelivery {
+    WakeRecorded,
+    WakeSuppressed,
+    NotRecorded,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TeamSendMessageReason {
+    QueuedForIdle,
+    BehindStartingTurn,
+    BehindActiveTurn,
+    SuppressedByPause,
+    NoActiveTeamRun,
+    TargetNotFound,
+    TargetDisconnected,
+    TargetUnhealthy,
+    InternalError,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TeamSendMessageTargetQueueState {
+    pub slot_id: String,
+    pub role: TeamRunTargetRole,
+    pub queue_state: TeamSendMessageReason,
+    pub pending_wake_count: usize,
+    pub starting_child_count: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub active_turn_id: Option<String>,
+    pub suppressed_wake_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TeamSendMessageQueuedResponse {
+    pub status: TeamSendMessageStatus,
+    pub delivery: TeamSendMessageDelivery,
+    pub reason: TeamSendMessageReason,
+    pub team_run_id: String,
+    pub targets: Vec<TeamSendMessageTargetQueueState>,
+}
+
 // ---------------------------------------------------------------------------
 // E. Team management — Response DTOs
 // ---------------------------------------------------------------------------
@@ -259,15 +449,23 @@ pub struct TeamChildTurnPayload {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct TeamAgentResponse {
     pub slot_id: String,
+    #[serde(default)]
+    pub assistant_name: String,
     pub name: String,
     pub role: String,
     pub conversation_id: String,
+    #[serde(default)]
+    pub assistant_backend: String,
     pub backend: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub icon: Option<String>,
     pub model: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub custom_agent_id: Option<String>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        alias = "custom_agent_id",
+        alias = "customAgentId"
+    )]
+    pub assistant_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
     #[serde(default)]
@@ -281,9 +479,12 @@ pub struct TeamAgentResponse {
 pub struct TeamResponse {
     pub id: String,
     pub name: String,
-    pub agents: Vec<TeamAgentResponse>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub lead_agent_id: Option<String>,
+    #[serde(default)]
+    pub workspace: String,
+    #[serde(alias = "agents")]
+    pub assistants: Vec<TeamAgentResponse>,
+    #[serde(skip_serializing_if = "Option::is_none", alias = "lead_agent_id")]
+    pub leader_assistant_id: Option<String>,
     pub created_at: TimestampMs,
     pub updated_at: TimestampMs,
 }
@@ -312,7 +513,8 @@ pub struct TeamAgentStatusPayload {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct TeamAgentSpawnedPayload {
     pub team_id: String,
-    pub agent: TeamAgentResponse,
+    #[serde(alias = "agent")]
+    pub assistant: TeamAgentResponse,
 }
 
 /// Payload for `team.agentRemoved` WebSocket event.
@@ -405,15 +607,14 @@ mod tests {
                 {
                     "name": "Lead",
                     "role": "lead",
-                    "backend": "acp",
                     "model": "claude",
-                    "custom_agent_id": "agent-x"
+                    "assistant_id": "assistant-x"
                 },
                 {
                     "name": "Worker",
                     "role": "teammate",
-                    "backend": "acp",
-                    "model": "claude"
+                    "model": "claude",
+                    "assistant_id": "assistant-y"
                 }
             ]
         });
@@ -422,11 +623,32 @@ mod tests {
         assert_eq!(req.agents.len(), 2);
         assert_eq!(req.agents[0].name, "Lead");
         assert_eq!(req.agents[0].role, "lead");
-        assert_eq!(req.agents[0].backend, "acp");
+        assert!(req.agents[0].backend.is_none());
         assert_eq!(req.agents[0].model, "claude");
-        assert_eq!(req.agents[0].custom_agent_id.as_deref(), Some("agent-x"));
+        assert_eq!(req.agents[0].assistant_id.as_deref(), Some("assistant-x"));
         assert_eq!(req.agents[1].name, "Worker");
-        assert!(req.agents[1].custom_agent_id.is_none());
+        assert_eq!(req.agents[1].assistant_id.as_deref(), Some("assistant-y"));
+    }
+
+    #[test]
+    fn deserialize_create_team_request_from_assistants_field() {
+        let raw = json!({
+            "name": "Team Alpha",
+            "assistants": [
+                {
+                    "name": "Lead",
+                    "role": "lead",
+                    "model": "claude",
+                    "assistant_id": "assistant-x"
+                }
+            ]
+        });
+        let req: CreateTeamRequest = serde_json::from_value(raw).unwrap();
+        assert_eq!(req.name, "Team Alpha");
+        assert_eq!(req.agents.len(), 1);
+        assert_eq!(req.agents[0].name, "Lead");
+        assert_eq!(req.agents[0].assistant_id.as_deref(), Some("assistant-x"));
+        assert!(req.agents[0].backend.is_none());
     }
 
     #[test]
@@ -434,8 +656,8 @@ mod tests {
         let raw = json!({
             "name": "Lead",
             "role": "lead",
-            "backend": "acp",
             "model": "claude",
+            "assistant_id": "assistant-x",
             "conversation_id": "existing-conv-123"
         });
         let input: TeamAgentInput = serde_json::from_value(raw).unwrap();
@@ -443,15 +665,66 @@ mod tests {
     }
 
     #[test]
+    fn deserialize_team_agent_input_rejects_legacy_custom_agent_id() {
+        let raw = json!({
+            "name": "Lead",
+            "role": "lead",
+            "backend": "acp",
+            "model": "claude",
+            "custom_agent_id": "assistant-legacy"
+        });
+        let result = serde_json::from_value::<TeamAgentInput>(raw);
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn deserialize_team_agent_input_conversation_id_defaults_to_none() {
+        let raw = json!({
+            "name": "Lead",
+            "role": "lead",
+            "model": "claude",
+            "assistant_id": "assistant-x"
+        });
+        let input: TeamAgentInput = serde_json::from_value(raw).unwrap();
+        assert!(input.conversation_id.is_none());
+    }
+
+    #[test]
+    fn deserialize_team_agent_input_allows_missing_backend_when_assistant_id_present() {
+        let raw = json!({
+            "name": "Lead",
+            "role": "lead",
+            "model": "claude",
+            "assistant_id": "assistant-x"
+        });
+        let input: TeamAgentInput = serde_json::from_value(raw).unwrap();
+        assert!(input.backend.is_none());
+        assert_eq!(input.assistant_id.as_deref(), Some("assistant-x"));
+    }
+
+    #[test]
+    fn deserialize_team_agent_input_rejects_backend_field() {
+        let raw = json!({
+            "name": "Lead",
+            "role": "lead",
+            "backend": "acp",
+            "model": "claude",
+            "assistant_id": "assistant-x"
+        });
+        let result = serde_json::from_value::<TeamAgentInput>(raw);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn deserialize_team_agent_input_requires_assistant_id() {
         let raw = json!({
             "name": "Lead",
             "role": "lead",
             "backend": "acp",
             "model": "claude"
         });
-        let input: TeamAgentInput = serde_json::from_value(raw).unwrap();
-        assert!(input.conversation_id.is_none());
+        let result = serde_json::from_value::<TeamAgentInput>(raw);
+        assert!(result.is_err());
     }
 
     #[test]
@@ -496,40 +769,99 @@ mod tests {
         let raw = json!({
             "name": "Helper",
             "role": "teammate",
-            "backend": "acp",
-            "model": "claude"
+            "model": "claude",
+            "assistant_id": "assistant-1"
         });
         let req: AddAgentRequest = serde_json::from_value(raw).unwrap();
         assert_eq!(req.name, "Helper");
         assert_eq!(req.role, "teammate");
-        assert_eq!(req.backend, "acp");
+        assert!(req.backend.is_none());
         assert_eq!(req.model, "claude");
-        assert!(req.custom_agent_id.is_none());
+        assert_eq!(req.assistant_id.as_deref(), Some("assistant-1"));
     }
 
     #[test]
-    fn deserialize_add_agent_request_with_custom_agent_id() {
+    fn deserialize_add_agent_request_rejects_custom_agent_id() {
         let raw = json!({
             "name": "Custom",
             "role": "teammate",
-            "backend": "acp",
             "model": "claude",
             "custom_agent_id": "custom-1"
         });
-        let req: AddAgentRequest = serde_json::from_value(raw).unwrap();
-        assert_eq!(req.custom_agent_id.as_deref(), Some("custom-1"));
-    }
-
-    #[test]
-    fn deserialize_add_agent_request_missing_name() {
-        let raw = json!({ "role": "teammate", "backend": "acp", "model": "claude" });
         let result = serde_json::from_value::<AddAgentRequest>(raw);
         assert!(result.is_err());
     }
 
     #[test]
-    fn deserialize_add_agent_request_missing_backend() {
+    fn deserialize_add_agent_request_with_assistant_id() {
+        let raw = json!({
+            "name": "Custom",
+            "role": "teammate",
+            "model": "claude",
+            "assistant_id": "assistant-1"
+        });
+        let req: AddAgentRequest = serde_json::from_value(raw).unwrap();
+        assert_eq!(req.assistant_id.as_deref(), Some("assistant-1"));
+    }
+
+    #[test]
+    fn deserialize_add_agent_request_from_assistant_field() {
+        let raw = json!({
+            "assistant": {
+                "name": "Helper",
+                "role": "teammate",
+                "model": "claude",
+                "assistant_id": "assistant-1"
+            }
+        });
+        let req: AddAgentRequest = serde_json::from_value(raw).unwrap();
+        assert_eq!(req.name, "Helper");
+        assert_eq!(req.role, "teammate");
+        assert_eq!(req.model, "claude");
+        assert_eq!(req.assistant_id.as_deref(), Some("assistant-1"));
+        assert!(req.backend.is_none());
+    }
+
+    #[test]
+    fn deserialize_add_agent_request_missing_name() {
+        let raw = json!({
+            "role": "teammate",
+            "model": "claude",
+            "assistant_id": "assistant-1"
+        });
+        let result = serde_json::from_value::<AddAgentRequest>(raw);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn deserialize_add_agent_request_requires_assistant_id() {
         let raw = json!({ "name": "X", "role": "teammate", "model": "claude" });
+        let result = serde_json::from_value::<AddAgentRequest>(raw);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn deserialize_add_agent_request_allows_missing_backend_when_assistant_id_present() {
+        let raw = json!({
+            "name": "X",
+            "role": "teammate",
+            "model": "claude",
+            "assistant_id": "assistant-1"
+        });
+        let req = serde_json::from_value::<AddAgentRequest>(raw).unwrap();
+        assert!(req.backend.is_none());
+        assert_eq!(req.assistant_id.as_deref(), Some("assistant-1"));
+    }
+
+    #[test]
+    fn deserialize_add_agent_request_rejects_backend_field() {
+        let raw = json!({
+            "name": "X",
+            "role": "teammate",
+            "backend": "acp",
+            "model": "claude",
+            "assistant_id": "assistant-1"
+        });
         let result = serde_json::from_value::<AddAgentRequest>(raw);
         assert!(result.is_err());
     }
@@ -584,25 +916,30 @@ mod tests {
     fn serialize_team_agent_response_snake_case() {
         let agent = TeamAgentResponse {
             slot_id: "slot-1".into(),
+            assistant_name: "Lead Agent".into(),
             name: "Lead Agent".into(),
             role: "lead".into(),
             conversation_id: "conv-1".into(),
+            assistant_backend: "acp".into(),
             backend: "acp".into(),
             icon: Some("/api/assets/logos/ai-major/claude.svg".into()),
             model: "claude".into(),
-            custom_agent_id: Some("agent-x".into()),
+            assistant_id: Some("assistant-x".into()),
             status: Some("idle".into()),
             pending_confirmations: 2,
         };
         let json = serde_json::to_value(&agent).unwrap();
         assert_eq!(json["slot_id"], "slot-1");
+        assert_eq!(json["assistant_name"], "Lead Agent");
         assert_eq!(json["name"], "Lead Agent");
         assert_eq!(json["role"], "lead");
         assert_eq!(json["conversation_id"], "conv-1");
+        assert_eq!(json["assistant_backend"], "acp");
         assert_eq!(json["backend"], "acp");
         assert_eq!(json["icon"], "/api/assets/logos/ai-major/claude.svg");
         assert_eq!(json["model"], "claude");
-        assert_eq!(json["custom_agent_id"], "agent-x");
+        assert_eq!(json["assistant_id"], "assistant-x");
+        assert!(json.get("custom_agent_id").is_none());
         assert_eq!(json["status"], "idle");
         assert_eq!(json["pending_confirmations"], 2);
     }
@@ -611,13 +948,15 @@ mod tests {
     fn serialize_team_agent_response_optional_fields_omitted() {
         let agent = TeamAgentResponse {
             slot_id: "slot-2".into(),
+            assistant_name: "Worker".into(),
             name: "Worker".into(),
             role: "teammate".into(),
             conversation_id: "conv-2".into(),
+            assistant_backend: "acp".into(),
             backend: "acp".into(),
             icon: None,
             model: "claude".into(),
-            custom_agent_id: None,
+            assistant_id: None,
             status: None,
             pending_confirmations: 0,
         };
@@ -632,30 +971,34 @@ mod tests {
         let team = TeamResponse {
             id: "team-1".into(),
             name: "Alpha".into(),
-            agents: vec![TeamAgentResponse {
+            workspace: "/workspace/team-1".into(),
+            assistants: vec![TeamAgentResponse {
                 slot_id: "slot-1".into(),
+                assistant_name: "Lead".into(),
                 name: "Lead".into(),
                 role: "lead".into(),
                 conversation_id: "conv-1".into(),
+                assistant_backend: "acp".into(),
                 backend: "acp".into(),
                 icon: Some("/api/assets/logos/ai-major/claude.svg".into()),
                 model: "claude".into(),
-                custom_agent_id: None,
+                assistant_id: Some("assistant-x".into()),
                 status: None,
                 pending_confirmations: 0,
             }],
-            lead_agent_id: Some("slot-1".into()),
+            leader_assistant_id: Some("slot-1".into()),
             created_at: 1700000000000,
             updated_at: 1700001000000,
         };
         let json = serde_json::to_value(&team).unwrap();
         assert_eq!(json["id"], "team-1");
         assert_eq!(json["name"], "Alpha");
-        assert_eq!(json["lead_agent_id"], "slot-1");
+        assert_eq!(json["workspace"], "/workspace/team-1");
+        assert_eq!(json["leader_assistant_id"], "slot-1");
         assert_eq!(json["created_at"], 1700000000000_i64);
         assert_eq!(json["updated_at"], 1700001000000_i64);
-        assert_eq!(json["agents"].as_array().unwrap().len(), 1);
-        assert_eq!(json["agents"][0]["slot_id"], "slot-1");
+        assert_eq!(json["assistants"].as_array().unwrap().len(), 1);
+        assert_eq!(json["assistants"][0]["slot_id"], "slot-1");
     }
 
     #[test]
@@ -663,14 +1006,15 @@ mod tests {
         let team = TeamResponse {
             id: "team-2".into(),
             name: "Beta".into(),
-            agents: vec![],
-            lead_agent_id: None,
+            workspace: String::new(),
+            assistants: vec![],
+            leader_assistant_id: None,
             created_at: 1700000000000,
             updated_at: 1700000000000,
         };
         let json = serde_json::to_value(&team).unwrap();
-        assert!(json.get("lead_agent_id").is_none());
-        assert!(json["agents"].as_array().unwrap().is_empty());
+        assert!(json.get("leader_assistant_id").is_none());
+        assert!(json["assistants"].as_array().unwrap().is_empty());
     }
 
     // -- E. WebSocket event payloads ------------------------------------------
@@ -692,25 +1036,27 @@ mod tests {
     fn serialize_team_agent_spawned_payload() {
         let payload = TeamAgentSpawnedPayload {
             team_id: "team-1".into(),
-            agent: TeamAgentResponse {
+            assistant: TeamAgentResponse {
                 slot_id: "slot-3".into(),
+                assistant_name: "Dynamic Worker".into(),
                 name: "Dynamic Worker".into(),
                 role: "teammate".into(),
                 conversation_id: "conv-3".into(),
+                assistant_backend: "claude".into(),
                 backend: "claude".into(),
                 icon: Some("/api/assets/logos/ai-major/claude.svg".into()),
                 model: "opus".into(),
-                custom_agent_id: None,
+                assistant_id: None,
                 status: Some("idle".into()),
                 pending_confirmations: 0,
             },
         };
         let json = serde_json::to_value(&payload).unwrap();
         assert_eq!(json["team_id"], "team-1");
-        assert_eq!(json["agent"]["slot_id"], "slot-3");
-        assert_eq!(json["agent"]["name"], "Dynamic Worker");
-        assert_eq!(json["agent"]["role"], "teammate");
-        assert_eq!(json["agent"]["status"], "idle");
+        assert_eq!(json["assistant"]["slot_id"], "slot-3");
+        assert_eq!(json["assistant"]["name"], "Dynamic Worker");
+        assert_eq!(json["assistant"]["role"], "teammate");
+        assert_eq!(json["assistant"]["status"], "idle");
     }
 
     #[test]
@@ -743,13 +1089,15 @@ mod tests {
     fn team_agent_response_roundtrip() {
         let agent = TeamAgentResponse {
             slot_id: "slot-1".into(),
+            assistant_name: "Agent".into(),
             name: "Agent".into(),
             role: "lead".into(),
             conversation_id: "conv-1".into(),
+            assistant_backend: "acp".into(),
             backend: "acp".into(),
             icon: Some("/api/assets/logos/ai-major/claude.svg".into()),
             model: "claude".into(),
-            custom_agent_id: Some("custom-1".into()),
+            assistant_id: Some("custom-1".into()),
             status: Some("working".into()),
             pending_confirmations: 1,
         };
@@ -763,33 +1111,38 @@ mod tests {
         let team = TeamResponse {
             id: "team-1".into(),
             name: "Alpha".into(),
-            agents: vec![
+            workspace: "/workspace/team-1".into(),
+            assistants: vec![
                 TeamAgentResponse {
                     slot_id: "s1".into(),
+                    assistant_name: "Lead".into(),
                     name: "Lead".into(),
                     role: "lead".into(),
                     conversation_id: "c1".into(),
+                    assistant_backend: "acp".into(),
                     backend: "acp".into(),
                     icon: None,
                     model: "claude".into(),
-                    custom_agent_id: None,
+                    assistant_id: None,
                     status: None,
                     pending_confirmations: 0,
                 },
                 TeamAgentResponse {
                     slot_id: "s2".into(),
+                    assistant_name: "Worker".into(),
                     name: "Worker".into(),
                     role: "teammate".into(),
                     conversation_id: "c2".into(),
+                    assistant_backend: "acp".into(),
                     backend: "acp".into(),
                     icon: Some("/api/assets/logos/tools/coding/codex.svg".into()),
                     model: "claude".into(),
-                    custom_agent_id: Some("x".into()),
+                    assistant_id: Some("x".into()),
                     status: Some("idle".into()),
                     pending_confirmations: 3,
                 },
             ],
-            lead_agent_id: Some("s1".into()),
+            leader_assistant_id: Some("s1".into()),
             created_at: 1000,
             updated_at: 2000,
         };
@@ -814,15 +1167,17 @@ mod tests {
     fn team_agent_spawned_payload_roundtrip() {
         let payload = TeamAgentSpawnedPayload {
             team_id: "t1".into(),
-            agent: TeamAgentResponse {
+            assistant: TeamAgentResponse {
                 slot_id: "s3".into(),
+                assistant_name: "New".into(),
                 name: "New".into(),
                 role: "teammate".into(),
                 conversation_id: "c3".into(),
+                assistant_backend: "claude".into(),
                 backend: "claude".into(),
                 icon: None,
                 model: "sonnet".into(),
-                custom_agent_id: None,
+                assistant_id: None,
                 status: None,
                 pending_confirmations: 0,
             },
@@ -872,7 +1227,7 @@ mod tests {
         let agent: TeamAgentResponse = serde_json::from_value(raw).unwrap();
         assert_eq!(agent.slot_id, "s1");
         assert_eq!(agent.conversation_id, "c1");
-        assert_eq!(agent.custom_agent_id.as_deref(), Some("cust-1"));
+        assert_eq!(agent.assistant_id.as_deref(), Some("cust-1"));
         assert_eq!(agent.status.as_deref(), Some("idle"));
         assert_eq!(agent.pending_confirmations, 0);
     }
@@ -889,7 +1244,8 @@ mod tests {
         });
         let team: TeamResponse = serde_json::from_value(raw).unwrap();
         assert_eq!(team.id, "team-1");
-        assert_eq!(team.lead_agent_id.as_deref(), Some("s1"));
+        assert!(team.assistants.is_empty());
+        assert_eq!(team.leader_assistant_id.as_deref(), Some("s1"));
         assert_eq!(team.created_at, 1000);
     }
 
@@ -1012,8 +1368,12 @@ mod tests {
         let ack = TeamRunAckResponse {
             team_run_id: "trun-1".into(),
             team_id: "team-1".into(),
+            source: TeamRunSource::UserMessage,
+            has_user_intervention: true,
             target_slot_id: "lead-1".into(),
             target_role: TeamRunTargetRole::Lead,
+            accepted_slot_id: "lead-1".into(),
+            accepted_role: TeamRunTargetRole::Lead,
             status: TeamRunStatus::Accepted,
             message_id: Some("msg-1".into()),
         };
@@ -1025,16 +1385,143 @@ mod tests {
     }
 
     #[test]
+    fn team_run_ack_distinguishes_initial_target_from_accepted_slot() {
+        let ack = TeamRunAckResponse {
+            team_run_id: "trun-1".into(),
+            team_id: "team-1".into(),
+            source: TeamRunSource::UserMessage,
+            has_user_intervention: true,
+            target_slot_id: "lead-1".into(),
+            target_role: TeamRunTargetRole::Lead,
+            accepted_slot_id: "worker-1".into(),
+            accepted_role: TeamRunTargetRole::Teammate,
+            status: TeamRunStatus::Accepted,
+            message_id: Some("msg-1".into()),
+        };
+
+        let value = serde_json::to_value(&ack).unwrap();
+        assert_eq!(value["target_slot_id"], "lead-1");
+        assert_eq!(value["target_role"], "lead");
+        assert_eq!(value["accepted_slot_id"], "worker-1");
+        assert_eq!(value["accepted_role"], "teammate");
+    }
+
+    #[test]
+    fn team_run_source_serializes_snake_case() {
+        let user = serde_json::to_value(TeamRunSource::UserMessage).unwrap();
+        let recovery = serde_json::to_value(TeamRunSource::RecoveryDrain).unwrap();
+
+        assert_eq!(user, serde_json::json!("user_message"));
+        assert_eq!(recovery, serde_json::json!("recovery_drain"));
+    }
+
+    #[test]
+    fn team_run_payload_serializes_source_metadata() {
+        let payload = TeamRunPayload {
+            team_id: "team-1".into(),
+            team_run_id: "run-1".into(),
+            source: TeamRunSource::RecoveryDrain,
+            has_user_intervention: false,
+            target_slot_id: "lead-1".into(),
+            target_role: TeamRunTargetRole::Lead,
+            status: TeamRunStatus::Accepted,
+            active_child_count: 0,
+            pending_wake_count: 1,
+            starting_child_count: 0,
+            slot_work: vec![],
+        };
+
+        let json = serde_json::to_value(payload).unwrap();
+        assert_eq!(json["source"], "recovery_drain");
+        assert_eq!(json["has_user_intervention"], false);
+    }
+
+    #[test]
+    fn team_run_ack_serializes_source_metadata() {
+        let ack = TeamRunAckResponse {
+            team_run_id: "run-1".into(),
+            team_id: "team-1".into(),
+            source: TeamRunSource::UserMessage,
+            has_user_intervention: true,
+            target_slot_id: "lead-1".into(),
+            target_role: TeamRunTargetRole::Lead,
+            accepted_slot_id: "lead-1".into(),
+            accepted_role: TeamRunTargetRole::Lead,
+            status: TeamRunStatus::Accepted,
+            message_id: Some("mailbox-1".into()),
+        };
+
+        let json = serde_json::to_value(ack).unwrap();
+        assert_eq!(json["source"], "user_message");
+        assert_eq!(json["has_user_intervention"], true);
+        assert_eq!(json["message_id"], "mailbox-1");
+    }
+
+    fn active_run_payload() -> TeamRunPayload {
+        TeamRunPayload {
+            team_id: "team-1".to_owned(),
+            team_run_id: "run-1".to_owned(),
+            source: TeamRunSource::UserMessage,
+            has_user_intervention: true,
+            target_slot_id: "lead".to_owned(),
+            target_role: TeamRunTargetRole::Lead,
+            status: TeamRunStatus::Running,
+            active_child_count: 1,
+            pending_wake_count: 0,
+            starting_child_count: 0,
+            slot_work: vec![TeamSlotWorkPayload {
+                slot_id: "lead".to_owned(),
+                role: TeamRunTargetRole::Lead,
+                pending_wake_count: 0,
+                starting_child_count: 0,
+                paused: false,
+                suppressed_wake_count: 0,
+                active_turn_id: Some("turn-1".to_owned()),
+                active_turn_started_at_ms: Some(10),
+                active_turn_elapsed_ms: Some(20),
+                active_turn_slow: Some(false),
+                active_turn_slow_threshold_ms: Some(600_000),
+                runtime_health: None,
+            }],
+        }
+    }
+
+    #[test]
+    fn team_run_state_response_serializes_null_active_run() {
+        let value = serde_json::to_value(TeamRunStateResponse { active_run: None }).unwrap();
+        assert_eq!(value, serde_json::json!({ "active_run": null }));
+    }
+
+    #[test]
+    fn team_run_state_response_serializes_some_active_run() {
+        let payload = active_run_payload();
+        let value = serde_json::to_value(TeamRunStateResponse {
+            active_run: Some(payload.clone()),
+        })
+        .unwrap();
+
+        assert_eq!(value["active_run"]["team_id"], payload.team_id);
+        assert_eq!(value["active_run"]["team_run_id"], payload.team_run_id);
+        assert_eq!(value["active_run"]["source"], "user_message");
+        assert_eq!(value["active_run"]["has_user_intervention"], true);
+        assert_eq!(value["active_run"]["status"], "running");
+        assert_eq!(value["active_run"]["slot_work"][0]["slot_id"], "lead");
+    }
+
+    #[test]
     fn team_run_payload_omits_sensitive_content() {
         let payload = TeamRunPayload {
             team_id: "team-1".into(),
             team_run_id: "trun-1".into(),
+            source: TeamRunSource::UserMessage,
+            has_user_intervention: true,
             target_slot_id: "worker-1".into(),
             target_role: TeamRunTargetRole::Teammate,
             status: TeamRunStatus::Running,
             active_child_count: 1,
             pending_wake_count: 0,
             starting_child_count: 2,
+            slot_work: Vec::new(),
         };
 
         let value = serde_json::to_value(&payload).unwrap();
@@ -1042,6 +1529,162 @@ mod tests {
         assert!(value.get("content").is_none());
         assert!(value.get("prompt").is_none());
         assert!(value.get("tool_input").is_none());
+    }
+
+    #[test]
+    fn team_run_payload_includes_defaulted_slot_work() {
+        let payload = TeamRunPayload {
+            team_id: "team-1".into(),
+            team_run_id: "trun-1".into(),
+            source: TeamRunSource::UserMessage,
+            has_user_intervention: true,
+            target_slot_id: "lead-1".into(),
+            target_role: TeamRunTargetRole::Lead,
+            status: TeamRunStatus::Running,
+            active_child_count: 1,
+            pending_wake_count: 2,
+            starting_child_count: 1,
+            slot_work: vec![
+                TeamSlotWorkPayload {
+                    slot_id: "lead-1".into(),
+                    role: TeamRunTargetRole::Lead,
+                    pending_wake_count: 1,
+                    starting_child_count: 0,
+                    paused: false,
+                    suppressed_wake_count: 0,
+                    active_turn_id: Some("turn-lead".into()),
+                    active_turn_started_at_ms: None,
+                    active_turn_elapsed_ms: None,
+                    active_turn_slow: None,
+                    active_turn_slow_threshold_ms: None,
+                    runtime_health: None,
+                },
+                TeamSlotWorkPayload {
+                    slot_id: "worker-1".into(),
+                    role: TeamRunTargetRole::Teammate,
+                    pending_wake_count: 1,
+                    starting_child_count: 1,
+                    paused: false,
+                    suppressed_wake_count: 0,
+                    active_turn_id: None,
+                    active_turn_started_at_ms: None,
+                    active_turn_elapsed_ms: None,
+                    active_turn_slow: None,
+                    active_turn_slow_threshold_ms: None,
+                    runtime_health: None,
+                },
+            ],
+        };
+
+        let value = serde_json::to_value(&payload).unwrap();
+        assert_eq!(value["slot_work"][0]["slot_id"], "lead-1");
+        assert_eq!(value["slot_work"][0]["active_turn_id"], "turn-lead");
+        assert_eq!(value["slot_work"][1]["starting_child_count"], 1);
+
+        let decoded: TeamRunPayload = serde_json::from_value(serde_json::json!({
+            "team_id": "team-1",
+            "team_run_id": "trun-1",
+            "source": "user_message",
+            "has_user_intervention": true,
+            "target_slot_id": "lead-1",
+            "target_role": "lead",
+            "status": "running",
+            "active_child_count": 0,
+            "pending_wake_count": 0,
+            "starting_child_count": 0
+        }))
+        .unwrap();
+        assert!(decoded.slot_work.is_empty());
+    }
+
+    #[test]
+    fn team_slot_work_payload_includes_only_retained_pause_fields_when_non_default() {
+        let payload = TeamSlotWorkPayload {
+            slot_id: "lead-1".into(),
+            role: TeamRunTargetRole::Lead,
+            pending_wake_count: 0,
+            starting_child_count: 0,
+            active_turn_id: None,
+            paused: true,
+            suppressed_wake_count: 2,
+            active_turn_started_at_ms: None,
+            active_turn_elapsed_ms: None,
+            active_turn_slow: None,
+            active_turn_slow_threshold_ms: None,
+            runtime_health: None,
+        };
+
+        let value = serde_json::to_value(&payload).unwrap();
+        assert_eq!(value["paused"], true);
+        assert_eq!(value["suppressed_wake_count"], 2);
+        assert!(value.get(format!("{}_pending_count", "foreground")).is_none());
+        assert!(value.get(format!("{}_pending_count", "background")).is_none());
+    }
+
+    #[test]
+    fn team_slot_work_payload_serializes_active_turn_slow_fields() {
+        let payload = TeamSlotWorkPayload {
+            slot_id: "worker-1".into(),
+            role: TeamRunTargetRole::Teammate,
+            pending_wake_count: 0,
+            starting_child_count: 0,
+            paused: false,
+            suppressed_wake_count: 0,
+            active_turn_id: Some("turn-worker".into()),
+            active_turn_started_at_ms: Some(1_000),
+            active_turn_elapsed_ms: Some(600_001),
+            active_turn_slow: Some(true),
+            active_turn_slow_threshold_ms: Some(600_000),
+            runtime_health: Some(TeamSlotRuntimeHealth::Unhealthy),
+        };
+
+        let value = serde_json::to_value(payload).unwrap();
+
+        assert_eq!(value["active_turn_started_at_ms"], 1_000);
+        assert_eq!(value["active_turn_elapsed_ms"], 600_001);
+        assert_eq!(value["active_turn_slow"], true);
+        assert_eq!(value["active_turn_slow_threshold_ms"], 600_000);
+        assert_eq!(value["runtime_health"], "unhealthy");
+    }
+
+    #[test]
+    fn team_send_message_queued_response_serializes_stable_contract() {
+        let response = TeamSendMessageQueuedResponse {
+            status: TeamSendMessageStatus::Queued,
+            delivery: TeamSendMessageDelivery::WakeRecorded,
+            reason: TeamSendMessageReason::BehindActiveTurn,
+            team_run_id: "run-1".into(),
+            targets: vec![TeamSendMessageTargetQueueState {
+                slot_id: "worker-1".into(),
+                role: TeamRunTargetRole::Teammate,
+                queue_state: TeamSendMessageReason::BehindActiveTurn,
+                pending_wake_count: 1,
+                starting_child_count: 0,
+                active_turn_id: Some("turn-worker".into()),
+                suppressed_wake_count: 0,
+            }],
+        };
+
+        let value = serde_json::to_value(response).unwrap();
+
+        assert_eq!(value["status"], "queued");
+        assert_eq!(value["delivery"], "wake_recorded");
+        assert_eq!(value["reason"], "behind_active_turn");
+        assert_eq!(value["targets"][0]["queue_state"], "behind_active_turn");
+    }
+
+    #[test]
+    fn team_slot_work_payload_defaults_pause_fields_for_old_payloads() {
+        let decoded: TeamSlotWorkPayload = serde_json::from_value(serde_json::json!({
+            "slot_id": "worker-1",
+            "role": "teammate",
+            "pending_wake_count": 0,
+            "starting_child_count": 0
+        }))
+        .unwrap();
+
+        assert!(!decoded.paused);
+        assert_eq!(decoded.suppressed_wake_count, 0);
     }
 
     #[test]

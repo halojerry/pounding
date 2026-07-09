@@ -94,8 +94,12 @@ pub async fn ensure_native_cli_tool_with_reporter(
 
     // Prefer system-installed CLI on $PATH over managed downloads.
     // Most users already have these tools installed; downloading is a fallback.
+    // Skip this in bundled mode: packaged/offline deployments must resolve the
+    // tool from the bundled managed resources, not an arbitrary system binary.
     let bin_name = tool.binary_name();
-    if let Some(system_path) = crate::resolve_command_path(bin_name) {
+    if !managed_resources::requires_bundled_resources()
+        && let Some(system_path) = crate::resolve_command_path(bin_name)
+    {
         info!(
             tool = tool.slug(),
             path = %system_path.display(),

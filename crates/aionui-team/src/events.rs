@@ -61,7 +61,7 @@ impl TeamEventEmitter {
     pub fn broadcast_agent_spawned(&self, agent: &TeamAgent) {
         let payload = TeamAgentSpawnedPayload {
             team_id: self.team_id.clone(),
-            agent: agent.to_response(),
+            assistant: agent.to_response(),
         };
         let event = WebSocketMessage::new(
             TEAM_AGENT_SPAWNED_EVENT,
@@ -106,6 +106,7 @@ impl TeamEventEmitter {
             active_child_count = payload.active_child_count,
             pending_wake_count = payload.pending_wake_count,
             starting_child_count = payload.starting_child_count,
+            slot_work_count = payload.slot_work.len(),
             "team websocket event emitted"
         );
         let event = WebSocketMessage::new(
@@ -196,7 +197,7 @@ mod tests {
             conversation_id: "conv-2".into(),
             backend: "acp".into(),
             model: "claude".into(),
-            custom_agent_id: None,
+            assistant_id: None,
             status: Some(TeammateStatus::Idle),
             conversation_type: None,
             cli_path: None,
@@ -209,9 +210,9 @@ mod tests {
 
         let payload: TeamAgentSpawnedPayload = serde_json::from_value(events[0].data.clone()).unwrap();
         assert_eq!(payload.team_id, "team-1");
-        assert_eq!(payload.agent.slot_id, "slot-2");
-        assert_eq!(payload.agent.name, "Worker");
-        assert_eq!(payload.agent.role, "teammate");
+        assert_eq!(payload.assistant.slot_id, "slot-2");
+        assert_eq!(payload.assistant.name, "Worker");
+        assert_eq!(payload.assistant.role, "teammate");
     }
 
     #[test]
@@ -271,12 +272,15 @@ mod tests {
             aionui_api_types::TeamRunPayload {
                 team_id: "team-1".into(),
                 team_run_id: "run-1".into(),
+                source: aionui_api_types::TeamRunSource::UserMessage,
+                has_user_intervention: true,
                 target_slot_id: "lead-1".into(),
                 target_role: aionui_api_types::TeamRunTargetRole::Lead,
                 status: aionui_api_types::TeamRunStatus::Accepted,
                 active_child_count: 0,
                 pending_wake_count: 1,
                 starting_child_count: 0,
+                slot_work: Vec::new(),
             },
         );
 

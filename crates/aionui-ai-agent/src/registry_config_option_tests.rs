@@ -24,7 +24,7 @@ fn normalize_json_value(value: &serde_json::Value) -> serde_json::Value {
     match value {
         serde_json::Value::Object(map) => {
             let mut sorted: Vec<_> = map.iter().collect();
-            sorted.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
+            sorted.sort_by_key(|(k1, _)| *k1);
             let normalized: serde_json::Map<String, serde_json::Value> = sorted
                 .into_iter()
                 .map(|(k, v)| (k.clone(), normalize_json_value(v)))

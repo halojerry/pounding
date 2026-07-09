@@ -18,7 +18,7 @@
         "uk-UA": "Створюйте, редагуйте та аналізуйте професійні документи Word за допомогою officecli: звіти, пропозиції, листи, нотатки тощо."
       },
       "avatar": "avatars/word-creator.jpg",
-      "preset_agent_type": "aionrs",
+      "agent_ref": "aionrs",
       "enabled_skills": [
         "officecli-docx",
         "humanizer"
@@ -72,7 +72,7 @@
         "uk-UA": "Створюйте, редагуйте та аналізуйте професійні презентації PowerPoint за допомогою officecli: виразний дизайн, різноманітні макети та візуальний вплив."
       },
       "avatar": "avatars/ppt-creator.jpg",
-      "preset_agent_type": "aionrs",
+      "agent_ref": "aionrs",
       "enabled_skills": [
         "officecli-pptx"
       ],
@@ -125,7 +125,7 @@
         "uk-UA": "Створюйте, редагуйте та аналізуйте професійні таблиці Excel за допомогою officecli: фінансові моделі, дашборди, трекери та аналіз даних."
       },
       "avatar": "avatars/excel-creator.jpg",
-      "preset_agent_type": "aionrs",
+      "agent_ref": "aionrs",
       "enabled_skills": [
         "officecli-xlsx"
       ],
@@ -178,7 +178,7 @@
         "uk-UA": "Створюйте професійні презентації з анімацією Morph за допомогою officecli. Підтримує різні візуальні стилі та повний робочий процес від ідеї до готових слайдів."
       },
       "avatar": "avatars/morph-ppt.jpg",
-      "preset_agent_type": "aionrs",
+      "agent_ref": "aionrs",
       "enabled_skills": [
         "morph-ppt"
       ],
@@ -227,7 +227,7 @@
         "zh-CN": "把 GLB 3D 模型变成电影感 Morph 演示文稿。模型是视觉主角——特写看细节、俯视看结构、仰拍看气势，每页之间用 Morph 转场做流畅的镜头运动。注意：3D 模型和 Morph 转场效果需要在微软 PowerPoint 中打开才能正常显示。"
       },
       "avatar": "avatars/morph-ppt-3d.jpg",
-      "preset_agent_type": "aionrs",
+      "agent_ref": "aionrs",
       "enabled_skills": [
         "morph-ppt-3d",
         "morph-ppt"
@@ -271,7 +271,7 @@
         "uk-UA": "Створюйте інвесторські пітч-деки, презентації продуктів та корпоративні продажі: градієнтний дизайн, графіки, таблиці конкурентів, слайди команди та нотатки доповідача. Підходить для стадій від Seed до Series A+."
       },
       "avatar": "avatars/pitch-deck-creator.jpg",
-      "preset_agent_type": "aionrs",
+      "agent_ref": "aionrs",
       "enabled_skills": [
         "officecli-pitch-deck"
       ],
@@ -324,7 +324,7 @@
         "uk-UA": "Перетворюйте CSV або табличні дані на професійні дашборди Excel: KPI-картки, графіки з прив'язкою до даних, спарклайни та умовне форматування. Автоматично масштабує складність під обсяг даних."
       },
       "avatar": "avatars/dashboard-creator.jpg",
-      "preset_agent_type": "aionrs",
+      "agent_ref": "aionrs",
       "enabled_skills": [
         "officecli-data-dashboard"
       ],
@@ -377,7 +377,7 @@
         "uk-UA": "Створюйте структуровані академічні статті, наукові роботи та White Papers: зміст Word, формули LaTeX в OMML, бібліографія (APA/Physics/Chicago), виноски та багатоколонкова верстка."
       },
       "avatar": "avatars/academic-paper.jpg",
-      "preset_agent_type": "aionrs",
+      "agent_ref": "aionrs",
       "enabled_skills": [
         "officecli-academic-paper"
       ],
@@ -430,7 +430,7 @@
         "uk-UA": "Будуйте фінансові моделі на основі формул за текстовим запитом: три фінансові форми, DCF-оцінка, Cap Tables, сценарний аналіз та графіки боргів."
       },
       "avatar": "avatars/financial-model-creator.jpg",
-      "preset_agent_type": "aionrs",
+      "agent_ref": "aionrs",
       "enabled_skills": [
         "officecli-financial-model"
       ],
@@ -483,7 +483,7 @@
         "uk-UA": "Допомагає встановлювати, підключати та діагностувати візуалізацію Star-Office-UI для попереднього перегляду в Aion."
       },
       "avatar": "avatars/star-office-helper.jpg",
-      "preset_agent_type": "aionrs",
+      "agent_ref": "aionrs",
       "enabled_skills": [
         "star-office-helper"
       ],
@@ -536,7 +536,7 @@
         "uk-UA": "Експертний посібник зі встановлення, розгортання, налаштування та усунення несправностей OpenClaw. Допомагає з налаштуванням та безпекою."
       },
       "avatar": "avatars/openclaw-setup.jpg",
-      "preset_agent_type": "aionrs",
+      "agent_ref": "aionrs",
       "enabled_skills": [
         "openclaw-setup",
         "aionui-webui-setup"
@@ -590,7 +590,7 @@
         "uk-UA": "Автономне виконання завдань з роботою з файлами, обробкою документів та багатокроковим плануванням робочих процесів."
       },
       "avatar": "avatars/cowork.jpg",
-      "preset_agent_type": "aionrs",
+      "agent_ref": "aionrs",
       "enabled_skills": [
         "skill-creator",
         "officecli-pptx",
@@ -647,7 +647,7 @@
         "uk-UA": "Генеруйте повноцінну 3D-гру-платформер зі збором предметів в одному HTML-файлі."
       },
       "avatar": "avatars/game-3d.jpg",
-      "preset_agent_type": "aionrs",
+      "agent_ref": "aionrs",
       "enabled_skills": [],
       "custom_skill_names": [],
       "disabled_builtin_skills": [],
@@ -698,7 +698,7 @@
         "uk-UA": "Професійний UI/UX-помічник з 57 стилями, 95 кольоровими палітрами, 56 поєднаннями шрифтів та найкращими практиками для різних технологій."
       },
       "avatar": "avatars/ui-ux-pro-max.jpg",
-      "preset_agent_type": "aionrs",
+      "agent_ref": "aionrs",
       "enabled_skills": [],
       "custom_skill_names": [],
       "disabled_builtin_skills": [],
@@ -749,7 +749,7 @@
         "uk-UA": "Файлове планування в стилі Manus для складних завдань. Використовує task_plan.md, findings.md та progress.md для збереження контексту."
       },
       "avatar": "avatars/planning-with-files.jpg",
-      "preset_agent_type": "aionrs",
+      "agent_ref": "aionrs",
       "enabled_skills": [],
       "custom_skill_names": [],
       "disabled_builtin_skills": [],
@@ -800,7 +800,7 @@
         "uk-UA": "Коуч з особистого розвитку на основі фреймворка HUMAN 3.0: 4 квадранти (Розум/Тіло/Дух/Призвання), 3 рівні та 3 фази росту."
       },
       "avatar": "avatars/human-3-coach.jpg",
-      "preset_agent_type": "aionrs",
+      "agent_ref": "aionrs",
       "enabled_skills": [],
       "custom_skill_names": [],
       "disabled_builtin_skills": [],
@@ -851,7 +851,7 @@
         "uk-UA": "Розгортає запит на найм у повноцінний опис вакансії та зображення, а потім публікує це в соцмережах через конектори."
       },
       "avatar": "avatars/social-job-publisher.jpg",
-      "preset_agent_type": "aionrs",
+      "agent_ref": "aionrs",
       "enabled_skills": [
         "xiaohongshu-recruiter",
         "x-recruiter",
@@ -906,7 +906,7 @@
         "uk-UA": "Соціальна мережа для AI-агентів. Публікації, коментарі, голосування та створення спільнот."
       },
       "avatar": "avatars/moltbook.jpg",
-      "preset_agent_type": "aionrs",
+      "agent_ref": "aionrs",
       "enabled_skills": [
         "moltbook"
       ],
@@ -959,7 +959,7 @@
         "uk-UA": "Створюйте блок-схеми, діаграми послідовності, станів, класів та ER-діаграми з красивими темами оформлення."
       },
       "avatar": "avatars/beautiful-mermaid.jpg",
-      "preset_agent_type": "aionrs",
+      "agent_ref": "aionrs",
       "enabled_skills": [
         "mermaid"
       ],
@@ -1012,7 +1012,7 @@
         "uk-UA": "Іммерсивний сюжетний рольовий режим. Можна почати трьома способами: описати персонажів словами, вставити PNG-зображення або відкрити папку з картками персонажів та лором світу."
       },
       "avatar": "avatars/story-roleplay.jpg",
-      "preset_agent_type": "aionrs",
+      "agent_ref": "aionrs",
       "enabled_skills": [
         "story-roleplay",
         "humanizer"
@@ -1066,7 +1066,7 @@
         "uk-UA": "Бізнес-помічник для пошуку товарів на 1688, публікації в Ozon, оновлення карток і відстеження статусу."
       },
       "avatar": "avatars/pounding-ozon-assistant.png",
-      "preset_agent_type": "aionrs",
+      "agent_ref": "aionrs",
       "enabled_skills": [
         "pounding-ozon-assistant"
       ],
@@ -1119,7 +1119,7 @@
         "uk-UA": "Створюйте заповнювані форми Word (.docx) зі справжніми елементами керування вмістом, полями-прапорцями, MERGEFIELD для злиття пошти та захистом документа — редагуються лише задані поля, решта залишається заблокованою. HR-анкети, опитування, шаблони контрактів / SOW, комплаєнс-чеклисти, медичні анкети."
       },
       "avatar": "avatars/word-form-creator.jpg",
-      "preset_agent_type": "aionrs",
+      "agent_ref": "aionrs",
       "enabled_skills": [
         "officecli-word-form"
       ],
@@ -1172,7 +1172,7 @@
         "uk-UA": "Експерт зі встановлення, налаштування та усунення несправностей CLI-агентів POUNDING: Claude Code, Codex, OpenClaw, OpenCode та Hermes Agent."
       },
       "avatar": "avatars/pounding-expert.jpg",
-      "preset_agent_type": "aionrs",
+      "agent_ref": "aionrs",
       "enabled_skills": [],
       "custom_skill_names": [],
       "disabled_builtin_skills": [],
@@ -1223,7 +1223,7 @@
         "uk-UA": "Професійний дизайнер обкладинок для соцмереж: WeChat, Xiaohongshu, TikTok та інших. 10 стилів дизайну з покроковим веденням та генерацією зображень."
       },
       "avatar": "avatars/social-cover-design.jpg",
-      "preset_agent_type": "aionrs",
+      "agent_ref": "aionrs",
       "enabled_skills": [
         "social-cover-design"
       ],
@@ -1276,7 +1276,7 @@
         "uk-UA": "Ваш універсальний помічник для Feishu/Lark. Керуйте документами, таблицями, календарем, повідомленнями, поштою, погодженнями, OKR, завданнями, зустрічами, вікі, контактами та багато іншим."
       },
       "avatar": "avatars/lark-assistant.jpg",
-      "preset_agent_type": "aionrs",
+      "agent_ref": "aionrs",
       "enabled_skills": [
         "lark-shared",
         "lark-calendar",
@@ -1370,7 +1370,7 @@
         "uk-UA": "Ваш помічник знань GetNote. Зберігайте нотатки, керуйте базами знань, семантичний пошук, організація з тегами."
       },
       "avatar": "avatars/getnote-assistant.jpg",
-      "preset_agent_type": "aionrs",
+      "agent_ref": "aionrs",
       "enabled_skills": [
         "getnote-shared",
         "getnote-auth",
@@ -1443,7 +1443,7 @@
         "uk-UA": "Універсальний помічник вчителя початкових класів: китайська, математика, англійська, природознавство, мораль і право. Створюйте повні плани уроків, сценарії лекцій, навчальні посібники, вправи, ілюстрації, інтерактивні веб-сторінки, PPT та навчальні ігри."
       },
       "avatar": "avatars/teaching-assistant.jpg",
-      "preset_agent_type": "aionrs",
+      "agent_ref": "aionrs",
       "enabled_skills": [
         "elementary-teacher",
         "officecli-docx",
@@ -1518,7 +1518,7 @@
         "uk-UA": "Універсальний набір інструментів для зростання творців контенту на Xiaohongshu: діагностика акаунту, пошук вірусних тем, генерація заголовків, оптимізація текстів, відстеження трендів, дизайн обкладинок і створення вірусних нотаток."
       },
       "avatar": "avatars/xiaohongshu-creator.jpg",
-      "preset_agent_type": "aionrs",
+      "agent_ref": "aionrs",
       "enabled_skills": [
         "redbook",
         "xhs-content-lab",
@@ -1587,7 +1587,7 @@
         "zh-CN": "每日精选 AI 模型/产品/行业/论文动态速递。"
       },
       "avatar": "avatars/aihot.png",
-      "preset_agent_type": "aionrs",
+      "agent_ref": "aionrs",
       "enabled_skills": [
         "aihot"
       ],
@@ -1622,7 +1622,7 @@
         "zh-CN": "面向超级个体的苏格拉底式思维伙伴。"
       },
       "avatar": "avatars/chaogeek-kongming.png",
-      "preset_agent_type": "aionrs",
+      "agent_ref": "aionrs",
       "enabled_skills": [
         "socratic-alignment",
         "cognitive-disarmament",
@@ -1659,7 +1659,7 @@
         "zh-CN": "精通天猫、京东、拼多多等平台运营，从选品到打造爆款一站式支持。"
       },
       "avatar": "avatars/china-ecommerce-expert.png",
-      "preset_agent_type": "aionrs",
+      "agent_ref": "aionrs",
       "enabled_skills": [
         "market-researcher",
         "multi-search-engine",
@@ -1698,7 +1698,7 @@
         "zh-CN": "基于林正刚 50 年企业管理框架的创业教练。"
       },
       "avatar": "avatars/chuangye-manor.jpg",
-      "preset_agent_type": "aionrs",
+      "agent_ref": "aionrs",
       "enabled_skills": [
         "manor-host",
         "manor-judge",
@@ -1740,7 +1740,7 @@
         "zh-CN": "多平台内容创作专家。大文写作、小说、文案，支持排版输出和去 AI 味润色。"
       },
       "avatar": "avatars/content-creator.png",
-      "preset_agent_type": "aionrs",
+      "agent_ref": "aionrs",
       "enabled_skills": [
         "humanizer",
         "minimax-docx",
@@ -1780,7 +1780,7 @@
         "zh-CN": "外贸全流程助手。海关数据查询、客户开发、冷邮件自动化、B2B 平台运营。"
       },
       "avatar": "avatars/foreign-trade-expert.png",
-      "preset_agent_type": "aionrs",
+      "agent_ref": "aionrs",
       "enabled_skills": [
         "humanizer",
         "agent-browser",
@@ -1821,7 +1821,7 @@
         "zh-CN": "精通抖音算法和内容生态。短视频爆款策略、商业化变现。"
       },
       "avatar": "avatars/douyin-strategist.png",
-      "preset_agent_type": "aionrs",
+      "agent_ref": "aionrs",
       "enabled_skills": [
         "humanizer",
         "remotion-video-toolkit",
@@ -1859,7 +1859,7 @@
         "zh-CN": "⚠️ 仅供参考不构成投资建议。覆盖首次覆盖、估值、多空推介、业绩分析、组合风控等 16 项能力。"
       },
       "avatar": "avatars/equity-research.jpg",
-      "preset_agent_type": "aionrs",
+      "agent_ref": "aionrs",
       "enabled_skills": [
         "initiating-coverage",
         "company-tearsheet",
@@ -1911,7 +1911,7 @@
         "zh-CN": "⚠️ 仅供参考不构成投资建议。三表联动、DCF 估值、LBO 杠杆收购、可比分析、模型审查。"
       },
       "avatar": "avatars/financial-analysis.jpg",
-      "preset_agent_type": "aionrs",
+      "agent_ref": "aionrs",
       "enabled_skills": [
         "3-statements",
         "dcf-model",
@@ -1955,7 +1955,7 @@
         "zh-CN": "贯通中西命理体系：八字、紫微、梅花、塔罗、农历黄历，智能路由。"
       },
       "avatar": "avatars/fortune-consultant.png",
-      "preset_agent_type": "aionrs",
+      "agent_ref": "aionrs",
       "enabled_skills": [
         "cantian-bazi",
         "ziwei-doushu",
@@ -1996,7 +1996,7 @@
         "zh-CN": "财务月末结账助手。计提表、滚动对账、差异说明、结账包。"
       },
       "avatar": "avatars/month-end-closer.png",
-      "preset_agent_type": "aionrs",
+      "agent_ref": "aionrs",
       "enabled_skills": [
         "accrual-schedule",
         "roll-forward",
@@ -2036,7 +2036,7 @@
         "zh-CN": "人才招聘全流程顾问。JD 撰写、面试设计、录用函模板、人才调研。"
       },
       "avatar": "avatars/recruitment-expert.png",
-      "preset_agent_type": "aionrs",
+      "agent_ref": "aionrs",
       "enabled_skills": [
         "humanizer",
         "agent-browser",
@@ -2073,7 +2073,7 @@
         "zh-CN": "中小企业运营经理。招聘、入职、业务报告一站式支持。"
       },
       "avatar": "avatars/smb-operations.png",
-      "preset_agent_type": "aionrs",
+      "agent_ref": "aionrs",
       "enabled_skills": [
         "business-reporting",
         "hiring",
@@ -2111,7 +2111,7 @@
         "zh-CN": "⚠️ 仅供参考不构成投资建议。量化策略回测。Python + pandas 脚本，权益曲线、交易记录、HTML 仪表盘。"
       },
       "avatar": "avatars/strategy-backtest-expert.png",
-      "preset_agent_type": "aionrs",
+      "agent_ref": "aionrs",
       "enabled_skills": [
         "quant-backtest-lab",
         "westock-data",
@@ -2149,7 +2149,7 @@
         "zh-CN": "⚠️ 仅供参考不构成投资建议。通达信 A 股智能选股。多维度筛选 + 百分制评分。"
       },
       "avatar": "avatars/tdx-stock-hunter.png",
-      "preset_agent_type": "aionrs",
+      "agent_ref": "aionrs",
       "enabled_skills": [
         "stock-mx"
       ],
@@ -2184,7 +2184,7 @@
         "zh-CN": "精通 TikTok 算法和海外短视频生态。内容策略、跨境本地化、去 AI 味文案。"
       },
       "avatar": "avatars/tiktok-strategist.png",
-      "preset_agent_type": "aionrs",
+      "agent_ref": "aionrs",
       "enabled_skills": [
         "libtv-skill",
         "humanizer",
@@ -2221,7 +2221,7 @@
         "zh-CN": "科研全流程助手。七阶段 SOP：文献调研 → 创新提案 → 方案设计 → 实验分析 → 论文写作 → 投稿返修 → 成果转化 + 学术雷达监测。"
       },
       "avatar": "avatars/academic-research.jpg",
-      "preset_agent_type": "aionrs",
+      "agent_ref": "aionrs",
       "enabled_skills": [
         "light-orchestrator",
         "scholar-megasearch",

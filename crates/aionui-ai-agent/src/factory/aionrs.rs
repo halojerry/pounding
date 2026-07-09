@@ -4,17 +4,17 @@ use std::sync::Arc;
 use aion_agent::session::SessionManager;
 use aion_config::config::{McpServerConfig, TransportType};
 use aionui_api_types::{
-    AionrsBuildExtra, GuideMcpConfig, SessionMcpServer, SessionMcpTransport, TEAM_MCP_SERVER_NAME, TeamMcpStdioConfig,
+    AionrsBuildExtra, SessionMcpServer, SessionMcpTransport, TEAM_MCP_SERVER_NAME, TeamMcpStdioConfig,
 };
 use aionui_common::ProviderWithModel;
 use aionui_db::IMcpServerRepository;
 use aionui_db::models::McpServerRow;
 use aionui_realtime::EventBroadcaster;
 use aionui_runtime::ensure_runtime_command_with_reporter;
+use serde_json::{Map, Value};
 use tracing::{debug, info, warn};
 
 use crate::agent_task::AgentInstance;
-use crate::capability::team_guide_prompt;
 use crate::error::AgentError;
 use crate::factory::AgentFactoryDeps;
 use crate::factory::context::FactoryContext;
@@ -23,7 +23,6 @@ use crate::runtime_status::conversation_runtime_reporter;
 use crate::session_context::AionrsSessionBuildContext;
 use crate::types::{AionrsCompatOverrides, AionrsResolvedConfig};
 
-const TEAM_CAPABLE_BACKENDS: &[&str] = &["claude", "codex", "gemini", "aionrs", "codebuddy"];
 const POUNDING_IDENTITY_PROMPT: &str =
     "You are POUNDING (胖丁), the user-facing assistant. Always answer as POUNDING CLI / 胖丁.";
 
@@ -33,12 +32,15 @@ pub(super) async fn build(
     model: ProviderWithModel,
     ctx: FactoryContext,
 ) -> Result<AgentInstance, AgentError> {
-    let belongs_to_team = build_context.team.is_some();
     let mut overrides = build_context.config;
 
     // Merge preset assistant rules into system_prompt (used as custom_prompt
     // in aionrs's build_system_prompt). Mirrors the old architecture's
     // `init_history` injection of `[Assistant System Rules]`.
+    // AionrsBuildExtra parses `skills` so Team preset snapshots preserve the
+    // target contract. Native skill materialization for Aionrs is tracked as a
+    // separate follow-up because this factory currently has no stable Aionrs
+    // skill-loading path.
     if let Some(rules) = overrides.preset_rules.take() {
         overrides.system_prompt = Some(match overrides.system_prompt.take() {
             Some(existing) => format!("{existing}\n\n{rules}"),
@@ -51,18 +53,7 @@ pub(super) async fn build(
         None => POUNDING_IDENTITY_PROMPT.to_owned(),
     });
 
-    // Inject Guide MCP config for solo (non-team) sessions, mirroring acp.rs.
-    // Skip if the conversation already belongs to a team.
-    if overrides.team_mcp_stdio_config.is_none()
-        && overrides.guide_mcp_config.is_none()
-        && deps.guide_mcp_config.is_some()
-        && !belongs_to_team
-    {
-        overrides.guide_mcp_config.clone_from(&deps.guide_mcp_config);
-        overrides.backend.get_or_insert_with(|| "aionrs".to_owned());
-    }
-
-    let mut extra_mcp_servers = resolve_mcp_servers(&overrides, &ctx.conversation_id);
+    let mut extra_mcp_servers = resolve_mcp_servers(&overrides);
     if let Some(repo) = deps.mcp_server_repo.as_ref() {
         for (name, config) in load_user_mcp_servers(
             repo.as_ref(),
@@ -82,19 +73,6 @@ pub(super) async fn build(
         deps.broadcaster.clone(),
     )
     .await;
-
-    // Inject team guide system prompt for solo sessions with guide MCP
-    if overrides.team_mcp_stdio_config.is_none()
-        && overrides.guide_mcp_config.is_some()
-        && team_guide_prompt::is_solo_team_guide_backend(overrides.backend.as_deref().unwrap_or("aionrs"))
-    {
-        let guide_prompt =
-            team_guide_prompt::build_solo_team_guide_prompt(overrides.backend.as_deref().unwrap_or("aionrs"));
-        overrides.system_prompt = Some(match overrides.system_prompt.take() {
-            Some(existing) => format!("{existing}\n\n{guide_prompt}"),
-            None => guide_prompt,
-        });
-    }
 
     if !extra_mcp_servers.is_empty() {
         info!(
@@ -123,7 +101,7 @@ pub(super) async fn build(
         .unwrap_or(&model.model)
         .to_owned();
 
-    let provider = map_aionrs_provider(&row.platform, &model_id, row.model_protocols.as_deref());
+    let provider = map_aionrs_provider(&row.platform, &model_id, row.model_protocols.as_deref())?;
 
     let (base_url, compat_overrides) =
         resolve_aionrs_url_and_compat(&row.platform, &row.base_url, &provider, row.is_full_url);
@@ -192,47 +170,81 @@ pub(super) async fn build(
         system_prompt: overrides.system_prompt,
         max_tokens: overrides.max_tokens,
         max_turns: overrides.max_turns,
+        max_tool_call_malformed_turns: overrides.max_tool_call_malformed_turns,
+        max_tool_call_failure_turns: overrides.max_tool_call_failure_turns,
         compat_overrides,
         session_directory,
         session_mode: overrides.session_mode,
         extra_mcp_servers,
         bedrock_config,
+        runtime_env: ctx.runtime_env,
     };
+
+    if let Some(system_prompt) = config.system_prompt.as_deref()
+        && let Some(dump_dir) = crate::dev_prompt_dump::dump_dir_for_data_dir(&deps.data_dir, deps.dump_prompts)
+    {
+        match crate::dev_prompt_dump::dump_prompt(
+            &dump_dir,
+            crate::dev_prompt_dump::PromptDump {
+                kind: "aionrs-system-prompt",
+                backend: None,
+                conversation_id: &ctx.conversation_id,
+                session_id: None,
+                msg_id: None,
+                turn_id: None,
+                prompt: system_prompt,
+            },
+        ) {
+            Ok(path) => {
+                debug!(
+                    conversation_id = %ctx.conversation_id,
+                    path = %path.display(),
+                    "DEV prompt dump written"
+                );
+            }
+            Err(error) => {
+                warn!(
+                    conversation_id = %ctx.conversation_id,
+                    error = %error,
+                    "DEV prompt dump failed"
+                );
+            }
+        }
+    }
 
     let agent = AionrsAgentManager::new(ctx.conversation_id, ctx.workspace, config, resume_session).await?;
     Ok(AgentInstance::Aionrs(Arc::new(agent)))
 }
 
-/// Map AionUi DB platform name to the aionrs provider identifier.
-///
-/// Mirrors the frontend `src/process/agent/aionrs/envBuilder.ts` mapping.
-/// For `new-api` platform, per-model protocol overrides from `model_protocols`
-/// JSON take precedence.
-pub(crate) fn map_aionrs_provider(platform: &str, model_id: &str, model_protocols: Option<&str>) -> String {
-    if platform == "new-api"
-        && let Some(protocols_json) = model_protocols
-        && let Ok(map) = serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(protocols_json)
-        && let Some(serde_json::Value::String(protocol)) = map.get(model_id)
-        && protocol == "anthropic"
-    {
-        return "anthropic".to_owned();
+/// Map AionUi DB platform/protocol settings to the aionrs provider identifier.
+pub(crate) fn map_aionrs_provider(
+    platform: &str,
+    model_id: &str,
+    model_protocols: Option<&str>,
+) -> Result<String, AgentError> {
+    match platform {
+        "anthropic" => return Ok("anthropic".to_owned()),
+        "bedrock" => return Ok("bedrock".to_owned()),
+        "gemini" | "openai" => return Ok("openai".to_owned()),
+        "gemini-vertex-ai" => return Ok("vertex".to_owned()),
+        _ => {}
     }
 
-    match platform {
-        "anthropic" => "anthropic",
-        "bedrock" => "bedrock",
-        "gemini-vertex-ai" => "vertex",
-        _ => "openai",
+    let protocol = resolve_model_protocol(model_id, model_protocols)?;
+    match protocol.as_str() {
+        "anthropic" => Ok("anthropic".to_owned()),
+        "openai" | "gemini" => Ok("openai".to_owned()),
+        other => Err(AgentError::bad_request(format!(
+            "Unsupported model protocol '{other}' for model '{model_id}'"
+        ))),
     }
-    .to_owned()
 }
 
 /// Resolve base_url and compat overrides for the aionrs provider.
 ///
-/// Mirrors the frontend `envBuilder.ts` logic:
-/// - Strips trailing `/v1` from base_url (aionrs appends its own path)
-/// - Gemini: prepends `/v1beta/openai` and overrides `api_path`
-/// - OpenAI official (`api.openai.com`): sets `max_completion_tokens`
+/// The stored base_url is treated as the user-controlled endpoint prefix.
+/// OpenAI-compatible providers append `/chat/completions`; Anthropic-compatible
+/// providers append `/v1/messages`.
 pub(crate) fn resolve_aionrs_url_and_compat(
     platform: &str,
     raw_base_url: &str,
@@ -254,14 +266,39 @@ pub(crate) fn resolve_aionrs_url_and_compat(
         return (Some(base), compat);
     }
 
-    let normalized = normalize_aionrs_base_url(raw_base_url);
-    let base_url = Some(normalized).filter(|u| !u.is_empty());
+    let trimmed = raw_base_url.trim_end_matches('/');
+    let base_url = Some(trimmed.to_owned()).filter(|u| !u.is_empty());
+
+    match mapped_provider {
+        "openai" if base_url.is_some() => {
+            compat.api_path = Some("/chat/completions".to_owned());
+        }
+        "anthropic" if base_url.is_some() && platform != "anthropic" => {
+            compat.api_path = Some("/v1/messages".to_owned());
+        }
+        _ => {}
+    }
 
     if mapped_provider == "openai" && is_openai_host(raw_base_url) {
         compat.max_tokens_field = Some("max_completion_tokens".to_owned());
     }
 
     (base_url, compat)
+}
+
+fn resolve_model_protocol(model_id: &str, model_protocols: Option<&str>) -> Result<String, AgentError> {
+    let Some(protocols_json) = model_protocols.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok("openai".to_owned());
+    };
+    let map = serde_json::from_str::<Map<String, Value>>(protocols_json).map_err(|error| {
+        AgentError::bad_request(format!(
+            "Invalid model protocols config for model '{model_id}': {error}"
+        ))
+    })?;
+    match map.get(model_id) {
+        Some(Value::String(protocol)) if !protocol.is_empty() => Ok(protocol.clone()),
+        _ => Ok("openai".to_owned()),
+    }
 }
 
 fn is_openai_host(url: &str) -> bool {
@@ -271,13 +308,6 @@ fn is_openai_host(url: &str) -> bool {
         .or_else(|| lower.strip_prefix("http://"))
         .map(|rest| rest == "api.openai.com" || rest.starts_with("api.openai.com/"))
         .unwrap_or(false)
-}
-
-/// Strip trailing `/v1`, `/v1/`, or lone `/` from a base URL so that
-/// aionrs can append its own path suffix (`/v1/messages`, `/v1/chat/completions`).
-fn normalize_aionrs_base_url(url: &str) -> String {
-    let trimmed = url.trim_end_matches('/');
-    trimmed.strip_suffix("/v1").unwrap_or(trimmed).to_owned()
 }
 
 pub(crate) fn resolve_bedrock_config(json: Option<&str>) -> Option<aion_config::config::BedrockConfig> {
@@ -571,17 +601,9 @@ async fn ensure_stdio_launch(
     Ok((resolved.program.to_string_lossy().into_owned(), final_args, final_env))
 }
 
-fn resolve_mcp_servers(overrides: &AionrsBuildExtra, conversation_id: &str) -> HashMap<String, McpServerConfig> {
+fn resolve_mcp_servers(overrides: &AionrsBuildExtra) -> HashMap<String, McpServerConfig> {
     if let Some(cfg) = &overrides.team_mcp_stdio_config {
         return team_mcp_to_config(cfg);
-    }
-    if let Some(guide_cfg) = &overrides.guide_mcp_config
-        && overrides
-            .backend
-            .as_deref()
-            .is_some_and(|b| TEAM_CAPABLE_BACKENDS.contains(&b))
-    {
-        return guide_mcp_to_config(guide_cfg, overrides, conversation_id);
     }
     HashMap::new()
 }
@@ -604,32 +626,6 @@ fn team_mcp_to_config(cfg: &TeamMcpStdioConfig) -> HashMap<String, McpServerConf
     };
 
     HashMap::from([(TEAM_MCP_SERVER_NAME.to_owned(), server)])
-}
-
-fn guide_mcp_to_config(
-    cfg: &GuideMcpConfig,
-    overrides: &AionrsBuildExtra,
-    conversation_id: &str,
-) -> HashMap<String, McpServerConfig> {
-    let mut env = HashMap::new();
-    env.insert("AION_MCP_PORT".into(), cfg.port.to_string());
-    env.insert("AION_MCP_TOKEN".into(), cfg.token.clone());
-    env.insert("AION_MCP_BACKEND".into(), overrides.backend.clone().unwrap_or_default());
-    env.insert("AION_MCP_CONVERSATION_ID".into(), conversation_id.to_owned());
-    env.insert("AION_MCP_USER_ID".into(), overrides.user_id.clone().unwrap_or_default());
-
-    let server = McpServerConfig {
-        transport: TransportType::Stdio,
-        command: Some(cfg.binary_path.clone()),
-        args: Some(vec!["mcp-guide-stdio".into()]),
-        env: Some(env),
-        url: None,
-        headers: None,
-        deferred: Some(false),
-        startup_timeout_ms: None,
-    };
-
-    HashMap::from([("aionui-team-guide".into(), server)])
 }
 
 #[cfg(test)]
@@ -702,8 +698,86 @@ mod tests {
         }
     }
 
+    struct MockMcpRepo {
+        rows: Vec<McpServerRow>,
+    }
+
+    #[async_trait::async_trait]
+    impl IMcpServerRepository for MockMcpRepo {
+        async fn list(&self) -> Result<Vec<McpServerRow>, aionui_db::DbError> {
+            Ok(self.rows.clone())
+        }
+
+        async fn find_by_id(&self, id: &str) -> Result<Option<McpServerRow>, aionui_db::DbError> {
+            Ok(self.rows.iter().find(|row| row.id == id).cloned())
+        }
+
+        async fn find_by_name(&self, name: &str) -> Result<Option<McpServerRow>, aionui_db::DbError> {
+            Ok(self.rows.iter().find(|row| row.name == name).cloned())
+        }
+
+        async fn create(
+            &self,
+            _params: aionui_db::CreateMcpServerParams<'_>,
+        ) -> Result<McpServerRow, aionui_db::DbError> {
+            unimplemented!("not needed for factory tests")
+        }
+
+        async fn update(
+            &self,
+            _id: &str,
+            _params: aionui_db::UpdateMcpServerParams<'_>,
+        ) -> Result<McpServerRow, aionui_db::DbError> {
+            unimplemented!("not needed for factory tests")
+        }
+
+        async fn delete(&self, _id: &str) -> Result<(), aionui_db::DbError> {
+            unimplemented!("not needed for factory tests")
+        }
+
+        async fn batch_upsert(
+            &self,
+            _servers: &[aionui_db::CreateMcpServerParams<'_>],
+        ) -> Result<Vec<McpServerRow>, aionui_db::DbError> {
+            unimplemented!("not needed for factory tests")
+        }
+
+        async fn update_status(
+            &self,
+            _id: &str,
+            _status: &str,
+            _last_connected: Option<aionui_common::TimestampMs>,
+        ) -> Result<(), aionui_db::DbError> {
+            unimplemented!("not needed for factory tests")
+        }
+
+        async fn update_tools(&self, _id: &str, _tools: Option<&str>) -> Result<(), aionui_db::DbError> {
+            unimplemented!("not needed for factory tests")
+        }
+    }
+
     fn test_broadcaster() -> Arc<dyn EventBroadcaster> {
         Arc::new(BroadcastEventBus::new(16))
+    }
+
+    #[tokio::test]
+    async fn aionrs_loads_mcp_servers_from_frozen_selection_snapshot() {
+        let mut row = make_row(
+            "mcp-docs",
+            "http",
+            r#"{"url":"http://localhost:54321/mcp","headers":{"Authorization":"Bearer frozen"}}"#,
+            false,
+            false,
+        );
+        row.id = "mcp-docs".into();
+        let repo = MockMcpRepo { rows: vec![row] };
+        let selected = vec!["mcp-docs".to_owned()];
+
+        let extra_mcp_servers =
+            load_user_mcp_servers(&repo, Some(&selected), "conv-frozen-mcp", test_broadcaster()).await;
+
+        assert!(extra_mcp_servers.contains_key("mcp-docs"));
+        assert_eq!(extra_mcp_servers["mcp-docs"].transport, TransportType::StreamableHttp);
     }
 
     #[cfg(unix)]
@@ -735,69 +809,173 @@ mod tests {
         );
     }
 
-    #[test]
-    fn normalize_aionrs_base_url_strips_v1() {
-        assert_eq!(
-            normalize_aionrs_base_url("https://api.openai.com/v1"),
-            "https://api.openai.com"
-        );
-        assert_eq!(
-            normalize_aionrs_base_url("https://api.openai.com/v1/"),
-            "https://api.openai.com"
-        );
-        assert_eq!(
-            normalize_aionrs_base_url("https://api.anthropic.com"),
-            "https://api.anthropic.com"
-        );
-        assert_eq!(
-            normalize_aionrs_base_url("https://api.deepseek.com/"),
-            "https://api.deepseek.com"
-        );
-        assert_eq!(
-            normalize_aionrs_base_url("http://localhost:11434"),
-            "http://localhost:11434"
-        );
-        assert_eq!(normalize_aionrs_base_url(""), "");
+    struct ProviderMappingCase<'a> {
+        name: &'a str,
+        platform: &'a str,
+        model_id: &'a str,
+        model_protocols: Option<&'a str>,
+        expected_provider: Option<&'a str>,
     }
 
     #[test]
-    fn map_aionrs_provider_known_platforms() {
-        assert_eq!(map_aionrs_provider("anthropic", "m", None), "anthropic");
-        assert_eq!(map_aionrs_provider("bedrock", "m", None), "bedrock");
-        assert_eq!(map_aionrs_provider("gemini-vertex-ai", "m", None), "vertex");
-    }
+    fn map_aionrs_provider_table_driven_cases() {
+        let cases = [
+            ProviderMappingCase {
+                name: "anthropic platform defaults anthropic",
+                platform: "anthropic",
+                model_id: "m",
+                model_protocols: None,
+                expected_provider: Some("anthropic"),
+            },
+            ProviderMappingCase {
+                name: "bedrock platform defaults bedrock",
+                platform: "bedrock",
+                model_id: "m",
+                model_protocols: None,
+                expected_provider: Some("bedrock"),
+            },
+            ProviderMappingCase {
+                name: "gemini platform uses openai-compatible transport",
+                platform: "gemini",
+                model_id: "m",
+                model_protocols: None,
+                expected_provider: Some("openai"),
+            },
+            ProviderMappingCase {
+                name: "openai platform defaults openai",
+                platform: "openai",
+                model_id: "m",
+                model_protocols: None,
+                expected_provider: Some("openai"),
+            },
+            ProviderMappingCase {
+                name: "gemini vertex platform maps to vertex",
+                platform: "gemini-vertex-ai",
+                model_id: "m",
+                model_protocols: None,
+                expected_provider: Some("vertex"),
+            },
+            ProviderMappingCase {
+                name: "custom without protocols defaults openai",
+                platform: "custom",
+                model_id: "gpt-4o",
+                model_protocols: None,
+                expected_provider: Some("openai"),
+            },
+            ProviderMappingCase {
+                name: "new-api without protocols defaults openai",
+                platform: "new-api",
+                model_id: "m",
+                model_protocols: None,
+                expected_provider: Some("openai"),
+            },
+            ProviderMappingCase {
+                name: "unknown without protocols defaults openai",
+                platform: "unknown",
+                model_id: "m",
+                model_protocols: None,
+                expected_provider: Some("openai"),
+            },
+            ProviderMappingCase {
+                name: "new-api can select anthropic by model protocol",
+                platform: "new-api",
+                model_id: "claude",
+                model_protocols: Some(r#"{"claude":"anthropic"}"#),
+                expected_provider: Some("anthropic"),
+            },
+            ProviderMappingCase {
+                name: "new-api can select openai by model protocol",
+                platform: "new-api",
+                model_id: "gpt",
+                model_protocols: Some(r#"{"gpt":"openai"}"#),
+                expected_provider: Some("openai"),
+            },
+            ProviderMappingCase {
+                name: "new-api gemini protocol uses openai provider",
+                platform: "new-api",
+                model_id: "gemini",
+                model_protocols: Some(r#"{"gemini":"gemini"}"#),
+                expected_provider: Some("openai"),
+            },
+            ProviderMappingCase {
+                name: "custom can select anthropic by model protocol",
+                platform: "custom",
+                model_id: "claude",
+                model_protocols: Some(r#"{"claude":"anthropic"}"#),
+                expected_provider: Some("anthropic"),
+            },
+            ProviderMappingCase {
+                name: "custom can select openai by model protocol",
+                platform: "custom",
+                model_id: "gpt",
+                model_protocols: Some(r#"{"gpt":"openai"}"#),
+                expected_provider: Some("openai"),
+            },
+            ProviderMappingCase {
+                name: "custom missing model protocol defaults openai",
+                platform: "custom",
+                model_id: "unknown-model",
+                model_protocols: Some(r#"{"claude":"anthropic"}"#),
+                expected_provider: Some("openai"),
+            },
+            ProviderMappingCase {
+                name: "custom empty protocol map defaults openai",
+                platform: "custom",
+                model_id: "m",
+                model_protocols: Some("{}"),
+                expected_provider: Some("openai"),
+            },
+            ProviderMappingCase {
+                name: "custom empty protocol value defaults openai",
+                platform: "custom",
+                model_id: "m",
+                model_protocols: Some(r#"{"m":""}"#),
+                expected_provider: Some("openai"),
+            },
+            ProviderMappingCase {
+                name: "custom non-string protocol value defaults openai",
+                platform: "custom",
+                model_id: "m",
+                model_protocols: Some(r#"{"m":123}"#),
+                expected_provider: Some("openai"),
+            },
+            ProviderMappingCase {
+                name: "invalid protocol json returns error",
+                platform: "custom",
+                model_id: "m",
+                model_protocols: Some("not json"),
+                expected_provider: None,
+            },
+            ProviderMappingCase {
+                name: "unsupported protocol returns error",
+                platform: "custom",
+                model_id: "m",
+                model_protocols: Some(r#"{"m":"unsupported"}"#),
+                expected_provider: None,
+            },
+            ProviderMappingCase {
+                name: "known openai platform ignores anthropic protocol",
+                platform: "openai",
+                model_id: "claude",
+                model_protocols: Some(r#"{"claude":"anthropic"}"#),
+                expected_provider: Some("openai"),
+            },
+            ProviderMappingCase {
+                name: "known anthropic platform ignores openai protocol",
+                platform: "anthropic",
+                model_id: "gpt",
+                model_protocols: Some(r#"{"gpt":"openai"}"#),
+                expected_provider: Some("anthropic"),
+            },
+        ];
 
-    #[test]
-    fn map_aionrs_provider_custom_and_others_default_to_openai() {
-        assert_eq!(map_aionrs_provider("custom", "gpt-4o", None), "openai");
-        assert_eq!(map_aionrs_provider("gemini", "gemini-2.5-pro", None), "openai");
-        assert_eq!(map_aionrs_provider("new-api", "m", None), "openai");
-        assert_eq!(map_aionrs_provider("unknown", "m", None), "openai");
-    }
-
-    #[test]
-    fn map_aionrs_provider_new_api_with_anthropic_protocol() {
-        let protocols = r#"{"claude-sonnet":"anthropic","gpt-4o":"openai"}"#;
-        assert_eq!(
-            map_aionrs_provider("new-api", "claude-sonnet", Some(protocols)),
-            "anthropic"
-        );
-        assert_eq!(map_aionrs_provider("new-api", "gpt-4o", Some(protocols)), "openai");
-        assert_eq!(
-            map_aionrs_provider("new-api", "unknown-model", Some(protocols)),
-            "openai"
-        );
-    }
-
-    #[test]
-    fn map_aionrs_provider_new_api_with_invalid_json() {
-        assert_eq!(map_aionrs_provider("new-api", "m", Some("not json")), "openai");
-    }
-
-    #[test]
-    fn map_aionrs_provider_non_new_api_ignores_protocols() {
-        let protocols = r#"{"m":"anthropic"}"#;
-        assert_eq!(map_aionrs_provider("custom", "m", Some(protocols)), "openai");
+        for case in cases {
+            let result = map_aionrs_provider(case.platform, case.model_id, case.model_protocols);
+            match case.expected_provider {
+                Some(expected) => assert_eq!(result.unwrap(), expected, "{}", case.name),
+                None => assert!(result.is_err(), "{}", case.name),
+            }
+        }
     }
 
     #[test]
@@ -811,80 +989,493 @@ mod tests {
         assert!(!is_openai_host("not-a-url"));
     }
 
-    #[test]
-    fn resolve_openai_official_sets_max_completion_tokens() {
-        let (base_url, compat) = resolve_aionrs_url_and_compat("custom", "https://api.openai.com/v1", "openai", false);
-        assert_eq!(base_url.as_deref(), Some("https://api.openai.com"));
-        assert_eq!(compat.max_tokens_field.as_deref(), Some("max_completion_tokens"));
-        assert!(compat.api_path.is_none());
+    struct UrlCompatCase<'a> {
+        name: &'a str,
+        platform: &'a str,
+        raw_base_url: &'a str,
+        mapped_provider: &'a str,
+        is_full_url: bool,
+        expected_base_url: Option<&'a str>,
+        expected_api_path: Option<&'a str>,
+        expected_max_tokens_field: Option<&'a str>,
     }
 
     #[test]
-    fn resolve_non_openai_keeps_default_max_tokens() {
-        let (base_url, compat) =
-            resolve_aionrs_url_and_compat("custom", "https://api.deepseek.com/v1", "openai", false);
-        assert_eq!(base_url.as_deref(), Some("https://api.deepseek.com"));
-        assert!(compat.max_tokens_field.is_none());
+    fn resolve_aionrs_url_and_compat_table_driven_cases() {
+        let cases = [
+            UrlCompatCase {
+                name: "official openai root appends chat completions",
+                platform: "custom",
+                raw_base_url: "https://api.openai.com",
+                mapped_provider: "openai",
+                is_full_url: false,
+                expected_base_url: Some("https://api.openai.com"),
+                expected_api_path: Some("/chat/completions"),
+                expected_max_tokens_field: Some("max_completion_tokens"),
+            },
+            UrlCompatCase {
+                name: "official openai v1 prefix is preserved",
+                platform: "custom",
+                raw_base_url: "https://api.openai.com/v1",
+                mapped_provider: "openai",
+                is_full_url: false,
+                expected_base_url: Some("https://api.openai.com/v1"),
+                expected_api_path: Some("/chat/completions"),
+                expected_max_tokens_field: Some("max_completion_tokens"),
+            },
+            UrlCompatCase {
+                name: "official openai v1 trailing slash is trimmed",
+                platform: "custom",
+                raw_base_url: "https://api.openai.com/v1/",
+                mapped_provider: "openai",
+                is_full_url: false,
+                expected_base_url: Some("https://api.openai.com/v1"),
+                expected_api_path: Some("/chat/completions"),
+                expected_max_tokens_field: Some("max_completion_tokens"),
+            },
+            UrlCompatCase {
+                name: "deepseek openai-compatible prefix is preserved",
+                platform: "custom",
+                raw_base_url: "https://api.deepseek.com/v1",
+                mapped_provider: "openai",
+                is_full_url: false,
+                expected_base_url: Some("https://api.deepseek.com/v1"),
+                expected_api_path: Some("/chat/completions"),
+                expected_max_tokens_field: None,
+            },
+            UrlCompatCase {
+                name: "glm openai-compatible prefix is preserved",
+                platform: "custom",
+                raw_base_url: "https://open.bigmodel.cn/api/paas/v4",
+                mapped_provider: "openai",
+                is_full_url: false,
+                expected_base_url: Some("https://open.bigmodel.cn/api/paas/v4"),
+                expected_api_path: Some("/chat/completions"),
+                expected_max_tokens_field: None,
+            },
+            UrlCompatCase {
+                name: "new-api openai-compatible prefix is preserved",
+                platform: "new-api",
+                raw_base_url: "https://host/v1",
+                mapped_provider: "openai",
+                is_full_url: false,
+                expected_base_url: Some("https://host/v1"),
+                expected_api_path: Some("/chat/completions"),
+                expected_max_tokens_field: None,
+            },
+            UrlCompatCase {
+                name: "local openai-compatible prefix is preserved",
+                platform: "custom",
+                raw_base_url: "http://localhost:11434/v1",
+                mapped_provider: "openai",
+                is_full_url: false,
+                expected_base_url: Some("http://localhost:11434/v1"),
+                expected_api_path: Some("/chat/completions"),
+                expected_max_tokens_field: None,
+            },
+            UrlCompatCase {
+                name: "gemini uses openai-compatible endpoint prefix",
+                platform: "gemini",
+                raw_base_url: "https://generativelanguage.googleapis.com",
+                mapped_provider: "openai",
+                is_full_url: false,
+                expected_base_url: Some("https://generativelanguage.googleapis.com/v1beta/openai"),
+                expected_api_path: Some("/chat/completions"),
+                expected_max_tokens_field: None,
+            },
+            UrlCompatCase {
+                name: "official anthropic keeps aionrs defaults",
+                platform: "anthropic",
+                raw_base_url: "https://api.anthropic.com",
+                mapped_provider: "anthropic",
+                is_full_url: false,
+                expected_base_url: Some("https://api.anthropic.com"),
+                expected_api_path: None,
+                expected_max_tokens_field: None,
+            },
+            UrlCompatCase {
+                name: "official anthropic trims trailing slash",
+                platform: "anthropic",
+                raw_base_url: "https://api.anthropic.com/",
+                mapped_provider: "anthropic",
+                is_full_url: false,
+                expected_base_url: Some("https://api.anthropic.com"),
+                expected_api_path: None,
+                expected_max_tokens_field: None,
+            },
+            UrlCompatCase {
+                name: "custom anthropic-compatible unversioned prefix appends versioned messages path",
+                platform: "custom",
+                raw_base_url: "https://proxy.example.com/anthropic",
+                mapped_provider: "anthropic",
+                is_full_url: false,
+                expected_base_url: Some("https://proxy.example.com/anthropic"),
+                expected_api_path: Some("/v1/messages"),
+                expected_max_tokens_field: None,
+            },
+            UrlCompatCase {
+                name: "openai full url mode uses url as-is",
+                platform: "custom",
+                raw_base_url: "https://proxy.example.com/v1/chat/completions",
+                mapped_provider: "openai",
+                is_full_url: true,
+                expected_base_url: Some("https://proxy.example.com/v1/chat/completions"),
+                expected_api_path: Some(""),
+                expected_max_tokens_field: None,
+            },
+            UrlCompatCase {
+                name: "anthropic full url mode uses url as-is",
+                platform: "custom",
+                raw_base_url: "https://proxy.example.com/v1/messages",
+                mapped_provider: "anthropic",
+                is_full_url: true,
+                expected_base_url: Some("https://proxy.example.com/v1/messages"),
+                expected_api_path: Some(""),
+                expected_max_tokens_field: None,
+            },
+            UrlCompatCase {
+                name: "full url mode trims trailing slash",
+                platform: "custom",
+                raw_base_url: "https://proxy.example.com/v1/chat/completions/",
+                mapped_provider: "openai",
+                is_full_url: true,
+                expected_base_url: Some("https://proxy.example.com/v1/chat/completions"),
+                expected_api_path: Some(""),
+                expected_max_tokens_field: None,
+            },
+            UrlCompatCase {
+                name: "empty base url leaves compat unset",
+                platform: "custom",
+                raw_base_url: "",
+                mapped_provider: "openai",
+                is_full_url: false,
+                expected_base_url: None,
+                expected_api_path: None,
+                expected_max_tokens_field: None,
+            },
+        ];
+
+        for case in cases {
+            let (base_url, compat) =
+                resolve_aionrs_url_and_compat(case.platform, case.raw_base_url, case.mapped_provider, case.is_full_url);
+            assert_eq!(base_url.as_deref(), case.expected_base_url, "{}", case.name);
+            assert_eq!(compat.api_path.as_deref(), case.expected_api_path, "{}", case.name);
+            assert_eq!(
+                compat.max_tokens_field.as_deref(),
+                case.expected_max_tokens_field,
+                "{}",
+                case.name
+            );
+        }
+    }
+
+    struct OpenAiPresetBaseUrlCase<'a> {
+        name: &'a str,
+        base_url: &'a str,
+        expected_max_tokens_field: Option<&'a str>,
     }
 
     #[test]
-    fn resolve_gemini_prepends_path_and_sets_api_path() {
-        let (base_url, compat) =
-            resolve_aionrs_url_and_compat("gemini", "https://generativelanguage.googleapis.com", "openai", false);
-        assert_eq!(
-            base_url.as_deref(),
-            Some("https://generativelanguage.googleapis.com/v1beta/openai")
-        );
-        assert_eq!(compat.api_path.as_deref(), Some("/chat/completions"));
-        assert!(compat.max_tokens_field.is_none());
+    fn ui_model_platform_base_url_presets_default_to_openai_chat_completions() {
+        let cases = [
+            OpenAiPresetBaseUrlCase {
+                name: "OpenAI",
+                base_url: "https://api.openai.com/v1",
+                expected_max_tokens_field: Some("max_completion_tokens"),
+            },
+            OpenAiPresetBaseUrlCase {
+                name: "DeepSeek",
+                base_url: "https://api.deepseek.com/v1",
+                expected_max_tokens_field: None,
+            },
+            OpenAiPresetBaseUrlCase {
+                name: "MiniMax",
+                base_url: "https://api.minimaxi.com/v1",
+                expected_max_tokens_field: None,
+            },
+            OpenAiPresetBaseUrlCase {
+                name: "Novita",
+                base_url: "https://api.novita.ai/openai/v1",
+                expected_max_tokens_field: None,
+            },
+            OpenAiPresetBaseUrlCase {
+                name: "OpenRouter",
+                base_url: "https://openrouter.ai/api/v1",
+                expected_max_tokens_field: None,
+            },
+            OpenAiPresetBaseUrlCase {
+                name: "Dashscope",
+                base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                expected_max_tokens_field: None,
+            },
+            OpenAiPresetBaseUrlCase {
+                name: "Dashscope Coding Plan",
+                base_url: "https://coding.dashscope.aliyuncs.com/v1",
+                expected_max_tokens_field: None,
+            },
+            OpenAiPresetBaseUrlCase {
+                name: "SiliconFlow-CN",
+                base_url: "https://api.siliconflow.cn/v1",
+                expected_max_tokens_field: None,
+            },
+            OpenAiPresetBaseUrlCase {
+                name: "SiliconFlow",
+                base_url: "https://api.siliconflow.com/v1",
+                expected_max_tokens_field: None,
+            },
+            OpenAiPresetBaseUrlCase {
+                name: "Zhipu",
+                base_url: "https://open.bigmodel.cn/api/paas/v4",
+                expected_max_tokens_field: None,
+            },
+            OpenAiPresetBaseUrlCase {
+                name: "Moonshot (China)",
+                base_url: "https://api.moonshot.cn/v1",
+                expected_max_tokens_field: None,
+            },
+            OpenAiPresetBaseUrlCase {
+                name: "Moonshot (Global)",
+                base_url: "https://api.moonshot.ai/v1",
+                expected_max_tokens_field: None,
+            },
+            OpenAiPresetBaseUrlCase {
+                name: "xAI",
+                base_url: "https://api.x.ai/v1",
+                expected_max_tokens_field: None,
+            },
+            OpenAiPresetBaseUrlCase {
+                name: "Ark",
+                base_url: "https://ark.cn-beijing.volces.com/api/v3",
+                expected_max_tokens_field: None,
+            },
+            OpenAiPresetBaseUrlCase {
+                name: "Qianfan",
+                base_url: "https://qianfan.baidubce.com/v2",
+                expected_max_tokens_field: None,
+            },
+            OpenAiPresetBaseUrlCase {
+                name: "Hunyuan",
+                base_url: "https://api.hunyuan.cloud.tencent.com/v1",
+                expected_max_tokens_field: None,
+            },
+            OpenAiPresetBaseUrlCase {
+                name: "Lingyi",
+                base_url: "https://api.lingyiwanwu.com/v1",
+                expected_max_tokens_field: None,
+            },
+            OpenAiPresetBaseUrlCase {
+                name: "Poe",
+                base_url: "https://api.poe.com/v1",
+                expected_max_tokens_field: None,
+            },
+            OpenAiPresetBaseUrlCase {
+                name: "PPIO",
+                base_url: "https://api.ppinfra.com/v3/openai",
+                expected_max_tokens_field: None,
+            },
+            OpenAiPresetBaseUrlCase {
+                name: "ModelScope",
+                base_url: "https://api-inference.modelscope.cn/v1",
+                expected_max_tokens_field: None,
+            },
+            OpenAiPresetBaseUrlCase {
+                name: "InfiniAI",
+                base_url: "https://cloud.infini-ai.com/maas/v1",
+                expected_max_tokens_field: None,
+            },
+            OpenAiPresetBaseUrlCase {
+                name: "Ctyun",
+                base_url: "https://wishub-x1.ctyun.cn/v1",
+                expected_max_tokens_field: None,
+            },
+            OpenAiPresetBaseUrlCase {
+                name: "StepFun",
+                base_url: "https://api.stepfun.com/v1",
+                expected_max_tokens_field: None,
+            },
+        ];
+
+        for case in cases {
+            let provider = map_aionrs_provider("custom", "m", None).expect(case.name);
+            assert_eq!(provider, "openai", "{}", case.name);
+
+            let (base_url, compat) = resolve_aionrs_url_and_compat("custom", case.base_url, &provider, false);
+            assert_eq!(base_url.as_deref(), Some(case.base_url), "{}", case.name);
+            assert_eq!(compat.api_path.as_deref(), Some("/chat/completions"), "{}", case.name);
+            assert_eq!(
+                compat.max_tokens_field.as_deref(),
+                case.expected_max_tokens_field,
+                "{}",
+                case.name
+            );
+            assert_eq!(
+                intended_aionrs_final_url(&provider, case.base_url, compat.api_path.as_deref()),
+                format!("{}/chat/completions", case.base_url),
+                "{}",
+                case.name
+            );
+        }
+    }
+
+    struct SpecialModelPlatformCase<'a> {
+        name: &'a str,
+        platform: &'a str,
+        base_url: &'a str,
+        expected_provider: &'a str,
+        expected_base_url: Option<&'a str>,
+        expected_api_path: Option<&'a str>,
+        expected_final_url: Option<&'a str>,
     }
 
     #[test]
-    fn resolve_anthropic_no_compat_overrides() {
-        let (base_url, compat) =
-            resolve_aionrs_url_and_compat("anthropic", "https://api.anthropic.com", "anthropic", false);
-        assert_eq!(base_url.as_deref(), Some("https://api.anthropic.com"));
-        assert!(compat.max_tokens_field.is_none());
-        assert!(compat.api_path.is_none());
+    fn ui_model_platform_special_presets_resolve_default_transports() {
+        let cases = [
+            SpecialModelPlatformCase {
+                name: "Custom",
+                platform: "custom",
+                base_url: "",
+                expected_provider: "openai",
+                expected_base_url: None,
+                expected_api_path: None,
+                expected_final_url: None,
+            },
+            SpecialModelPlatformCase {
+                name: "New API",
+                platform: "new-api",
+                base_url: "",
+                expected_provider: "openai",
+                expected_base_url: None,
+                expected_api_path: None,
+                expected_final_url: None,
+            },
+            SpecialModelPlatformCase {
+                name: "Gemini",
+                platform: "gemini",
+                base_url: "https://generativelanguage.googleapis.com",
+                expected_provider: "openai",
+                expected_base_url: Some("https://generativelanguage.googleapis.com/v1beta/openai"),
+                expected_api_path: Some("/chat/completions"),
+                expected_final_url: Some("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"),
+            },
+            SpecialModelPlatformCase {
+                name: "Gemini (Vertex AI)",
+                platform: "gemini-vertex-ai",
+                base_url: "",
+                expected_provider: "vertex",
+                expected_base_url: None,
+                expected_api_path: None,
+                expected_final_url: None,
+            },
+            SpecialModelPlatformCase {
+                name: "Anthropic",
+                platform: "anthropic",
+                base_url: "https://api.anthropic.com",
+                expected_provider: "anthropic",
+                expected_base_url: Some("https://api.anthropic.com"),
+                expected_api_path: None,
+                expected_final_url: Some("https://api.anthropic.com/v1/messages"),
+            },
+            SpecialModelPlatformCase {
+                name: "AWS Bedrock",
+                platform: "bedrock",
+                base_url: "",
+                expected_provider: "bedrock",
+                expected_base_url: None,
+                expected_api_path: None,
+                expected_final_url: None,
+            },
+        ];
+
+        for case in cases {
+            let provider = map_aionrs_provider(case.platform, "m", None).expect(case.name);
+            assert_eq!(provider, case.expected_provider, "{}", case.name);
+
+            let (base_url, compat) = resolve_aionrs_url_and_compat(case.platform, case.base_url, &provider, false);
+            assert_eq!(base_url.as_deref(), case.expected_base_url, "{}", case.name);
+            assert_eq!(compat.api_path.as_deref(), case.expected_api_path, "{}", case.name);
+
+            if let (Some(base_url), Some(expected_final_url)) = (base_url.as_deref(), case.expected_final_url) {
+                assert_eq!(
+                    intended_aionrs_final_url(&provider, base_url, compat.api_path.as_deref()),
+                    expected_final_url,
+                    "{}",
+                    case.name
+                );
+            }
+        }
+    }
+
+    struct FinalUrlCase<'a> {
+        name: &'a str,
+        provider: &'a str,
+        base_url: &'a str,
+        api_path: Option<&'a str>,
+        expected_final_url: &'a str,
+    }
+
+    fn intended_aionrs_final_url(provider: &str, base_url: &str, api_path: Option<&str>) -> String {
+        let default_path = match provider {
+            "anthropic" => "/v1/messages",
+            _ => "/v1/chat/completions",
+        };
+        format!("{}{}", base_url, api_path.unwrap_or(default_path))
     }
 
     #[test]
-    fn resolve_full_url_mode_uses_url_as_is() {
-        let (base_url, compat) = resolve_aionrs_url_and_compat(
-            "custom",
-            "https://proxy.example.com/v1/chat/completions",
-            "openai",
-            true,
-        );
-        assert_eq!(
-            base_url.as_deref(),
-            Some("https://proxy.example.com/v1/chat/completions")
-        );
-        assert_eq!(compat.api_path.as_deref(), Some(""));
-        assert!(compat.max_tokens_field.is_none());
-    }
+    fn resolved_aionrs_final_url_semantics_table_driven_cases() {
+        let cases = [
+            FinalUrlCase {
+                name: "deepseek openai-compatible chat completions",
+                provider: "openai",
+                base_url: "https://api.deepseek.com/v1",
+                api_path: Some("/chat/completions"),
+                expected_final_url: "https://api.deepseek.com/v1/chat/completions",
+            },
+            FinalUrlCase {
+                name: "glm openai-compatible chat completions",
+                provider: "openai",
+                base_url: "https://open.bigmodel.cn/api/paas/v4",
+                api_path: Some("/chat/completions"),
+                expected_final_url: "https://open.bigmodel.cn/api/paas/v4/chat/completions",
+            },
+            FinalUrlCase {
+                name: "openai full url mode appends nothing",
+                provider: "openai",
+                base_url: "https://x/v1/chat/completions",
+                api_path: Some(""),
+                expected_final_url: "https://x/v1/chat/completions",
+            },
+            FinalUrlCase {
+                name: "official anthropic uses default versioned messages path",
+                provider: "anthropic",
+                base_url: "https://api.anthropic.com",
+                api_path: None,
+                expected_final_url: "https://api.anthropic.com/v1/messages",
+            },
+            FinalUrlCase {
+                name: "custom anthropic root uses default versioned messages path",
+                provider: "anthropic",
+                base_url: "https://proxy.example.com",
+                api_path: None,
+                expected_final_url: "https://proxy.example.com/v1/messages",
+            },
+            FinalUrlCase {
+                name: "anthropic full url mode appends nothing",
+                provider: "anthropic",
+                base_url: "https://x/v1/messages",
+                api_path: Some(""),
+                expected_final_url: "https://x/v1/messages",
+            },
+        ];
 
-    #[test]
-    fn resolve_full_url_mode_strips_trailing_slash() {
-        let (base_url, compat) = resolve_aionrs_url_and_compat(
-            "custom",
-            "https://proxy.example.com/v1/chat/completions/",
-            "openai",
-            true,
-        );
-        assert_eq!(
-            base_url.as_deref(),
-            Some("https://proxy.example.com/v1/chat/completions")
-        );
-        assert_eq!(compat.api_path.as_deref(), Some(""));
-    }
-
-    #[test]
-    fn resolve_full_url_false_still_normalizes() {
-        let (base_url, compat) =
-            resolve_aionrs_url_and_compat("custom", "https://api.deepseek.com/v1", "openai", false);
-        assert_eq!(base_url.as_deref(), Some("https://api.deepseek.com"));
-        assert!(compat.api_path.is_none());
+        for case in cases {
+            assert_eq!(
+                intended_aionrs_final_url(case.provider, case.base_url, case.api_path),
+                case.expected_final_url,
+                "{}",
+                case.name
+            );
+        }
     }
 
     #[test]
@@ -897,16 +1488,11 @@ mod tests {
                 slot_id: "slot-1".into(),
                 binary_path: "/usr/bin/backend".into(),
             }),
-            guide_mcp_config: Some(GuideMcpConfig {
-                port: 8000,
-                token: "guide-tok".into(),
-                binary_path: "/usr/bin/backend".into(),
-            }),
             backend: Some("aionrs".into()),
             ..Default::default()
         };
 
-        let result = resolve_mcp_servers(&overrides, "conv-1");
+        let result = resolve_mcp_servers(&overrides);
         assert_eq!(result.len(), 1);
         assert!(result.contains_key(TEAM_MCP_SERVER_NAME));
 
@@ -923,72 +1509,20 @@ mod tests {
     }
 
     #[test]
-    fn resolve_mcp_servers_guide_when_no_team() {
+    fn resolve_mcp_servers_without_team_returns_empty_map() {
         let overrides = AionrsBuildExtra {
-            guide_mcp_config: Some(GuideMcpConfig {
-                port: 8000,
-                token: "guide-tok".into(),
-                binary_path: "/usr/bin/backend".into(),
-            }),
             backend: Some("aionrs".into()),
-            user_id: Some("user-1".into()),
             ..Default::default()
         };
 
-        let result = resolve_mcp_servers(&overrides, "conv-2");
-        assert_eq!(result.len(), 1);
-        assert!(result.contains_key("aionui-team-guide"));
-
-        let server = &result["aionui-team-guide"];
-        assert_eq!(server.transport, TransportType::Stdio);
-        assert_eq!(server.command.as_deref(), Some("/usr/bin/backend"));
-        assert_eq!(server.args.as_deref(), Some(&["mcp-guide-stdio".to_owned()][..]));
-        assert_eq!(server.deferred, Some(false));
-
-        let env = server.env.as_ref().unwrap();
-        assert_eq!(env.get("AION_MCP_PORT"), Some(&"8000".to_owned()));
-        assert_eq!(env.get("AION_MCP_TOKEN"), Some(&"guide-tok".to_owned()));
-        assert_eq!(env.get("AION_MCP_BACKEND"), Some(&"aionrs".to_owned()));
-        assert_eq!(env.get("AION_MCP_CONVERSATION_ID"), Some(&"conv-2".to_owned()));
-        assert_eq!(env.get("AION_MCP_USER_ID"), Some(&"user-1".to_owned()));
+        let result = resolve_mcp_servers(&overrides);
+        assert!(result.is_empty());
     }
 
     #[test]
     fn resolve_mcp_servers_empty_when_no_config() {
         let overrides = AionrsBuildExtra::default();
-        let result = resolve_mcp_servers(&overrides, "conv-3");
-        assert!(result.is_empty());
-    }
-
-    #[test]
-    fn resolve_mcp_servers_guide_skipped_for_unknown_backend() {
-        let overrides = AionrsBuildExtra {
-            guide_mcp_config: Some(GuideMcpConfig {
-                port: 8000,
-                token: "tok".into(),
-                binary_path: "/bin/x".into(),
-            }),
-            backend: Some("unknown-vendor".into()),
-            ..Default::default()
-        };
-
-        let result = resolve_mcp_servers(&overrides, "conv-4");
-        assert!(result.is_empty());
-    }
-
-    #[test]
-    fn resolve_mcp_servers_guide_skipped_when_backend_none() {
-        let overrides = AionrsBuildExtra {
-            guide_mcp_config: Some(GuideMcpConfig {
-                port: 8000,
-                token: "tok".into(),
-                binary_path: "/bin/x".into(),
-            }),
-            backend: None,
-            ..Default::default()
-        };
-
-        let result = resolve_mcp_servers(&overrides, "conv-5");
+        let result = resolve_mcp_servers(&overrides);
         assert!(result.is_empty());
     }
 

@@ -7,7 +7,7 @@ use crate::shared_kernel::{ConfigKey, ConfigValue, ModeId, ModelId};
 use agent_client_protocol::schema::{
     SessionId, SetSessionConfigOptionRequest, SetSessionModeRequest, SetSessionModelRequest,
 };
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 /// Actions the session driver must execute to align CLI state with user intent.
 ///
@@ -39,13 +39,23 @@ impl AcpAgentManager {
     pub(super) async fn reconcile_session(&self, session_id: &str) -> Result<(), AcpError> {
         use crate::manager::acp::ReconcileAction;
 
-        let (invalid_mode, invalid_model, actions) = {
+        let (startup_config_seed_results, invalid_mode, invalid_model, actions) = {
             let mut session = self.session.write().await;
+            // Apply any pending startup config seeds (mode/model/thought_level
+            // from build extras) now that the advertised catalog is known.
+            let startup_config_seed_results = session.resolve_pending_startup_config_seeds();
             let invalid_mode = session.clear_invalid_desired_mode();
             let invalid_model = session.clear_invalid_desired_model();
             let actions = session.plan_reconcile();
-            (invalid_mode, invalid_model, actions)
+            (startup_config_seed_results, invalid_mode, invalid_model, actions)
         };
+        if !startup_config_seed_results.is_empty() {
+            debug!(
+                conversation_id = %self.params.conversation_id,
+                results = ?startup_config_seed_results,
+                "reconcile_session: resolved pending startup config seeds"
+            );
+        }
         if let Some(mode) = invalid_mode {
             warn!(
                 conversation_id = %self.params.conversation_id,

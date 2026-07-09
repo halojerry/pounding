@@ -10,9 +10,9 @@ use aionui_api_types::{
     ActiveCountResponse, ApiResponse, ApprovalCheckQuery, ApprovalCheckResponse, CancelConversationRequest,
     CancelConversationResponse, CloneConversationRequest, ConfirmRequest, ConfirmationListResponse,
     ConversationArtifactListResponse, ConversationArtifactResponse, ConversationListResponse, ConversationResponse,
-    CreateConversationRequest, ListConversationsQuery, ListMessagesQuery, MessageListResponse, MessageResponse,
-    MessageSearchResponse, SearchMessagesQuery, SendMessageRequest, SendMessageResponse,
-    UpdateConversationArtifactRequest, UpdateConversationRequest,
+    CreateConversationRequest, EnsureConversationRuntimeResponse, ListConversationsQuery, ListMessagesQuery,
+    MessageListResponse, MessageResponse, MessageSearchResponse, SearchMessagesQuery, SendMessageRequest,
+    SendMessageResponse, UpdateConversationArtifactRequest, UpdateConversationRequest,
 };
 use aionui_auth::CurrentUser;
 use aionui_common::ApiError;
@@ -44,6 +44,17 @@ impl From<ConversationError> for ApiError {
             ConversationError::WorkspacePathRuntimeUnavailable { path } => {
                 ApiError::WorkspacePathRuntimeUnavailable(path)
             }
+            ConversationError::OpenClawGatewayUnreachable { detail } => ApiError::coded(
+                StatusCode::BAD_GATEWAY,
+                "USER_AGENT_OPENCLAW_GATEWAY_UNREACHABLE",
+                "OpenClaw Gateway is not reachable",
+                Some(serde_json::json!({
+                    "detail": detail,
+                    "error_kind": "openclaw_gateway_unreachable",
+                    "backend": "openclaw",
+                    "port": 18789
+                })),
+            ),
             ConversationError::Acp(_) => ApiError::BadGateway("Agent protocol error".into()),
         }
     }
@@ -63,7 +74,8 @@ pub fn conversation_routes(state: ConversationRouterState) -> Router {
         .route("/api/conversations/{id}/artifacts", get(list_artifacts))
         .route("/api/conversations/{id}/artifacts/{artifactId}", patch(update_artifact))
         .route("/api/conversations/{id}/cancel", post(cancel))
-        .route("/api/conversations/{id}/warmup", post(warmup))
+        .route("/api/conversations/{id}/runtime/ensure", post(ensure_runtime))
+        .route("/api/conversations/{id}/active-lease", post(active_lease))
         // Confirmation system
         .route("/api/conversations/{id}/confirmations", get(list_confirmations))
         .route("/api/conversations/{id}/confirmations/{callId}/confirm", post(confirm))
@@ -264,14 +276,27 @@ async fn cancel(
     Ok(Json(ApiResponse::ok(response)))
 }
 
-async fn warmup(
+async fn ensure_runtime(
+    State(state): State<ConversationRouterState>,
+    Extension(user): Extension<CurrentUser>,
+    Path(id): Path<String>,
+) -> Result<Json<ApiResponse<EnsureConversationRuntimeResponse>>, ApiError> {
+    let response = state
+        .service
+        .ensure_runtime(&user.id, &id, &state.task_manager)
+        .await
+        .map_err(ApiError::from)?;
+    Ok(Json(ApiResponse::ok(response)))
+}
+
+async fn active_lease(
     State(state): State<ConversationRouterState>,
     Extension(user): Extension<CurrentUser>,
     Path(id): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     state
         .service
-        .warmup(&user.id, &id, &state.task_manager)
+        .renew_active_lease(&user.id, &id, &state.active_leases)
         .await
         .map_err(ApiError::from)?;
     Ok(Json(ApiResponse::success()))
@@ -409,5 +434,19 @@ mod error_mapping_tests {
             app,
             ApiError::WorkspacePathRuntimeUnavailable(message) if message == "/tmp/my project"
         ));
+    }
+
+    #[test]
+    fn openclaw_gateway_unreachable_maps_to_coded_bad_gateway() {
+        let app = ApiError::from(ConversationError::OpenClawGatewayUnreachable {
+            detail: "OpenClaw Gateway is not running or cannot be reached at 127.0.0.1:18789.".into(),
+        });
+
+        assert_eq!(app.status_code(), StatusCode::BAD_GATEWAY);
+        assert_eq!(app.error_code(), "USER_AGENT_OPENCLAW_GATEWAY_UNREACHABLE");
+        assert_eq!(app.public_message(), "OpenClaw Gateway is not reachable");
+        let details = app.error_details().expect("details should be present");
+        assert_eq!(details["backend"], "openclaw");
+        assert_eq!(details["port"], 18789);
     }
 }

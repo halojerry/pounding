@@ -20,16 +20,30 @@ pub async fn build_app() -> (axum::Router, AppServices) {
     (router, services)
 }
 
-/// Build an app whose skill router reads from the given temp directories.
+/// Build an app whose skill router uses the given temp directories.
 ///
 /// Use for HTTP integration tests that need deterministic on-disk layouts
-/// (E1 `/api/skills`, E2 `/api/skills/builtin-auto`, E3/E4 built-in reads,
-/// E5 `/api/skills/info`). Returns the router, services, and the
-/// `SkillPaths` so the test can seed fixtures at known locations.
+/// (E1 `/api/skills`, E3/E4 built-in reads, E5 `/api/skills/info`).
+/// Returns the router, services, and the `SkillPaths` so the test can seed
+/// fixtures at known locations. `/api/skills` reads the database only; tests
+/// that seed skill directories should call `sync_skill_catalog_for_test`.
 #[allow(dead_code)]
 pub async fn build_app_with_skill_paths(root: &std::path::Path) -> (axum::Router, AppServices, SkillPaths) {
     let db = aionui_db::init_database_memory().await.unwrap();
-    let services = AppServices::from_config(db, &AppConfig::default()).await.unwrap();
+    let config = AppConfig {
+        data_dir: root.to_path_buf(),
+        work_dir: root.to_path_buf(),
+        ..Default::default()
+    };
+    let services = AppServices::from_config(db, &config).await.unwrap();
+    sqlx::query("DELETE FROM skill_import_records")
+        .execute(services.database.pool())
+        .await
+        .unwrap();
+    sqlx::query("DELETE FROM skills")
+        .execute(services.database.pool())
+        .await
+        .unwrap();
     let (mut states, _) = build_module_states(&services).await.expect("build module states");
 
     let builtin_dir = root.join("builtin-skills");
@@ -55,12 +69,20 @@ pub async fn build_app_with_skill_paths(root: &std::path::Path) -> (axum::Router
     let ext_paths_mgr = std::sync::Arc::new(ExternalPathsManager::with_file(root.join("paths.json")).await);
     states.skill = SkillRouterState {
         skill_paths: paths.clone(),
+        skill_repo: std::sync::Arc::new(aionui_db::SqliteSkillRepository::new(services.database.pool().clone())),
         external_paths_manager: ext_paths_mgr,
         assistant_dispatcher: states.skill.assistant_dispatcher.clone(),
     };
 
     let router = create_router_with_states(&services, states);
     (router, services, paths)
+}
+
+pub async fn sync_skill_catalog_for_test(services: &AppServices, paths: &SkillPaths) {
+    let repo = aionui_db::SqliteSkillRepository::new(services.database.pool().clone());
+    aionui_extension::sync_skill_catalog_into_repo(paths, &repo)
+        .await
+        .expect("sync skill catalog");
 }
 
 pub async fn build_app_with_noop_opener() -> (axum::Router, AppServices) {
@@ -98,7 +120,7 @@ pub async fn build_app_with_mock_version(
 
 /// Build app with a mock worker task manager that returns noop agents.
 ///
-/// Use for tests that exercise session/warmup paths (team ensure_session,
+/// Use for tests that exercise runtime preparation paths (team ensure_session,
 /// send_message) where spawning a real CLI process is not feasible.
 pub async fn build_app_with_mock_agents() -> (axum::Router, AppServices) {
     let db = aionui_db::init_database_memory().await.unwrap();
@@ -113,6 +135,7 @@ pub async fn build_app_with_mock_agents() -> (axum::Router, AppServices) {
         Box::pin(async move {
             Ok(AgentInstance::Mock(std::sync::Arc::new(NoopMockAgent {
                 conversation_id: opts.conversation_id().to_owned(),
+                model: std::sync::Mutex::new("mock-model".to_owned()),
             })))
         })
     });
@@ -128,6 +151,11 @@ pub async fn build_app_with_mock_agents() -> (axum::Router, AppServices) {
 
 struct NoopMockAgent {
     conversation_id: String,
+    /// Current value of the `model` config option. POUNDING routes
+    /// `set_config_option("model", …)` through `set_model_confirmed` and then
+    /// re-reads `get_config_options()` (see `service_ops.rs`), so this mock must
+    /// be stateful: a set must be observable by the subsequent get.
+    model: std::sync::Mutex<String>,
 }
 
 #[async_trait::async_trait]
@@ -166,7 +194,80 @@ impl IAgentTask for NoopMockAgent {
 }
 
 #[async_trait::async_trait]
-impl IMockAgent for NoopMockAgent {}
+impl IMockAgent for NoopMockAgent {
+    async fn get_model(&self) -> Result<aionui_api_types::GetModelInfoResponse, aionui_ai_agent::AgentError> {
+        let current = self.model.lock().unwrap().clone();
+        Ok(aionui_api_types::GetModelInfoResponse {
+            model_info: Some(aionui_api_types::ModelInfoPayload {
+                current_model_id: Some(current.clone()),
+                current_model_label: Some(current.clone()),
+                available_models: vec![aionui_api_types::ModelInfoEntry {
+                    id: current.clone(),
+                    label: current,
+                }],
+            }),
+        })
+    }
+
+    async fn set_model(&self, model_id: &str) -> Result<(), aionui_ai_agent::AgentError> {
+        *self.model.lock().unwrap() = model_id.to_owned();
+        Ok(())
+    }
+
+    // POUNDING keeps the dedicated `/config-options/model` route, which the
+    // service redirects to `set_model_confirmed`; the subsequent
+    // `get_config_options` must observe the new value. Mutate the shared model
+    // state so the read-back reflects the write.
+    async fn set_model_confirmed(
+        &self,
+        model_id: &str,
+    ) -> Result<aionui_api_types::GetModelInfoResponse, aionui_ai_agent::AgentError> {
+        self.set_model(model_id).await?;
+        self.get_model().await
+    }
+
+    async fn get_config_options(
+        &self,
+    ) -> Result<aionui_api_types::GetConfigOptionsResponse, aionui_ai_agent::AgentError> {
+        Ok(aionui_api_types::GetConfigOptionsResponse {
+            config_options: vec![model_config_option(&self.model.lock().unwrap())],
+        })
+    }
+
+    async fn set_config_option(
+        &self,
+        option_id: &str,
+        value: &str,
+    ) -> Result<aionui_api_types::SetConfigOptionResponse, aionui_ai_agent::AgentError> {
+        if option_id == "model" {
+            *self.model.lock().unwrap() = value.to_owned();
+        }
+        Ok(aionui_api_types::SetConfigOptionResponse {
+            confirmation: aionui_api_types::ConfigOptionConfirmation::Observed,
+            config_options: Some(vec![model_config_option(&self.model.lock().unwrap())]),
+        })
+    }
+}
+
+/// Build the single `model` config option DTO used by the mock agent, with the
+/// given value as both the current value and the sole selectable option.
+fn model_config_option(model: &str) -> aionui_api_types::AcpConfigOptionDto {
+    aionui_api_types::AcpConfigOptionDto {
+        id: "model".to_owned(),
+        name: Some("Model".to_owned()),
+        label: None,
+        description: None,
+        category: Some("model".to_owned()),
+        option_type: "select".to_owned(),
+        current_value: Some(model.to_owned()),
+        options: vec![aionui_api_types::AcpConfigSelectOptionDto {
+            value: model.to_owned(),
+            name: Some(model.to_owned()),
+            label: Some(model.to_owned()),
+            description: None,
+        }],
+    }
+}
 
 pub async fn body_json(resp: axum::response::Response) -> serde_json::Value {
     let bytes = resp.into_body().collect().await.unwrap().to_bytes();

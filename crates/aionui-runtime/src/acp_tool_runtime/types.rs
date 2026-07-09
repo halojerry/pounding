@@ -218,6 +218,17 @@ impl ManagedAcpToolSupport {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::ManagedAcpToolId;
+
+    #[test]
+    fn managed_acp_tool_versions_match_current_pins() {
+        assert_eq!(ManagedAcpToolId::CodexAcp.version(), "0.16.0");
+        assert_eq!(ManagedAcpToolId::ClaudeAgentAcp.version(), "0.39.0");
+    }
+}
+
 #[derive(Debug, Clone, thiserror::Error)]
 #[error("{message}")]
 pub struct ManagedAcpToolError {

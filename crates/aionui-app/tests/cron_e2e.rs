@@ -7,11 +7,21 @@
 
 mod common;
 
-use axum::http::StatusCode;
+use axum::extract::{Path, State};
+use axum::http::{HeaderMap, StatusCode};
+use axum::routing::{get, post, put};
 use serde_json::json;
+use std::process::Stdio;
+use std::sync::{Arc, Mutex};
+use tokio::io::AsyncWriteExt;
+use tokio::net::TcpListener;
+use tokio::process::Command;
 use tower::ServiceExt;
 
-use aionui_db::{ICronRepository, SqliteCronRepository};
+use aionui_db::{
+    CreateMcpServerParams, IConversationRepository, ICronRepository, IMcpServerRepository,
+    SqliteConversationRepository, SqliteCronRepository, SqliteMcpServerRepository,
+};
 
 use common::{
     body_json, build_app, build_app_with_mock_agents, delete_with_token, get_request, get_with_token, json_with_token,
@@ -20,6 +30,21 @@ use common::{
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
+const DEFAULT_CRON_ASSISTANT_ID: &str = "cron-e2e-assistant";
+
+fn cron_helper_command() -> Command {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_poundingcore"));
+    command.arg("cron-helper");
+    command
+}
+
+fn default_assistant_agent_config(name: &str) -> serde_json::Value {
+    json!({
+        "name": name,
+        "assistant_id": DEFAULT_CRON_ASSISTANT_ID
+    })
+}
+
 fn create_job_body(name: &str) -> serde_json::Value {
     json!({
         "name": name,
@@ -27,8 +52,8 @@ fn create_job_body(name: &str) -> serde_json::Value {
         "message": "test message",
         "conversation_id": "conv_1",
         "conversation_title": "Test Conv",
-        "agent_type": "acp",
-        "created_by": "user"
+        "created_by": "user",
+        "agent_config": default_assistant_agent_config(name)
     })
 }
 
@@ -38,8 +63,8 @@ fn create_at_job_body(name: &str, at_ms: i64) -> serde_json::Value {
         "schedule": { "kind": "at", "at_ms": at_ms, "description": "once" },
         "message": "at message",
         "conversation_id": "conv_1",
-        "agent_type": "acp",
-        "created_by": "user"
+        "created_by": "user",
+        "agent_config": default_assistant_agent_config(name)
     })
 }
 
@@ -49,12 +74,33 @@ fn create_cron_job_body(name: &str, expr: &str) -> serde_json::Value {
         "schedule": { "kind": "cron", "expr": expr },
         "message": "cron message",
         "conversation_id": "conv_1",
-        "agent_type": "acp",
-        "created_by": "user"
+        "created_by": "user",
+        "agent_config": default_assistant_agent_config(name)
     })
 }
 
+async fn ensure_default_assistant(app: &mut axum::Router, token: &str, csrf: &str) {
+    let req = json_with_token(
+        "POST",
+        "/api/assistants",
+        json!({
+            "id": DEFAULT_CRON_ASSISTANT_ID,
+            "name": "Cron E2E Assistant",
+            "agent_id": "2d23ff1c"
+        }),
+        token,
+        csrf,
+    );
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert!(
+        resp.status() == StatusCode::CREATED || resp.status() == StatusCode::CONFLICT,
+        "expected assistant seed to be created or already exist, got {}",
+        resp.status()
+    );
+}
+
 async fn create_job(app: &mut axum::Router, token: &str, csrf: &str, body: serde_json::Value) -> serde_json::Value {
+    ensure_default_assistant(app, token, csrf).await;
     let req = json_with_token("POST", "/api/cron/jobs", body, token, csrf);
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::CREATED);
@@ -86,6 +132,9 @@ async fn au2_unauthenticated_all_endpoints() {
         ("GET", "/api/cron/jobs/cron_test"),
         ("GET", "/api/cron/jobs/cron_test/skill"),
         ("DELETE", "/api/cron/jobs/cron_test/skill"),
+        ("GET", "/api/internal/conversation-cron/list"),
+        ("POST", "/api/internal/conversation-cron/create"),
+        ("PUT", "/api/internal/conversation-cron/jobs/cron_test"),
     ];
 
     for (method, uri) in endpoints {
@@ -101,6 +150,326 @@ async fn au2_unauthenticated_all_endpoints() {
             resp.status()
         );
     }
+}
+
+#[derive(Debug, Default)]
+struct CapturedCronHelperRequest {
+    conversation_id: String,
+    user_id: String,
+    job_id: Option<String>,
+    payload: Option<serde_json::Value>,
+}
+
+type CronHelperCapture = Arc<Mutex<Option<CapturedCronHelperRequest>>>;
+
+async fn fake_conversation_cron_list(
+    State(capture): State<CronHelperCapture>,
+    headers: HeaderMap,
+) -> axum::Json<serde_json::Value> {
+    *capture.lock().unwrap() = Some(CapturedCronHelperRequest {
+        conversation_id: headers
+            .get("x-aionui-conversation-id")
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default()
+            .to_owned(),
+        user_id: headers
+            .get("x-aionui-user-id")
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default()
+            .to_owned(),
+        job_id: None,
+        payload: None,
+    });
+    axum::Json(json!({ "success": true, "data": [] }))
+}
+
+async fn fake_conversation_cron_create(
+    State(capture): State<CronHelperCapture>,
+    headers: HeaderMap,
+    axum::Json(payload): axum::Json<serde_json::Value>,
+) -> axum::Json<serde_json::Value> {
+    *capture.lock().unwrap() = Some(CapturedCronHelperRequest {
+        conversation_id: headers
+            .get("x-aionui-conversation-id")
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default()
+            .to_owned(),
+        user_id: headers
+            .get("x-aionui-user-id")
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default()
+            .to_owned(),
+        job_id: None,
+        payload: Some(payload),
+    });
+    axum::Json(json!({ "success": true, "data": { "id": "cron_helper_created" } }))
+}
+
+async fn fake_conversation_cron_update(
+    State(capture): State<CronHelperCapture>,
+    Path(job_id): Path<String>,
+    headers: HeaderMap,
+    axum::Json(payload): axum::Json<serde_json::Value>,
+) -> axum::Json<serde_json::Value> {
+    *capture.lock().unwrap() = Some(CapturedCronHelperRequest {
+        conversation_id: headers
+            .get("x-aionui-conversation-id")
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default()
+            .to_owned(),
+        user_id: headers
+            .get("x-aionui-user-id")
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default()
+            .to_owned(),
+        job_id: Some(job_id),
+        payload: Some(payload),
+    });
+    axum::Json(json!({ "success": true, "data": { "id": "cron_helper_updated" } }))
+}
+
+async fn spawn_cron_helper_probe_server(capture: CronHelperCapture) -> (String, tokio::task::JoinHandle<()>) {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let app = axum::Router::new()
+        .route("/api/internal/conversation-cron/list", get(fake_conversation_cron_list))
+        .route(
+            "/api/internal/conversation-cron/create",
+            post(fake_conversation_cron_create),
+        )
+        .route(
+            "/api/internal/conversation-cron/jobs/{job_id}",
+            put(fake_conversation_cron_update),
+        )
+        .with_state(capture);
+    let handle = tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    (format!("http://{addr}"), handle)
+}
+
+async fn spawn_health_only_server() -> (String, tokio::task::JoinHandle<()>) {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let app = axum::Router::new().route("/health", get(|| async { axum::Json(json!({ "ok": true })) }));
+    let handle = tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    (format!("http://{addr}"), handle)
+}
+
+#[tokio::test]
+async fn helper_list_sends_conversation_headers_from_runtime_env() {
+    let capture = Arc::new(Mutex::new(None));
+    let (base_url, handle) = spawn_cron_helper_probe_server(capture.clone()).await;
+    let temp = tempfile::tempdir().unwrap();
+    let workspace = temp.path().join("user-selected-project");
+    std::fs::create_dir_all(&workspace).unwrap();
+    let output = cron_helper_command()
+        .arg("list")
+        .current_dir(&workspace)
+        .env("AIONUI_BASE_URL", base_url)
+        .env("AIONUI_CONVERSATION_ID", "conv_helper_1")
+        .env("AIONUI_USER_ID", "user_helper_1")
+        .output()
+        .await
+        .unwrap();
+
+    handle.abort();
+    assert!(
+        output.status.success(),
+        "helper failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let captured = capture
+        .lock()
+        .unwrap()
+        .take()
+        .expect("server should receive helper request");
+    assert_eq!(captured.conversation_id, "conv_helper_1");
+    assert_eq!(captured.user_id, "user_helper_1");
+}
+
+#[tokio::test]
+async fn helper_create_reads_payload_from_stdin_without_payload_file() {
+    let capture = Arc::new(Mutex::new(None));
+    let (base_url, handle) = spawn_cron_helper_probe_server(capture.clone()).await;
+    let temp = tempfile::tempdir().unwrap();
+    let workspace = temp.path().join("user-selected-project");
+    std::fs::create_dir_all(&workspace).unwrap();
+    let mut child = cron_helper_command()
+        .arg("create")
+        .current_dir(&workspace)
+        .env("AIONUI_BASE_URL", base_url)
+        .env("AIONUI_CONVERSATION_ID", "conv_helper_create")
+        .env("AIONUI_USER_ID", "user_helper_create")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .as_mut()
+        .unwrap()
+        .write_all(
+            br#"{
+  "name": "stdin create",
+  "schedule": "30 9 * * 1-5",
+  "schedule_description": "weekday mornings",
+  "message": "Reply from stdin."
+}"#,
+        )
+        .await
+        .unwrap();
+    drop(child.stdin.take());
+
+    let output = child.wait_with_output().await.unwrap();
+
+    handle.abort();
+    assert!(
+        output.status.success(),
+        "helper failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let captured = capture
+        .lock()
+        .unwrap()
+        .take()
+        .expect("server should receive helper request");
+    assert_eq!(captured.conversation_id, "conv_helper_create");
+    assert_eq!(captured.user_id, "user_helper_create");
+    assert_eq!(captured.payload.unwrap()["name"], "stdin create");
+    assert!(
+        std::fs::read_dir(&workspace).unwrap().next().is_none(),
+        "helper create must not leave payload files in the workspace"
+    );
+}
+
+#[tokio::test]
+async fn helper_update_reads_payload_from_stdin_without_payload_file() {
+    let capture = Arc::new(Mutex::new(None));
+    let (base_url, handle) = spawn_cron_helper_probe_server(capture.clone()).await;
+    let temp = tempfile::tempdir().unwrap();
+    let workspace = temp.path().join("user-selected-project");
+    std::fs::create_dir_all(&workspace).unwrap();
+    let mut child = cron_helper_command()
+        .arg("update")
+        .arg("--job-id")
+        .arg("cron_helper_update")
+        .current_dir(&workspace)
+        .env("AIONUI_BASE_URL", base_url)
+        .env("AIONUI_CONVERSATION_ID", "conv_helper_update")
+        .env("AIONUI_USER_ID", "user_helper_update")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .as_mut()
+        .unwrap()
+        .write_all(
+            br#"{
+  "name": "stdin update",
+  "schedule": "45 10 * * 1-5",
+  "schedule_description": "weekday later mornings",
+  "message": "Updated from stdin."
+}"#,
+        )
+        .await
+        .unwrap();
+    drop(child.stdin.take());
+
+    let output = child.wait_with_output().await.unwrap();
+
+    handle.abort();
+    assert!(
+        output.status.success(),
+        "helper failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let captured = capture
+        .lock()
+        .unwrap()
+        .take()
+        .expect("server should receive helper request");
+    assert_eq!(captured.conversation_id, "conv_helper_update");
+    assert_eq!(captured.user_id, "user_helper_update");
+    assert_eq!(captured.job_id.as_deref(), Some("cron_helper_update"));
+    assert_eq!(captured.payload.unwrap()["name"], "stdin update");
+    assert!(
+        std::fs::read_dir(&workspace).unwrap().next().is_none(),
+        "helper update must not leave payload files in the workspace"
+    );
+}
+
+#[test]
+fn cron_skill_does_not_instruct_agents_to_write_payload_files() {
+    let skill = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/builtin-skills/auto-inject/cron/SKILL.md"),
+    )
+    .unwrap();
+
+    assert!(!skill.contains("--input"));
+    assert!(!skill.contains("cat >"));
+    assert!(!skill.contains("/tmp/aionui-cron"));
+    assert!(!skill.contains("python3"));
+    assert!(!skill.contains("aionui_cron.py"));
+    assert!(skill.contains("$AIONUI_HELPER_BIN"));
+    assert!(skill.contains("cron-helper"));
+    assert!(skill.contains("After a successful create or update"));
+    assert!(skill.contains("Do not show internal ids"));
+    assert!(skill.contains("cron_..."));
+}
+
+#[tokio::test]
+async fn helper_list_fails_without_runtime_env_even_in_temp_workspace() {
+    let (base_url, handle) = spawn_health_only_server().await;
+    let temp = tempfile::tempdir().unwrap();
+    let workspace = temp.path().join("conversations").join("codex-temp-conv_from_name");
+    std::fs::create_dir_all(&workspace).unwrap();
+    let output = cron_helper_command()
+        .arg("list")
+        .current_dir(&workspace)
+        .env("AIONUI_BASE_URL", base_url)
+        .env_remove("AIONUI_CONVERSATION_ID")
+        .env_remove("AIONUI_USER_ID")
+        .output()
+        .await
+        .unwrap();
+
+    handle.abort();
+    assert!(!output.status.success(), "helper should require explicit context");
+    assert!(String::from_utf8_lossy(&output.stderr).contains("AIONUI_CONVERSATION_ID"));
+}
+
+#[tokio::test]
+async fn helper_list_rejects_backend_without_conversation_cron_route() {
+    let (base_url, handle) = spawn_health_only_server().await;
+    let temp = tempfile::tempdir().unwrap();
+    let workspace = temp.path().join("user-selected-project");
+    std::fs::create_dir_all(&workspace).unwrap();
+    let output = cron_helper_command()
+        .arg("list")
+        .current_dir(&workspace)
+        .env("AIONUI_BASE_URL", base_url.clone())
+        .env("AIONUI_CONVERSATION_ID", "conv_helper_2")
+        .env("AIONUI_USER_ID", "user_helper_2")
+        .output()
+        .await
+        .unwrap();
+
+    handle.abort();
+    assert!(!output.status.success(), "helper should reject a health-only backend");
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains(&format!("AionUi backend not found at AIONUI_BASE_URL: {base_url}"))
+    );
 }
 
 // ── CJ-1: Create cron job ───────────────────────────────────────────
@@ -122,6 +491,17 @@ async fn cj1_create_cron_job() {
     assert_eq!(data["metadata"]["conversation_id"], "conv_1");
     assert_eq!(data["metadata"]["agent_type"], "acp");
     assert_eq!(data["metadata"]["created_by"], "user");
+}
+
+#[tokio::test]
+async fn cj1b_create_job_allows_missing_task_description() {
+    let (mut app, services) = build_app().await;
+    let (token, csrf) = setup_and_login(&mut app, &services, "admin", "StrongP@ss1").await;
+
+    let data = create_job(&mut app, &token, &csrf, create_job_body("No Description")).await;
+
+    assert!(data.get("description").is_none());
+    assert_eq!(data["schedule"]["description"], "every minute");
 }
 
 // ── CJ-2: Create three schedule types ────────────────────────────────
@@ -159,11 +539,12 @@ async fn cj2_create_three_schedule_types() {
 async fn cj3_create_missing_required_fields() {
     let (mut app, services) = build_app().await;
     let (token, csrf) = setup_and_login(&mut app, &services, "admin", "StrongP@ss1").await;
+    ensure_default_assistant(&mut app, &token, &csrf).await;
 
     let invalid_bodies = vec![
-        json!({"schedule": {"kind": "every", "every_ms": 60000}, "conversation_id": "c1", "agent_type": "acp", "created_by": "user"}),
-        json!({"name": "X", "conversation_id": "c1", "agent_type": "acp", "created_by": "user"}),
-        json!({"name": "X", "schedule": {"kind": "every", "every_ms": 60000}, "agent_type": "acp", "created_by": "user"}),
+        json!({"schedule": {"kind": "every", "every_ms": 60000}, "conversation_id": "c1", "created_by": "user", "agent_config": default_assistant_agent_config("X")}),
+        json!({"name": "X", "conversation_id": "c1", "created_by": "user", "agent_config": default_assistant_agent_config("X")}),
+        json!({"name": "X", "schedule": {"kind": "every", "every_ms": 60000}, "created_by": "user", "agent_config": default_assistant_agent_config("X")}),
         json!({"name": "X", "schedule": {"kind": "every", "every_ms": 60000}, "conversation_id": "c1", "created_by": "user"}),
     ];
 
@@ -182,6 +563,7 @@ async fn cj3_create_missing_required_fields() {
 async fn cj3b_create_accepts_workspace_with_whitespace_segment() {
     let (mut app, services) = build_app().await;
     let (token, csrf) = setup_and_login(&mut app, &services, "admin", "StrongP@ss1").await;
+    ensure_default_assistant(&mut app, &token, &csrf).await;
     let dir = std::env::temp_dir().join(format!("aionui-cron-test-{}", aionui_common::generate_short_id()));
     std::fs::create_dir(&dir).unwrap();
     let workspace = dir.join("Archive ");
@@ -192,12 +574,11 @@ async fn cj3b_create_accepts_workspace_with_whitespace_segment() {
         "schedule": { "kind": "every", "every_ms": 60000, "description": "every minute" },
         "message": "test message",
         "conversation_id": "",
-        "agent_type": "acp",
         "created_by": "user",
         "execution_mode": "new_conversation",
         "agent_config": {
-            "backend": "acp",
             "name": "Cron Agent",
+            "assistant_id": DEFAULT_CRON_ASSISTANT_ID,
             "workspace": workspace.to_string_lossy()
         }
     });
@@ -215,18 +596,18 @@ async fn cj3b_create_accepts_workspace_with_whitespace_segment() {
 async fn cj3c_create_rejects_missing_workspace_path() {
     let (mut app, services) = build_app().await;
     let (token, csrf) = setup_and_login(&mut app, &services, "admin", "StrongP@ss1").await;
+    ensure_default_assistant(&mut app, &token, &csrf).await;
 
     let body = json!({
         "name": "Missing Workspace",
         "schedule": { "kind": "every", "every_ms": 60000, "description": "every minute" },
         "message": "test message",
         "conversation_id": "",
-        "agent_type": "acp",
         "created_by": "user",
         "execution_mode": "new_conversation",
         "agent_config": {
-            "backend": "claude",
             "name": "Claude Code",
+            "assistant_id": DEFAULT_CRON_ASSISTANT_ID,
             "workspace": "/tmp/cron-job-workspace-missing-path"
         }
     });
@@ -290,6 +671,7 @@ async fn cj5_get_nonexistent() {
 async fn cj5b_run_now_legacy_workspace_with_whitespace_succeeds() {
     let (mut app, services) = build_app_with_mock_agents().await;
     let (token, csrf) = setup_and_login(&mut app, &services, "admin", "StrongP@ss1").await;
+    ensure_default_assistant(&mut app, &token, &csrf).await;
     let cron_repo = SqliteCronRepository::new(services.database.pool().clone());
     let now = aionui_common::now_ms();
     let dir = std::env::temp_dir().join(format!("aionui-cron-test-{}", aionui_common::generate_short_id()));
@@ -310,15 +692,14 @@ async fn cj5b_run_now_legacy_workspace_with_whitespace_succeeds() {
             execution_mode: "new_conversation".into(),
             agent_config: Some(
                 json!({
-                    "backend": "acp",
                     "name": "Cron Agent",
+                    "assistant_id": DEFAULT_CRON_ASSISTANT_ID,
                     "workspace": workspace.to_string_lossy()
                 })
                 .to_string(),
             ),
             conversation_id: String::new(),
             conversation_title: None,
-            agent_type: "acp".into(),
             created_by: "user".into(),
             skill_content: None,
             description: None,
@@ -455,8 +836,8 @@ async fn cj9b_update_schedule_preserves_existing_timezone_when_omitted() {
             "schedule": { "kind": "cron", "expr": "0 0 9 * * *", "tz": "Asia/Shanghai" },
             "message": "cron message",
             "conversation_id": "conv_1",
-            "agent_type": "acp",
-            "created_by": "user"
+            "created_by": "user",
+            "agent_config": default_assistant_agent_config("Schedule Change With Timezone")
         }),
     )
     .await;
@@ -560,7 +941,7 @@ async fn rn1_run_now_returns_conversation_id_for_new_conversation_job() {
 }
 
 #[tokio::test]
-async fn rn1b_run_now_returns_conflict_when_conversation_is_busy() {
+async fn rn1b_run_now_returns_active_conversation_when_conversation_is_busy() {
     let (mut app, services) = build_app_with_mock_agents().await;
     let (token, csrf) = setup_and_login(&mut app, &services, "admin", "StrongP@ss1").await;
 
@@ -598,16 +979,147 @@ async fn rn1b_run_now_returns_conflict_when_conversation_is_busy() {
         &csrf,
     );
     let resp = app.oneshot(req).await.unwrap();
-    assert_eq!(resp.status(), StatusCode::CONFLICT);
+    assert_eq!(resp.status(), StatusCode::OK);
 
     let body = body_json(resp).await;
-    assert_eq!(body["code"], "CONFLICT");
-    assert!(
-        body["error"].as_str().unwrap_or_default().contains("already running"),
-        "busy run-now should surface conversation busy semantics"
-    );
+    assert_eq!(body["data"]["conversation_id"], json!(conversation_id));
 
     drop(claim);
+}
+
+#[tokio::test]
+async fn rn1c_run_now_new_conversation_preset_assistant_uses_fixed_assistant_mcps() {
+    let (mut app, services) = build_app_with_mock_agents().await;
+    let (token, csrf) = setup_and_login(&mut app, &services, "admin", "StrongP@ss1").await;
+
+    let mcp_repo = SqliteMcpServerRepository::new(services.database.pool().clone());
+    let fixed_mcp = mcp_repo
+        .create(CreateMcpServerParams {
+            name: "fixed-mcp",
+            description: None,
+            enabled: true,
+            transport_type: "http",
+            transport_config: r#"{"url":"https://example.invalid/fixed"}"#,
+            tools: None,
+            original_json: None,
+            builtin: false,
+        })
+        .await
+        .expect("create fixed mcp");
+    let extra_mcp = mcp_repo
+        .create(CreateMcpServerParams {
+            name: "extra-mcp",
+            description: None,
+            enabled: true,
+            transport_type: "http",
+            transport_config: r#"{"url":"https://example.invalid/extra"}"#,
+            tools: None,
+            original_json: None,
+            builtin: false,
+        })
+        .await
+        .expect("create extra mcp");
+
+    let create_assistant_req = json_with_token(
+        "POST",
+        "/api/assistants",
+        json!({
+            "id": "u-fixed-mcp",
+            "name": "Cron MCP Assistant",
+            "agent_id": "8e1acf31",
+            "defaults": {
+                "mcps": {
+                    "mode": "fixed",
+                    "value": [fixed_mcp.id]
+                }
+            }
+        }),
+        &token,
+        &csrf,
+    );
+    let create_assistant_resp = app.clone().oneshot(create_assistant_req).await.unwrap();
+    assert_eq!(create_assistant_resp.status(), StatusCode::CREATED);
+
+    let create_job_req = json_with_token(
+        "POST",
+        "/api/cron/jobs",
+        json!({
+            "name": "Preset Assistant Cron",
+            "schedule": { "kind": "every", "every_ms": 60000, "description": "every minute" },
+            "message": "cron preset assistant message",
+            "conversation_id": "",
+            "created_by": "user",
+            "execution_mode": "new_conversation",
+            "agent_config": {
+                "name": "Cron MCP Assistant",
+                "assistant_id": "u-fixed-mcp"
+            }
+        }),
+        &token,
+        &csrf,
+    );
+    let create_job_resp = app.clone().oneshot(create_job_req).await.unwrap();
+    assert_eq!(create_job_resp.status(), StatusCode::CREATED);
+    let create_job_body = body_json(create_job_resp).await;
+    let job_id = create_job_body["data"]["id"]
+        .as_str()
+        .expect("cron job id should be present");
+    let saved_skill_name = format!("cron-{job_id}");
+
+    let save_skill_req = json_with_token(
+        "POST",
+        &format!("/api/cron/jobs/{job_id}/skill"),
+        json!({
+            "content": "---\nname: saved cron skill\ndescription: saved cron skill\n---\nUse the saved cron skill"
+        }),
+        &token,
+        &csrf,
+    );
+    let save_skill_resp = app.clone().oneshot(save_skill_req).await.unwrap();
+    assert_eq!(save_skill_resp.status(), StatusCode::OK);
+
+    let run_req = json_with_token(
+        "POST",
+        &format!("/api/cron/jobs/{job_id}/run"),
+        json!({}),
+        &token,
+        &csrf,
+    );
+    let run_resp = app.clone().oneshot(run_req).await.unwrap();
+    assert_eq!(run_resp.status(), StatusCode::OK);
+    let run_body = body_json(run_resp).await;
+    let conversation_id = run_body["data"]["conversation_id"]
+        .as_str()
+        .expect("run-now should return created conversation id");
+
+    let conversation_repo = SqliteConversationRepository::new(services.database.pool().clone());
+    let conversation = conversation_repo
+        .get(conversation_id)
+        .await
+        .expect("load conversation")
+        .expect("conversation should exist");
+    let extra: serde_json::Value =
+        serde_json::from_str(&conversation.extra).expect("conversation extra should be valid json");
+    assert!(extra.get("assistant_id").is_none());
+    assert!(extra.get("preset_assistant_id").is_none());
+    assert!(extra.get("custom_agent_id").is_none());
+    assert_eq!(extra["mcp_server_ids"], json!([fixed_mcp.id]));
+    assert_eq!(extra["mcp_servers"], json!(["fixed-mcp"]));
+    assert!(
+        extra["skills"].as_array().is_some_and(|skills| {
+            skills.iter().all(|skill| skill != "cron") && skills.iter().any(|skill| skill == &saved_skill_name)
+        }),
+        "cron-created conversations must exclude builtin cron but keep the saved job skill"
+    );
+    assert_ne!(fixed_mcp.id, extra_mcp.id, "fixture should seed two distinct MCP rows");
+
+    let snapshot = conversation_repo
+        .get_assistant_snapshot(conversation_id)
+        .await
+        .expect("load assistant snapshot")
+        .expect("preset assistant cron conversation should persist snapshot");
+    assert_eq!(snapshot.assistant_id, "u-fixed-mcp");
+    assert_eq!(snapshot.resolved_mcp_ids, json!([fixed_mcp.id]).to_string());
 }
 
 #[tokio::test]
@@ -814,14 +1326,15 @@ async fn sc5_invalid_cron_expression() {
 async fn sc6_cron_with_timezone() {
     let (mut app, services) = build_app().await;
     let (token, csrf) = setup_and_login(&mut app, &services, "admin", "StrongP@ss1").await;
+    ensure_default_assistant(&mut app, &token, &csrf).await;
 
     let body = json!({
         "name": "Shanghai Job",
         "schedule": { "kind": "cron", "expr": "0 0 9 * * *", "tz": "Asia/Shanghai" },
         "message": "hello",
         "conversation_id": "conv_1",
-        "agent_type": "acp",
-        "created_by": "user"
+        "created_by": "user",
+        "agent_config": default_assistant_agent_config("Shanghai Job")
     });
 
     let data = create_job(&mut app, &token, &csrf, body).await;
@@ -835,14 +1348,15 @@ async fn sc6_cron_with_timezone() {
 async fn sc7_every_zero_interval() {
     let (mut app, services) = build_app().await;
     let (token, csrf) = setup_and_login(&mut app, &services, "admin", "StrongP@ss1").await;
+    ensure_default_assistant(&mut app, &token, &csrf).await;
 
     let body = json!({
         "name": "Zero Interval",
         "schedule": { "kind": "every", "every_ms": 0 },
         "message": "x",
         "conversation_id": "conv_1",
-        "agent_type": "acp",
-        "created_by": "user"
+        "created_by": "user",
+        "agent_config": default_assistant_agent_config("Zero Interval")
     });
     let req = json_with_token("POST", "/api/cron/jobs", body, &token, &csrf);
     let resp = app.oneshot(req).await.unwrap();
@@ -855,14 +1369,15 @@ async fn sc7_every_zero_interval() {
 async fn sc8_every_negative_interval() {
     let (mut app, services) = build_app().await;
     let (token, csrf) = setup_and_login(&mut app, &services, "admin", "StrongP@ss1").await;
+    ensure_default_assistant(&mut app, &token, &csrf).await;
 
     let body = json!({
         "name": "Negative Interval",
         "schedule": { "kind": "every", "every_ms": -1000 },
         "message": "x",
         "conversation_id": "conv_1",
-        "agent_type": "acp",
-        "created_by": "user"
+        "created_by": "user",
+        "agent_config": default_assistant_agent_config("Negative Interval")
     });
     let req = json_with_token("POST", "/api/cron/jobs", body, &token, &csrf);
     let resp = app.oneshot(req).await.unwrap();

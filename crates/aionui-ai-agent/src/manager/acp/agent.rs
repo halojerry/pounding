@@ -14,23 +14,24 @@ use crate::protocol::error::{AcpError, CloseReason};
 use crate::protocol::events::AgentStreamEvent;
 use crate::protocol::send_error::AgentSendError;
 use crate::registry::CatalogSender;
-use crate::shared_kernel::{ModeId, ModelId, SessionId as DomainSessionId};
+use crate::shared_kernel::{ConfigKey, ConfigValue, ModeId, ModelId, SessionId as DomainSessionId};
 use crate::types::SendMessageData;
+use agent_client_protocol::schema::SessionConfigOptionCategory;
 use agent_client_protocol::schema::{
-    AvailableCommand, CancelNotification, SessionId, SessionModelState, SessionNotification, SetSessionModeRequest,
-    SetSessionModelRequest, UsageUpdate,
+    AvailableCommand, CancelNotification, SessionId, SessionModelState, SessionNotification,
+    SetSessionConfigOptionRequest, SetSessionModeRequest, SetSessionModelRequest, UsageUpdate,
 };
-use agent_client_protocol::schema::{SessionConfigKind, SessionConfigOption, SessionConfigSelectOptions};
 use aionui_api_types::{
-    AcpConfigOptionDto, AcpConfigSelectOptionDto, AgentHandshake, ConfigOptionConfirmation, GetConfigOptionsResponse,
-    SetConfigOptionResponse, SlashCommandCompletionBehavior, SlashCommandItem,
+    AgentHandshake, ConfigOptionConfirmation, GetConfigOptionsResponse, SetConfigOptionResponse,
+    SlashCommandCompletionBehavior, SlashCommandItem,
 };
 use aionui_common::{
-    AgentKillReason, AgentType, ConversationStatus, ErrorChain, TimestampMs, normalize_keys_to_snake_case,
+    AgentKillReason, AgentType, ConversationStatus, ErrorChain, TimestampMs, normalize_keys_to_snake_case, now_ms,
 };
 use serde_json::Value;
+use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::sync::{Mutex, RwLock, broadcast, mpsc};
 use tracing::{debug, error, info, warn};
 
@@ -56,6 +57,8 @@ pub(super) fn user_facing_message(err: &AgentError) -> String {
 }
 
 use super::codex_sandbox;
+use super::config_option_catalog::{extract_models_from_value, extract_modes_from_value};
+use super::config_options::{ConfigSetPath, ConfigSetPathError, ConfigSnapshot, resolve_set_path};
 use super::mode_normalize::normalize_requested_mode;
 
 fn normalize_requested_model_id_for_backend(backend: Option<&str>, model_id: &str) -> String {
@@ -76,6 +79,10 @@ fn normalize_persisted_model_id_for_backend(backend: Option<&str>, model_id: Opt
 
 /// Grace period before force-killing an ACP process (ms).
 const ACP_KILL_GRACE_MS: u64 = 500;
+
+/// How long to wait for the ACP runtime to echo back an observed config
+/// option value after issuing a set command before giving up.
+const OBSERVED_CONFIRMATION_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Decompose a child `ExitStatus` (or its absence) into the
 /// `(exit_code, signal)` pair that `AcpError::StartupCrash` /
@@ -121,6 +128,88 @@ fn initial_mode_from_params(params: &AcpSessionParams) -> Option<ModeId> {
         })
         .filter(|m| !m.is_empty())
         .map(ModeId::new)
+}
+
+fn has_persisted_config_for_category(
+    initial_config: &HashMap<ConfigKey, ConfigValue>,
+    category: &SessionConfigOptionCategory,
+) -> bool {
+    match category {
+        SessionConfigOptionCategory::Mode => initial_config.keys().any(|key| key.as_str() == "mode"),
+        SessionConfigOptionCategory::Model => initial_config.keys().any(|key| key.as_str() == "model"),
+        SessionConfigOptionCategory::ThoughtLevel => initial_config.keys().any(|key| {
+            matches!(
+                key.as_str(),
+                "thought_level" | "reasoning_effort" | "effort" | "thinking_budget" | "thinking"
+            )
+        }),
+        _ => false,
+    }
+}
+
+fn seed_startup_config_preferences(
+    session: &mut AcpSession,
+    params: &AcpSessionParams,
+    initial_config: &HashMap<ConfigKey, ConfigValue>,
+) {
+    if let Some(mode) = params
+        .config
+        .session_mode
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .filter(|_| !has_persisted_config_for_category(initial_config, &SessionConfigOptionCategory::Mode))
+    {
+        session.seed_pending_startup_config(SessionConfigOptionCategory::Mode, ConfigValue::new(mode.to_owned()));
+    }
+
+    if let Some(model) = params
+        .config
+        .current_model_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .filter(|_| !has_persisted_config_for_category(initial_config, &SessionConfigOptionCategory::Model))
+    {
+        session.seed_pending_startup_config(SessionConfigOptionCategory::Model, ConfigValue::new(model.to_owned()));
+    }
+
+    if let Some(thought_level) = params
+        .config
+        .thought_level
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .filter(|_| !has_persisted_config_for_category(initial_config, &SessionConfigOptionCategory::ThoughtLevel))
+    {
+        session.seed_pending_startup_config(
+            SessionConfigOptionCategory::ThoughtLevel,
+            ConfigValue::new(thought_level.to_owned()),
+        );
+    }
+}
+
+fn preload_metadata_catalogs(
+    session: &mut AcpSession,
+    agent_id: &str,
+    agent_backend: Option<&str>,
+    handshake: &AgentHandshake,
+) {
+    let summary = session.preload_advertised_catalogs(
+        handshake.available_modes.as_ref().and_then(extract_modes_from_value),
+        handshake.available_models.as_ref().and_then(extract_models_from_value),
+    );
+    if summary.any_preloaded() {
+        info!(
+            agent_metadata_id = %agent_id,
+            agent_backend,
+            mode_preloaded = summary.mode_preloaded,
+            model_preloaded = summary.model_preloaded,
+            mode_catalog_count = summary.mode_catalog_count,
+            model_catalog_count = summary.model_catalog_count,
+            "ACP session catalogs preloaded from agent metadata"
+        );
+    }
 }
 
 fn confirm_option_id(data: &Value) -> Option<String> {
@@ -309,9 +398,6 @@ impl AcpAgentManager {
         ),
         AgentError,
     > {
-        let initial_mode = initial_mode_from_params(&params);
-        codex_sandbox::sync_for_agent(&params.metadata, initial_mode.as_ref().map(|m| m.as_str())).await;
-
         let process = Arc::new(CliAgentProcess::spawn_for_sdk(params.command_spec.clone(), &params.data_dir).await?);
         register_session_process(
             &params.data_dir,
@@ -375,6 +461,7 @@ impl AcpAgentManager {
         let permission_router = Arc::new(PermissionRouter::new(permission_rx));
 
         let snapshot = params.session_snapshot.as_ref();
+        let initial_mode = initial_mode_from_params(&params);
 
         let (initial_model, initial_config) = (
             snapshot
@@ -400,7 +487,15 @@ impl AcpAgentManager {
             snapshot.map(|s| s.config_selections.clone()).unwrap_or_default(),
         );
 
-        let session = AcpSession::new(initial_mode, initial_model, initial_config);
+        let startup_config_seed_base = initial_config.clone();
+        let mut session = AcpSession::new(initial_mode, initial_model, initial_config);
+        preload_metadata_catalogs(
+            &mut session,
+            &params.metadata.id,
+            params.metadata.backend.as_deref(),
+            &params.metadata.handshake,
+        );
+        seed_startup_config_preferences(&mut session, &params, &startup_config_seed_base);
 
         let pipeline = PromptPipeline::new(vec![
             Arc::new(SessionNewPreludeHook),
@@ -693,6 +788,258 @@ impl AcpAgentManager {
         self.apply_confirmed_model_selection(model_id).await
     }
 
+    pub(crate) async fn config_options(&self) -> Result<GetConfigOptionsResponse, AgentError> {
+        let session = self.session.read().await;
+        Ok(GetConfigOptionsResponse {
+            config_options: session.config_snapshot().options,
+        })
+    }
+
+    pub(crate) async fn set_config_option_confirmed(
+        &self,
+        option_id: &str,
+        value: &str,
+    ) -> Result<SetConfigOptionResponse, AgentError> {
+        let option_id = option_id.trim();
+        let value = value.trim();
+        if option_id.is_empty() {
+            return Err(AgentError::bad_request("option_id must not be empty"));
+        }
+        if value.is_empty() {
+            return Err(AgentError::bad_request("value must not be empty"));
+        }
+
+        let guard = {
+            let mut session = self.session.write().await;
+            session.try_begin_config_set()
+        };
+        let Some(guard) = guard else {
+            tracing::info!(
+                conversation_id = %self.params.conversation_id,
+                agent_backend = ?self.params.metadata.backend,
+                requested_option_id = %option_id,
+                requested_value = %value,
+                "acp_config_option_update_rejected_in_progress"
+            );
+            return Err(AgentError::conflict("ACP config update is already in progress"));
+        };
+
+        let result = self.set_config_option_confirmed_inner(option_id, value).await;
+
+        {
+            let mut session = self.session.write().await;
+            session.end_config_set(guard);
+        }
+
+        result
+    }
+
+    async fn set_config_option_confirmed_inner(
+        &self,
+        option_id: &str,
+        value: &str,
+    ) -> Result<SetConfigOptionResponse, AgentError> {
+        self.ensure_protocol_connected_for_operation("set_config_option")?;
+
+        let (session_id, set_path) = {
+            let session = self.session.read().await;
+            let snapshot = session.config_snapshot();
+            let set_path = resolve_set_path(&snapshot, option_id, value).map_err(|err| match err {
+                ConfigSetPathError::OptionNotFound => {
+                    AgentError::bad_request(format!("Config option '{option_id}' is not available"))
+                }
+                ConfigSetPathError::ValueNotSelectable => AgentError::bad_request(format!(
+                    "Value '{value}' is not selectable for config option '{option_id}'"
+                )),
+            })?;
+            let session_id = session.session_id().map(ToOwned::to_owned).ok_or_else(|| {
+                warn!(
+                    conversation_id = %self.params.conversation_id,
+                    agent_backend = ?self.params.metadata.backend,
+                    config_id = %option_id,
+                    "acp_config_option_set_missing_session"
+                );
+                AgentError::bad_request("No active session")
+            })?;
+            (session_id, set_path)
+        };
+
+        tracing::info!(
+            conversation_id = %self.params.conversation_id,
+            agent_backend = ?self.params.metadata.backend,
+            config_id = %option_id,
+            requested = %value,
+            "acp_config_option_set_requested"
+        );
+
+        match set_path {
+            ConfigSetPath::ConfigOption { option_id: config_id } => {
+                let response = self
+                    .protocol
+                    .set_config_option(SetSessionConfigOptionRequest::new(
+                        SessionId::new(session_id.clone()),
+                        config_id.clone(),
+                        value.to_owned(),
+                    ))
+                    .await
+                    .map_err(|err| {
+                        warn!(
+                            conversation_id = %self.params.conversation_id,
+                            agent_backend = ?self.params.metadata.backend,
+                            config_id = %config_id,
+                            requested = %value,
+                            error = %err,
+                            "acp_config_option_command_failed"
+                        );
+                        AgentError::from(err)
+                    })?;
+
+                tracing::info!(
+                    conversation_id = %self.params.conversation_id,
+                    agent_backend = ?self.params.metadata.backend,
+                    config_id = %config_id,
+                    requested = %value,
+                    method = "session/set_config_option",
+                    "acp_config_option_command_ack"
+                );
+
+                {
+                    let mut session = self.session.write().await;
+                    if session.session_id() != Some(session_id.as_str()) {
+                        return Err(AgentError::conflict(
+                            "Active ACP session changed while applying config option",
+                        ));
+                    }
+                    session.apply_advertised_config_options(response.config_options);
+                    self.commit_session_changes(&mut session).await;
+                }
+                self.wait_for_observed_config_option(&config_id, value, OBSERVED_CONFIRMATION_TIMEOUT)
+                    .await
+            }
+            ConfigSetPath::LegacyMode => {
+                self.protocol
+                    .set_mode(SetSessionModeRequest::new(
+                        SessionId::new(session_id.clone()),
+                        value.to_owned(),
+                    ))
+                    .await
+                    .map_err(|err| {
+                        warn!(
+                            conversation_id = %self.params.conversation_id,
+                            agent_backend = ?self.params.metadata.backend,
+                            config_id = %option_id,
+                            requested = %value,
+                            error = %err,
+                            "acp_config_option_command_failed"
+                        );
+                        AgentError::from(err)
+                    })?;
+                tracing::info!(
+                    conversation_id = %self.params.conversation_id,
+                    agent_backend = ?self.params.metadata.backend,
+                    config_id = %option_id,
+                    requested = %value,
+                    method = "session/set_mode",
+                    "acp_config_option_command_ack"
+                );
+                self.ensure_session_unchanged(&session_id, "mode").await?;
+                self.wait_for_observed_config_option("mode", value, OBSERVED_CONFIRMATION_TIMEOUT)
+                    .await
+            }
+            ConfigSetPath::LegacyModel => {
+                self.protocol
+                    .set_model(SetSessionModelRequest::new(
+                        SessionId::new(session_id.clone()),
+                        value.to_owned(),
+                    ))
+                    .await
+                    .map_err(|err| {
+                        warn!(
+                            conversation_id = %self.params.conversation_id,
+                            agent_backend = ?self.params.metadata.backend,
+                            config_id = %option_id,
+                            requested = %value,
+                            error = %err,
+                            "acp_config_option_command_failed"
+                        );
+                        AgentError::from(err)
+                    })?;
+                tracing::info!(
+                    conversation_id = %self.params.conversation_id,
+                    agent_backend = ?self.params.metadata.backend,
+                    config_id = %option_id,
+                    requested = %value,
+                    method = "session/set_model",
+                    "acp_config_option_command_ack"
+                );
+                self.ensure_session_unchanged(&session_id, "model").await?;
+                self.wait_for_observed_config_option("model", value, OBSERVED_CONFIRMATION_TIMEOUT)
+                    .await
+            }
+        }
+        .map(|snapshot| SetConfigOptionResponse {
+            confirmation: ConfigOptionConfirmation::Observed,
+            config_options: Some(snapshot.options),
+        })
+    }
+
+    async fn ensure_session_unchanged(&self, session_id: &str, field: &str) -> Result<(), AgentError> {
+        let session = self.session.read().await;
+        if session.session_id() == Some(session_id) {
+            return Ok(());
+        }
+        warn!(
+            conversation_id = %self.params.conversation_id,
+            agent_backend = ?self.params.metadata.backend,
+            config_id = %field,
+            confirmed_session_id = %session_id,
+            active_session_id = ?session.session_id(),
+            "acp_config_option_session_changed"
+        );
+        Err(AgentError::conflict(
+            "Active ACP session changed while applying config option",
+        ))
+    }
+
+    async fn wait_for_observed_config_option(
+        &self,
+        option_id: &str,
+        requested: &str,
+        timeout: Duration,
+    ) -> Result<ConfigSnapshot, AgentError> {
+        let started = Instant::now();
+        loop {
+            let snapshot = {
+                let session = self.session.read().await;
+                session.config_snapshot()
+            };
+            if snapshot.observed_matches(option_id, requested) {
+                tracing::info!(
+                    conversation_id = %self.params.conversation_id,
+                    agent_backend = ?self.params.metadata.backend,
+                    config_id = %option_id,
+                    requested = %requested,
+                    elapsed_ms = started.elapsed().as_millis(),
+                    "acp_config_option_observed_confirmed"
+                );
+                return Ok(snapshot);
+            }
+            if started.elapsed() >= timeout {
+                tracing::warn!(
+                    conversation_id = %self.params.conversation_id,
+                    agent_backend = ?self.params.metadata.backend,
+                    config_id = %option_id,
+                    requested = %requested,
+                    timeout_ms = timeout.as_millis(),
+                    last_observed = ?snapshot.option_current(option_id),
+                    "acp_config_option_confirmation_timeout"
+                );
+                return Err(AgentError::timeout("ACP config option confirmation timed out"));
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    }
+
     /// Return available slash commands from the session aggregate.
     pub(crate) async fn load_slash_commands(&self) -> Result<Vec<SlashCommandItem>, AgentError> {
         let session = self.session.read().await;
@@ -701,43 +1048,6 @@ impl AcpAgentManager {
             .map(slash_command_items)
             .unwrap_or_default();
         Ok(items)
-    }
-
-    /// Return the current config options snapshot from the ACP session.
-    pub(crate) async fn config_options(&self) -> Result<GetConfigOptionsResponse, AgentError> {
-        let session = self.session.read().await;
-        let config_options: Vec<AcpConfigOptionDto> = session
-            .config_options()
-            .map(|options| options.iter().map(session_config_option_to_dto).collect())
-            .unwrap_or_default();
-        Ok(GetConfigOptionsResponse { config_options })
-    }
-
-    /// Apply a config option change confirmed by the ACP runtime.
-    pub(crate) async fn set_config_option_confirmed(
-        &self,
-        option_id: &str,
-        value: &str,
-    ) -> Result<SetConfigOptionResponse, AgentError> {
-        if option_id.trim().is_empty() {
-            return Err(AgentError::bad_request("option_id must not be empty"));
-        }
-        if value.trim().is_empty() {
-            return Err(AgentError::bad_request("value must not be empty"));
-        }
-        self.ensure_protocol_connected_for_operation("set_config_option")?;
-        // TODO: full implementation with session config set, resolve_set_path,
-        // and actual ACP protocol dispatch. For now, accept the change so the
-        // endpoint stops returning 404, and return the current config_options
-        // snapshot so the frontend's hasObservedValue() passes.
-        let session = self.session.read().await;
-        let config_options: Option<Vec<AcpConfigOptionDto>> = session
-            .config_options()
-            .map(|options| options.iter().map(session_config_option_to_dto).collect());
-        Ok(SetConfigOptionResponse {
-            confirmation: ConfigOptionConfirmation::Observed,
-            config_options,
-        })
     }
 }
 
@@ -833,8 +1143,9 @@ impl AcpAgentManager {
                 .and_then(|commands| matched_slash_command(&raw_user_input, commands))
         };
 
-        let content = {
+        let (content, dump_first_prompt) = {
             let mut s = self.session.write().await;
+            let dump_first_prompt = s.has_pending_session_new_prelude();
             let mut ctx = PromptCtx {
                 session: &mut s,
                 params: &self.params,
@@ -843,8 +1154,41 @@ impl AcpAgentManager {
             };
             let transformed = self.pipeline.pre_send(&mut ctx, data.content.clone()).await;
             self.commit_session_changes(&mut s).await;
-            transformed
+            (transformed, dump_first_prompt)
         };
+
+        if dump_first_prompt
+            && let Some(dump_dir) =
+                crate::dev_prompt_dump::dump_dir_for_data_dir(&self.params.data_dir, self.params.dump_prompts)
+        {
+            match crate::dev_prompt_dump::dump_prompt(
+                &dump_dir,
+                crate::dev_prompt_dump::PromptDump {
+                    kind: "acp-first-prompt",
+                    backend: self.backend(),
+                    conversation_id: &self.params.conversation_id,
+                    session_id: Some(&sid),
+                    msg_id: Some(&data.msg_id),
+                    turn_id: data.turn_id.as_deref(),
+                    prompt: &content,
+                },
+            ) {
+                Ok(path) => {
+                    debug!(
+                        conversation_id = %self.params.conversation_id,
+                        path = %path.display(),
+                        "DEV prompt dump written"
+                    );
+                }
+                Err(error) => {
+                    warn!(
+                        conversation_id = %self.params.conversation_id,
+                        error = %error,
+                        "DEV prompt dump failed"
+                    );
+                }
+            }
+        }
 
         let data = SendMessageData {
             content,
@@ -855,7 +1199,7 @@ impl AcpAgentManager {
     }
 
     /// Pre-open the ACP session without sending a prompt. Called by the
-    /// factory after `AcpAgentManager::build` so `POST /warmup` returns
+    /// factory after `AcpAgentManager::build` so runtime preparation returns
     /// only after the session is ready to accept `set_mode` / `set_model`
     /// / `prompt`. Idempotent — if already opened, returns immediately.
     #[tracing::instrument(skip_all, fields(conversation_id = %self.params.conversation_id))]
@@ -868,6 +1212,37 @@ impl AcpAgentManager {
         }
         result
     }
+}
+
+fn log_idle_acp_shutdown_started(conversation_id: &str, backend: &str, session_id: Option<&str>, pid: u32) {
+    info!(
+        conversation_id = %conversation_id,
+        backend = %backend,
+        session_id = %session_id.unwrap_or("none"),
+        pid,
+        reason = %"IdleTimeout",
+        "Idle kill: ACP shutdown started"
+    );
+}
+
+fn log_idle_acp_cancel_sent(conversation_id: &str, backend: &str, session_id: &str, pid: u32) {
+    info!(
+        conversation_id = %conversation_id,
+        backend = %backend,
+        session_id = %session_id,
+        pid,
+        "Idle kill: ACP session cancel sent"
+    );
+}
+
+fn log_idle_acp_cancel_skipped(conversation_id: &str, backend: &str, pid: u32) {
+    info!(
+        conversation_id = %conversation_id,
+        backend = %backend,
+        pid,
+        reason = %"no_session_id",
+        "Idle kill: ACP session cancel skipped"
+    );
 }
 
 #[async_trait::async_trait]
@@ -952,7 +1327,8 @@ impl crate::agent_task::IAgentTask for AcpAgentManager {
                 Ok(())
             }
             Err(err) => {
-                let send_error = err.to_agent_send_error();
+                let backend = self.params.metadata.backend.as_deref();
+                let send_error = err.to_agent_send_error_for_backend(backend);
                 let agent_err = err.into_agent_error();
                 // Build a CloseReason that captures whatever context we still
                 // have. Two cases matter:
@@ -1017,34 +1393,65 @@ impl crate::agent_task::IAgentTask for AcpAgentManager {
         // Mark closing to prevent reconnect attempts
         self.permission_router.set_closing();
 
-        // Cancel the current session if active
-        if let Ok(session) = self.session.try_read()
-            && let Some(sid) = session.session_id()
-        {
+        let backend = self.params.metadata.backend.as_deref().unwrap_or("unknown");
+        let pid = self.process.pid();
+        let idle_timeout = matches!(reason, Some(AgentKillReason::IdleTimeout));
+        let session_id = self
+            .session
+            .try_read()
+            .ok()
+            .and_then(|session| session.session_id().map(ToOwned::to_owned));
+
+        if idle_timeout {
+            log_idle_acp_shutdown_started(&self.params.conversation_id, backend, session_id.as_deref(), pid);
+        }
+
+        if let Some(sid) = session_id.as_deref() {
             self.protocol.cancel(CancelNotification::new(SessionId::new(sid)));
+            if idle_timeout {
+                log_idle_acp_cancel_sent(&self.params.conversation_id, backend, sid, pid);
+            }
+        } else if idle_timeout {
+            log_idle_acp_cancel_skipped(&self.params.conversation_id, backend, pid);
         }
 
         let process = Arc::clone(&self.process);
         let grace = Duration::from_millis(ACP_KILL_GRACE_MS);
         let conversation_id = self.params.conversation_id.clone();
-        let pid = process.pid();
+        let process_group_id = process.process_group_id();
+        let backend = backend.to_owned();
+        let idle_timeout = matches!(reason, Some(AgentKillReason::IdleTimeout));
 
         tokio::spawn(async move {
-            if let Err(e) = process.kill(grace).await {
-                // Tag the failure with conversation_id + pid so Sentry can
-                // group these and ops can correlate with the matching
-                // "Killing ACP agent" log line. ELECTRON-1E9: an unannotated
-                // failure here on Windows left the CLI subprocess running
-                // while the manager believed it had been torn down,
-                // producing the "no reply / second send hangs" symptom.
-                error!(
-                    %conversation_id,
-                    pid,
-                    error = %ErrorChain(&e),
-                    "Failed to kill ACP process"
-                );
-            } else {
-                debug!(%conversation_id, pid, "ACP process kill completed");
+            let started_at = now_ms();
+            match process.kill(grace).await {
+                Ok(()) => {
+                    if idle_timeout {
+                        info!(
+                            %conversation_id,
+                            backend,
+                            pid,
+                            process_group_id,
+                            elapsed_ms = now_ms().saturating_sub(started_at),
+                            result = "ok",
+                            "Idle kill: ACP process shutdown completed"
+                        );
+                    } else {
+                        debug!(%conversation_id, pid, process_group_id, "ACP process kill completed");
+                    }
+                }
+                Err(e) => {
+                    error!(
+                        %conversation_id,
+                        backend,
+                        pid,
+                        process_group_id,
+                        elapsed_ms = now_ms().saturating_sub(started_at),
+                        result = "error",
+                        error = %ErrorChain(&e),
+                        "Idle kill: ACP process shutdown completed"
+                    );
+                }
             }
         });
 
@@ -1112,71 +1519,56 @@ impl AcpAgentManager {
 // `augment_with_stderr` and `build_close_reason_from_error` live in
 // `agent_close.rs` to keep this file under the 1000-line budget.
 
-/// Convert an ACP `SessionConfigOption` into the API DTO shape consumed by
-/// the frontend. Maps `SessionConfigKind::Select` fields directly; other
-/// variants fall through with `option_type: "unknown"`.
-fn session_config_option_to_dto(opt: &SessionConfigOption) -> AcpConfigOptionDto {
-    let (option_type, current_value, options) = match &opt.kind {
-        SessionConfigKind::Select(select) => {
-            let select_options: Vec<AcpConfigSelectOptionDto> = match &select.options {
-                SessionConfigSelectOptions::Ungrouped(opts) => opts
-                    .iter()
-                    .map(|o| AcpConfigSelectOptionDto {
-                        value: o.value.to_string(),
-                        name: Some(o.name.clone()),
-                        label: None,
-                        description: o.description.clone(),
-                    })
-                    .collect(),
-                SessionConfigSelectOptions::Grouped(groups) => groups
-                    .iter()
-                    .flat_map(|g| {
-                        g.options.iter().map(|o| AcpConfigSelectOptionDto {
-                            value: o.value.to_string(),
-                            name: Some(o.name.clone()),
-                            label: None,
-                            description: o.description.clone(),
-                        })
-                    })
-                    .collect(),
-                _ => Vec::new(),
-            };
-            (
-                "select".to_owned(),
-                Some(select.current_value.to_string()),
-                select_options,
-            )
-        }
-        _ => ("unknown".to_owned(), None, Vec::new()),
-    };
-
-    AcpConfigOptionDto {
-        id: opt.id.to_string(),
-        name: Some(opt.name.clone()),
-        label: None,
-        description: opt.description.clone(),
-        category: opt.category.as_ref().map(|c| match c {
-            agent_client_protocol::schema::SessionConfigOptionCategory::Mode => "mode".to_owned(),
-            agent_client_protocol::schema::SessionConfigOptionCategory::Model => "model".to_owned(),
-            agent_client_protocol::schema::SessionConfigOptionCategory::ThoughtLevel => "thought_level".to_owned(),
-            agent_client_protocol::schema::SessionConfigOptionCategory::Other(s) => s.clone(),
-            _ => "unknown".to_owned(),
-        }),
-        option_type,
-        current_value,
-        options,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::{exit_status_parts, user_facing_message};
     use crate::agent_runtime::AgentRuntime;
     use crate::error::AgentError;
     use crate::manager::acp::{AcpAgentManager, AcpSession};
-    use crate::protocol::error::CloseReason;
-    use agent_client_protocol::schema::AvailableCommand;
+    use crate::protocol::error::{AcpError, CloseReason};
+    use crate::shared_kernel::{ModeId, SessionId as DomainSessionId};
+    use agent_client_protocol::schema::{
+        AvailableCommand, SessionConfigOption, SessionConfigOptionCategory, SessionConfigSelectOption,
+    };
+    use aionui_api_types::AgentHandshake;
     use serde_json::json;
+    use std::collections::HashMap;
+
+    fn capture_logs(max_level: tracing::Level, f: impl FnOnce()) -> String {
+        use std::io::Write;
+        use std::sync::{Arc, Mutex};
+        use tracing_subscriber::fmt;
+
+        #[derive(Clone)]
+        struct SharedBuf(Arc<Mutex<Vec<u8>>>);
+
+        impl Write for SharedBuf {
+            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(buf);
+                Ok(buf.len())
+            }
+
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+
+        let buffer = Arc::new(Mutex::new(Vec::<u8>::new()));
+        let make_writer = {
+            let buffer = Arc::clone(&buffer);
+            move || SharedBuf(Arc::clone(&buffer))
+        };
+
+        let subscriber = fmt::Subscriber::builder()
+            .with_max_level(max_level)
+            .with_writer(make_writer)
+            .with_ansi(false)
+            .finish();
+
+        tracing::subscriber::with_default(subscriber, f);
+
+        String::from_utf8(buffer.lock().unwrap().clone()).unwrap()
+    }
 
     #[test]
     fn exit_status_parts_handles_missing_status() {
@@ -1212,6 +1604,94 @@ mod tests {
     fn rate_limited_has_no_colon_returns_full_string() {
         let err = AgentError::RateLimited;
         assert_eq!(user_facing_message(&err), "Rate limited");
+    }
+
+    #[test]
+    fn preload_metadata_catalogs_seeds_mode_catalog_for_partial_session_config_options() {
+        let mut session = AcpSession::new(Some(ModeId::new("full-access")), None, HashMap::new());
+        let handshake = AgentHandshake {
+            available_modes: Some(json!({
+                "current_mode_id": "auto",
+                "available_modes": [
+                    {"id": "read-only", "name": "Read Only"},
+                    {"id": "auto", "name": "Default"},
+                    {"id": "full-access", "name": "Full Access"}
+                ]
+            })),
+            ..Default::default()
+        };
+
+        super::preload_metadata_catalogs(&mut session, "codex-agent", Some("codex"), &handshake);
+        session.apply_advertised_config_options(vec![
+            SessionConfigOption::select(
+                "reasoning_effort",
+                "Reasoning Effort",
+                "high",
+                vec![SessionConfigSelectOption::new("high", "High")],
+            )
+            .category(SessionConfigOptionCategory::ThoughtLevel),
+        ]);
+
+        let snapshot = session.config_snapshot();
+        let mode = snapshot
+            .options
+            .iter()
+            .find(|option| option.id == "mode")
+            .expect("metadata catalog should supplement missing mode");
+        assert_eq!(mode.current_value.as_deref(), Some("full-access"));
+        assert_eq!(mode.options.len(), 3);
+    }
+
+    #[test]
+    fn idle_acp_shutdown_started_log_contains_diagnostic_context() {
+        let captured = capture_logs(tracing::Level::INFO, || {
+            super::log_idle_acp_shutdown_started("conv_openclaw", "openclaw", Some("session_123"), 4242);
+        });
+
+        assert!(captured.contains("Idle kill: ACP shutdown started"));
+        assert!(captured.contains("conversation_id=conv_openclaw"));
+        assert!(captured.contains("backend=openclaw"));
+        assert!(captured.contains("session_id=session_123"));
+        assert!(captured.contains("pid=4242"));
+        assert!(captured.contains("reason=IdleTimeout"));
+    }
+
+    #[test]
+    fn idle_acp_cancel_skipped_log_contains_reason() {
+        let captured = capture_logs(tracing::Level::INFO, || {
+            super::log_idle_acp_cancel_skipped("conv_openclaw", "openclaw", 4242);
+        });
+
+        assert!(captured.contains("Idle kill: ACP session cancel skipped"));
+        assert!(captured.contains("conversation_id=conv_openclaw"));
+        assert!(captured.contains("backend=openclaw"));
+        assert!(captured.contains("pid=4242"));
+        assert!(captured.contains("reason=no_session_id"));
+    }
+
+    #[test]
+    fn warmup_does_not_mark_opened_when_protocol_disconnected_after_open() {
+        let mut session = AcpSession::new(None, None, Default::default());
+        session.set_session_id(DomainSessionId::new("sess-disconnected"));
+
+        let err = super::mark_session_opened_after_protocol_ready(
+            &mut session,
+            "sess-disconnected".to_owned(),
+            false,
+            "conv-test",
+            Some("codex"),
+        )
+        .expect_err("disconnected protocol must reject the opened transition");
+
+        assert!(
+            matches!(err, AgentError::Acp(AcpError::NotConnected)),
+            "expected AcpError::NotConnected, got {err:?}"
+        );
+        assert_eq!(session.session_id(), Some("sess-disconnected"));
+        assert!(
+            !session.is_opened(),
+            "warmup must not mark the aggregate opened when the protocol is already disconnected"
+        );
     }
 
     #[test]
@@ -1252,22 +1732,15 @@ mod tests {
     // count, or extractor module path) update this helper to match.
 
     use super::CliAgentProcess;
+    use aionui_common::CommandSpec;
     use std::sync::Arc;
     use std::time::Duration;
 
-    /// Spawn a sh subprocess that writes `stderr_payload` to stderr then
+    /// Spawn a subprocess that writes `stderr_payload` to stderr then
     /// exits with `exit_code`. Used to simulate ACP CLI crashes/exits in
-    /// close-path tests. Lines containing `'` are escaped for the heredoc.
+    /// close-path tests.
     async fn spawn_with_stderr_and_exit(stderr_payload: &str, exit_code: u8) -> Arc<CliAgentProcess> {
-        use aionui_common::CommandSpec;
-        let payload = stderr_payload.replace('\'', "'\\''");
-        let script = format!("cat <<'EOF' >&2\n{payload}\nEOF\nexit {exit_code}");
-        let config = CommandSpec {
-            command: "sh".into(),
-            args: vec!["-c".into(), script],
-            env: vec![],
-            cwd: None,
-        };
+        let config = stderr_exit_command_spec(stderr_payload, exit_code);
         let data_dir = tempfile::tempdir().unwrap();
         let proc = CliAgentProcess::spawn_for_sdk(config, data_dir.path()).await.unwrap();
         tokio::time::timeout(Duration::from_secs(5), proc.wait_for_exit())
@@ -1275,6 +1748,37 @@ mod tests {
             .unwrap();
         tokio::time::sleep(Duration::from_millis(100)).await;
         Arc::new(proc)
+    }
+
+    #[cfg(not(windows))]
+    fn stderr_exit_command_spec(stderr_payload: &str, exit_code: u8) -> CommandSpec {
+        let payload = stderr_payload.replace('\'', "'\\''");
+        let script = format!("cat <<'EOF' >&2\n{payload}\nEOF\nexit {exit_code}");
+        CommandSpec {
+            command: "sh".into(),
+            args: vec!["-c".into(), script],
+            env: vec![],
+            cwd: None,
+        }
+    }
+
+    #[cfg(windows)]
+    fn stderr_exit_command_spec(stderr_payload: &str, exit_code: u8) -> CommandSpec {
+        let payload = stderr_payload.replace('\'', "''");
+        let script = format!("[Console]::Error.WriteLine('{payload}'); exit {exit_code}");
+        CommandSpec {
+            command: "powershell.exe".into(),
+            args: vec![
+                "-NoLogo".into(),
+                "-NoProfile".into(),
+                "-ExecutionPolicy".into(),
+                "Bypass".into(),
+                "-Command".into(),
+                script,
+            ],
+            env: vec![],
+            cwd: None,
+        }
     }
 
     async fn spawn_with_stderr(stderr_payload: &str) -> Arc<CliAgentProcess> {

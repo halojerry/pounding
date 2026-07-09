@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use agent_client_protocol::schema::{
-    AgentCapabilities, AuthMethod, AvailableCommand, SessionConfigKind, SessionConfigOption, SessionModeState,
-    SessionModelState, UsageUpdate,
+    AgentCapabilities, AuthMethod, AvailableCommand, SessionConfigKind, SessionConfigOption,
+    SessionConfigOptionCategory, SessionConfigSelectOptions, SessionModeState, SessionModelState, UsageUpdate,
 };
 
 use super::agent_event_tracker::AcpSessionEvent;
@@ -10,6 +10,7 @@ use super::agent_reconcile::ReconcileAction;
 use super::config_option_catalog::{
     derive_models_from_config_options, derive_modes_from_config_options, merge_config_options,
 };
+use super::config_options::ConfigSnapshot;
 use crate::protocol::error::CloseReason;
 use crate::shared_kernel::{ConfigKey, ConfigValue, ModeId, ModelId, PersistedSessionState, SessionId};
 
@@ -19,6 +20,7 @@ struct Desired {
     mode_id: Option<ModeId>,
     model_id: Option<ModelId>,
     config_selections: HashMap<ConfigKey, ConfigValue>,
+    pending_startup_config: Vec<PendingStartupConfigSeed>,
 }
 
 /// What the CLI last reported (ground truth from the backend).
@@ -41,6 +43,20 @@ struct Advertised {
     available_commands: Option<Vec<AvailableCommand>>,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct CatalogPreloadSummary {
+    pub(crate) mode_preloaded: bool,
+    pub(crate) model_preloaded: bool,
+    pub(crate) mode_catalog_count: usize,
+    pub(crate) model_catalog_count: usize,
+}
+
+impl CatalogPreloadSummary {
+    pub(crate) fn any_preloaded(self) -> bool {
+        self.mode_preloaded || self.model_preloaded
+    }
+}
+
 /// Aggregate root for a single ACP session's lifecycle and state.
 ///
 /// Encapsulates the three-layer state model (desired / observed / advertised)
@@ -58,6 +74,10 @@ pub struct AcpSession {
     desired: Desired,
     observed: Observed,
     advertised: Advertised,
+    /// Guards against concurrent `set_config_option` calls so a second
+    /// in-flight update is rejected with a conflict rather than racing the
+    /// first. Set by `try_begin_config_set`, cleared by `end_config_set`.
+    config_set_in_flight: bool,
     pending_events: Vec<AcpSessionEvent>,
     /// Whether `open_session_new` has just completed and the next prompt
     /// should receive preset_context / skill-index injection.
@@ -92,6 +112,36 @@ pub struct AcpSession {
     last_close_reason: Option<CloseReason>,
 }
 
+/// Opaque token proving a config-set critical section is active. Returned by
+/// `try_begin_config_set` and consumed by `end_config_set` so the guard flag
+/// can only be cleared by the holder of the section.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ConfigSetGuardToken;
+
+/// A startup config preference (from build extras) awaiting the advertised
+/// config-option catalog before it can be mapped to a concrete option id.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct PendingStartupConfigSeed {
+    category: SessionConfigOptionCategory,
+    value: ConfigValue,
+}
+
+/// Outcome of resolving one pending startup config seed against the
+/// advertised catalog.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum PendingStartupConfigSeedResult {
+    Applied {
+        category: SessionConfigOptionCategory,
+        option_id: ConfigKey,
+    },
+    OptionNotAdvertised {
+        category: SessionConfigOptionCategory,
+    },
+    ValueNotSelectable {
+        category: SessionConfigOptionCategory,
+    },
+}
+
 impl AcpSession {
     pub fn new(
         initial_mode: Option<ModeId>,
@@ -106,13 +156,35 @@ impl AcpSession {
                 mode_id: initial_mode,
                 model_id: initial_model,
                 config_selections,
+                pending_startup_config: Vec::new(),
             },
             observed: Observed::default(),
             advertised: Advertised::default(),
+            config_set_in_flight: false,
             pending_events: Vec::new(),
             pending_model_notice: None,
             last_close_reason: None,
         }
+    }
+}
+
+// ─── Config-set guard ───────────────────────────────────────────────────────
+impl AcpSession {
+    /// Begin a config-set critical section. Returns `Some(token)` when no
+    /// other update is in flight, or `None` when one already is (caller must
+    /// reject with a conflict). The returned token must be passed back to
+    /// `end_config_set` to release the guard.
+    pub fn try_begin_config_set(&mut self) -> Option<ConfigSetGuardToken> {
+        if self.config_set_in_flight {
+            return None;
+        }
+        self.config_set_in_flight = true;
+        Some(ConfigSetGuardToken)
+    }
+
+    /// Release the config-set critical section opened by `try_begin_config_set`.
+    pub fn end_config_set(&mut self, _token: ConfigSetGuardToken) {
+        self.config_set_in_flight = false;
     }
 }
 
@@ -190,6 +262,10 @@ impl AcpSession {
     /// post-`session/new` payload. Idempotent.
     pub fn mark_pending_session_new_prelude(&mut self) {
         self.pending_session_new_prelude = true;
+    }
+
+    pub fn has_pending_session_new_prelude(&self) -> bool {
+        self.pending_session_new_prelude
     }
 
     /// Consume the prelude flag. Returns `true` exactly once after
@@ -314,6 +390,104 @@ impl AcpSession {
                 .push(AcpSessionEvent::DesiredConfigChanged { selections });
         }
     }
+
+    /// Queue a startup config preference (from build extras) to be resolved
+    /// once the advertised config-option catalog is known. De-duplicates
+    /// identical (category, value) pairs and ignores empty values.
+    pub(crate) fn seed_pending_startup_config(&mut self, category: SessionConfigOptionCategory, value: ConfigValue) {
+        if value.as_str().is_empty() {
+            return;
+        }
+        if self
+            .desired
+            .pending_startup_config
+            .iter()
+            .any(|seed| seed.category == category && seed.value == value)
+        {
+            return;
+        }
+        self.desired
+            .pending_startup_config
+            .push(PendingStartupConfigSeed { category, value });
+    }
+
+    /// Resolve all queued startup config seeds against the advertised catalog,
+    /// mapping each to a concrete config option and recording it as desired.
+    /// Drains the queue and returns per-seed outcomes for logging/diagnostics.
+    pub(crate) fn resolve_pending_startup_config_seeds(&mut self) -> Vec<PendingStartupConfigSeedResult> {
+        let seeds = std::mem::take(&mut self.desired.pending_startup_config);
+        if seeds.is_empty() {
+            return Vec::new();
+        }
+
+        let mut results = Vec::with_capacity(seeds.len());
+        for seed in seeds {
+            let Some(options) = self.advertised.config_options.as_ref() else {
+                self.handle_unresolved_startup_config_seed(&seed, false);
+                results.push(PendingStartupConfigSeedResult::OptionNotAdvertised {
+                    category: seed.category,
+                });
+                continue;
+            };
+
+            let Some(option) = select_option_for_startup_seed(options, &seed.category) else {
+                self.handle_unresolved_startup_config_seed(&seed, false);
+                results.push(PendingStartupConfigSeedResult::OptionNotAdvertised {
+                    category: seed.category,
+                });
+                continue;
+            };
+
+            if !select_option_contains_value(&option.kind, seed.value.as_str()) {
+                self.handle_unresolved_startup_config_seed(&seed, true);
+                results.push(PendingStartupConfigSeedResult::ValueNotSelectable {
+                    category: seed.category,
+                });
+                continue;
+            }
+
+            let option_id = ConfigKey::new(option.id.to_string());
+            self.clear_legacy_desired_for_config_category(&seed.category);
+            self.set_desired_config(option_id.clone(), seed.value);
+            results.push(PendingStartupConfigSeedResult::Applied {
+                category: seed.category,
+                option_id,
+            });
+        }
+        results
+    }
+
+    /// Clear the legacy desired mode/model when a startup seed for the same
+    /// category resolved to a config option, so reconcile does not double-issue
+    /// set_mode/set_model alongside set_config_option.
+    fn clear_legacy_desired_for_config_category(&mut self, category: &SessionConfigOptionCategory) {
+        match category {
+            SessionConfigOptionCategory::Mode => {
+                self.desired.mode_id = None;
+            }
+            SessionConfigOptionCategory::Model => {
+                self.desired.model_id = None;
+            }
+            _ => {}
+        }
+    }
+
+    /// Decide what to do with a startup seed that could not be resolved,
+    /// depending on its category and whether the option was advertised.
+    fn handle_unresolved_startup_config_seed(&mut self, seed: &PendingStartupConfigSeed, option_was_advertised: bool) {
+        match seed.category {
+            SessionConfigOptionCategory::Mode | SessionConfigOptionCategory::Model if !option_was_advertised => {
+                // Keep legacy desired mode/model so old ACP implementations still use set_mode/set_model.
+            }
+            SessionConfigOptionCategory::Mode | SessionConfigOptionCategory::Model => {
+                self.clear_legacy_desired_for_config_category(&seed.category);
+            }
+            SessionConfigOptionCategory::ThoughtLevel if !option_was_advertised => {
+                self.seed_pending_startup_config(seed.category.clone(), seed.value.clone());
+            }
+            _ => {}
+        }
+    }
 }
 
 // ─── Getters observed ───────────────────────────────────────────────────────
@@ -347,6 +521,17 @@ impl AcpSession {
 
     pub fn config_options(&self) -> Option<&[SessionConfigOption]> {
         self.advertised.config_options.as_deref()
+    }
+
+    pub(crate) fn config_snapshot(&self) -> ConfigSnapshot {
+        if let Some(options) = self.advertised.config_options.clone() {
+            return ConfigSnapshot::from_real_options_with_runtime_supplements(
+                options,
+                self.advertised.modes.as_ref(),
+                self.advertised.models.as_ref(),
+            );
+        }
+        ConfigSnapshot::from_legacy_catalogs(self.advertised.modes.as_ref(), self.advertised.models.as_ref())
     }
 
     pub fn context_usage(&self) -> Option<&UsageUpdate> {
@@ -471,8 +656,26 @@ impl AcpSession {
     }
 
     pub fn apply_advertised_modes(&mut self, modes: SessionModeState) {
+        let incoming_mode_catalog_count = modes.available_modes.len();
+        let existing_mode_catalog_count = self
+            .advertised
+            .modes
+            .as_ref()
+            .map_or(0, |modes| modes.available_modes.len());
+        let modes = self.preserve_existing_mode_catalog_if_empty(modes);
+        let final_mode_catalog_count = modes.available_modes.len();
         let new_id = ModeId::new(modes.current_mode_id.to_string());
         let changed = self.observed.mode_id.as_ref() != Some(&new_id);
+        if incoming_mode_catalog_count == 0
+            && existing_mode_catalog_count > 0
+            && final_mode_catalog_count == existing_mode_catalog_count
+        {
+            tracing::debug!(
+                current_mode = %new_id,
+                preserved_mode_catalog_count = final_mode_catalog_count,
+                "ACP advertised modes kept existing catalog for empty runtime update"
+            );
+        }
         self.observed.mode_id = Some(new_id.clone());
         self.advertised.modes = Some(modes);
         if changed {
@@ -482,14 +685,52 @@ impl AcpSession {
     }
 
     pub fn apply_advertised_models(&mut self, models: SessionModelState) {
+        let incoming_model_catalog_count = models.available_models.len();
+        let existing_model_catalog_count = self
+            .advertised
+            .models
+            .as_ref()
+            .map_or(0, |models| models.available_models.len());
+        let models = self.preserve_existing_model_catalog_if_empty(models);
+        let final_model_catalog_count = models.available_models.len();
         let new_id = ModelId::new(models.current_model_id.to_string());
         let changed = self.observed.model_id.as_ref() != Some(&new_id);
+        if incoming_model_catalog_count == 0
+            && existing_model_catalog_count > 0
+            && final_model_catalog_count == existing_model_catalog_count
+        {
+            tracing::debug!(
+                current_model = %new_id,
+                preserved_model_catalog_count = final_model_catalog_count,
+                "ACP advertised models kept existing catalog for empty runtime update"
+            );
+        }
         self.observed.model_id = Some(new_id.clone());
         self.advertised.models = Some(models);
         if changed {
             self.pending_events
                 .push(AcpSessionEvent::ObservedModelSynced { model: new_id });
         }
+    }
+
+    fn preserve_existing_mode_catalog_if_empty(&self, mut modes: SessionModeState) -> SessionModeState {
+        if modes.available_modes.is_empty()
+            && let Some(existing) = self.advertised.modes.as_ref()
+            && !existing.available_modes.is_empty()
+        {
+            modes.available_modes.clone_from(&existing.available_modes);
+        }
+        modes
+    }
+
+    fn preserve_existing_model_catalog_if_empty(&self, mut models: SessionModelState) -> SessionModelState {
+        if models.available_models.is_empty()
+            && let Some(existing) = self.advertised.models.as_ref()
+            && !existing.available_models.is_empty()
+        {
+            models.available_models.clone_from(&existing.available_models);
+        }
+        models
     }
 
     fn preserve_desired_model_in_catalog(&self, models: SessionModelState) -> SessionModelState {
@@ -512,6 +753,28 @@ impl AcpSession {
 
     pub fn apply_advertised_config_options(&mut self, options: Vec<SessionConfigOption>) {
         let options = merge_config_options(self.advertised.config_options.as_deref(), options);
+        let supplement_summary = ConfigSnapshot::supplement_summary_for_real_options(
+            &options,
+            self.advertised.modes.as_ref(),
+            self.advertised.models.as_ref(),
+        );
+        if let Some(supplemented_categories) = supplement_summary.categories_csv() {
+            tracing::info!(
+                supplemented_categories,
+                real_option_count = options.len(),
+                mode_catalog_count = self
+                    .advertised
+                    .modes
+                    .as_ref()
+                    .map_or(0, |modes| modes.available_modes.len()),
+                model_catalog_count = self
+                    .advertised
+                    .models
+                    .as_ref()
+                    .map_or(0, |models| models.available_models.len()),
+                "ACP config options supplemented from advertised catalog"
+            );
+        }
 
         if let Some(modes) = derive_modes_from_config_options(&options) {
             self.apply_advertised_modes(modes);
@@ -571,11 +834,23 @@ impl AcpSession {
     /// Called on resume paths before the CLI session/load response arrives.
     pub fn preload_persisted(&mut self, state: &PersistedSessionState) {
         if let Some(mode) = &state.current_mode_id {
-            self.advertised.modes = Some(SessionModeState::new(mode.as_str().to_owned(), Vec::new()));
+            let available_modes = self
+                .advertised
+                .modes
+                .as_ref()
+                .map(|modes| modes.available_modes.clone())
+                .unwrap_or_default();
+            self.advertised.modes = Some(SessionModeState::new(mode.as_str().to_owned(), available_modes));
             self.observed.mode_id = Some(mode.clone());
         }
         if let Some(model) = &state.current_model_id {
-            self.advertised.models = Some(SessionModelState::new(model.as_str().to_owned(), Vec::new()));
+            let available_models = self
+                .advertised
+                .models
+                .as_ref()
+                .map(|models| models.available_models.clone())
+                .unwrap_or_default();
+            self.advertised.models = Some(SessionModelState::new(model.as_str().to_owned(), available_models));
             self.observed.model_id = Some(model.clone());
         }
         if !state.config_selections.is_empty() {
@@ -584,6 +859,76 @@ impl AcpSession {
         if let Some(usage) = &state.context_usage {
             self.advertised.context_usage = Some(usage.clone());
         }
+    }
+
+    pub(crate) fn preload_advertised_catalogs(
+        &mut self,
+        modes: Option<SessionModeState>,
+        models: Option<SessionModelState>,
+    ) -> CatalogPreloadSummary {
+        let mut summary = CatalogPreloadSummary::default();
+
+        if let Some(modes) = modes.filter(|modes| !modes.available_modes.is_empty())
+            && self
+                .advertised
+                .modes
+                .as_ref()
+                .is_none_or(|existing| existing.available_modes.is_empty())
+        {
+            summary.mode_preloaded = true;
+            summary.mode_catalog_count = modes.available_modes.len();
+            self.advertised.modes = Some(self.mode_catalog_with_session_current(modes));
+        }
+
+        if let Some(models) = models.filter(|models| !models.available_models.is_empty())
+            && self
+                .advertised
+                .models
+                .as_ref()
+                .is_none_or(|existing| existing.available_models.is_empty())
+        {
+            summary.model_preloaded = true;
+            summary.model_catalog_count = models.available_models.len();
+            self.advertised.models = Some(self.model_catalog_with_session_current(models));
+        }
+
+        summary
+    }
+
+    fn mode_catalog_with_session_current(&self, mut modes: SessionModeState) -> SessionModeState {
+        let current = self
+            .observed
+            .mode_id
+            .as_ref()
+            .or(self.desired.mode_id.as_ref())
+            .filter(|mode| {
+                modes
+                    .available_modes
+                    .iter()
+                    .any(|available| available.id.0.as_ref() == mode.as_str())
+            });
+        if let Some(current) = current {
+            modes.current_mode_id = current.as_str().to_owned().into();
+        }
+        modes
+    }
+
+    fn model_catalog_with_session_current(&self, mut models: SessionModelState) -> SessionModelState {
+        let current = self
+            .observed
+            .model_id
+            .as_ref()
+            .or(self.desired.model_id.as_ref())
+            .filter(|model| {
+                models
+                    .available_models
+                    .iter()
+                    .any(|available| available.model_id.0.as_ref() == model.as_str())
+            });
+        if let Some(current) = current {
+            models.current_model_id = current.as_str().to_owned().into();
+        }
+        models
     }
 }
 
@@ -671,9 +1016,66 @@ fn extract_config_current_value(kind: &SessionConfigKind) -> Option<String> {
     }
 }
 
+/// Find the advertised config option matching a startup seed's category,
+/// first by explicit category tag then by well-known id aliases.
+fn select_option_for_startup_seed<'a>(
+    options: &'a [SessionConfigOption],
+    category: &SessionConfigOptionCategory,
+) -> Option<&'a SessionConfigOption> {
+    options
+        .iter()
+        .find(|option| option.category.as_ref() == Some(category))
+        .or_else(|| {
+            let aliases = config_option_aliases_for_category(category);
+            options.iter().find(|option| {
+                let option_id = option.id.to_string();
+                aliases.iter().any(|alias| *alias == option_id)
+            })
+        })
+}
+
+/// Well-known config-option id aliases for a category, used to match
+/// advertised options that don't carry an explicit category tag.
+fn config_option_aliases_for_category(category: &SessionConfigOptionCategory) -> &'static [&'static str] {
+    match category {
+        SessionConfigOptionCategory::Mode => &["mode", "modes"],
+        SessionConfigOptionCategory::Model => &["model", "models"],
+        SessionConfigOptionCategory::ThoughtLevel => &[
+            "thought_level",
+            "reasoning_effort",
+            "effort",
+            "thinking_budget",
+            "thinking",
+        ],
+        _ => &[],
+    }
+}
+
+/// Whether a select-kind config option offers the given value as a choice
+/// (checking both ungrouped and grouped option layouts).
+fn select_option_contains_value(kind: &SessionConfigKind, value: &str) -> bool {
+    match kind {
+        SessionConfigKind::Select(select) => match &select.options {
+            SessionConfigSelectOptions::Ungrouped(options) => {
+                options.iter().any(|option| option.value.to_string() == value)
+            }
+            SessionConfigSelectOptions::Grouped(groups) => groups
+                .iter()
+                .flat_map(|group| group.options.iter())
+                .any(|option| option.value.to_string() == value),
+            _ => false,
+        },
+        _ => false,
+    }
+}
+
 // Tests live in `session_tests.rs` (linked via `#[path]`) so this file
 // stays under the 1000-line per-file budget. Inside that file `super::*`
 // resolves to this module's private items.
 #[cfg(test)]
 #[path = "session_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "session_config_snapshot_tests.rs"]
+mod config_snapshot_tests;

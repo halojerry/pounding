@@ -65,7 +65,7 @@ impl ProviderHealthCheckService {
     fn resolve_probe_config(&self, row: &Provider, model_id: &str) -> Result<AionrsResolvedConfig, AgentError> {
         let api_key = aionui_common::decrypt_string(&row.api_key_encrypted, &self.encryption_key)
             .map_err(|e| AgentError::internal(e.to_string()))?;
-        let provider = map_aionrs_provider(&row.platform, model_id, row.model_protocols.as_deref());
+        let provider = map_aionrs_provider(&row.platform, model_id, row.model_protocols.as_deref())?;
         let (base_url, compat_overrides) =
             resolve_aionrs_url_and_compat(&row.platform, &row.base_url, &provider, row.is_full_url);
         let bedrock_config = if row.platform == "bedrock" {
@@ -82,11 +82,14 @@ impl ProviderHealthCheckService {
             system_prompt: Some("You are a provider health probe. Reply with exactly OK and do not use tools.".into()),
             max_tokens: 16,
             max_turns: Some(1),
+            max_tool_call_malformed_turns: Some(1),
+            max_tool_call_failure_turns: Some(1),
             compat_overrides,
             session_directory: self.data_dir.join("aionrs-health-check-sessions"),
             session_mode: None,
             extra_mcp_servers: HashMap::new(),
             bedrock_config,
+            runtime_env: Vec::new(),
         })
     }
 }
@@ -194,6 +197,8 @@ async fn build_probe_engine(config_extra: AionrsResolvedConfig) -> Result<AgentE
         model: Some(config_extra.model),
         max_tokens: Some(config_extra.max_tokens),
         max_turns: config_extra.max_turns,
+        max_tool_call_malformed_turns: config_extra.max_tool_call_malformed_turns,
+        max_tool_call_failure_turns: config_extra.max_tool_call_failure_turns,
         system_prompt: config_extra.system_prompt,
         profile: None,
         auto_approve: false,
@@ -207,13 +212,14 @@ async fn build_probe_engine(config_extra: AionrsResolvedConfig) -> Result<AgentE
     config.mcp.servers.clear();
     config.file_cache.enabled = false;
     if let Some(field) = config_extra.compat_overrides.max_tokens_field {
-        config.compat.max_tokens_field = Some(field);
+        config.compat.transport.max_tokens_field = Some(field);
     }
     if let Some(path) = config_extra.compat_overrides.api_path {
-        config.compat.api_path = Some(path);
+        config.compat.transport.api_path = Some(path);
     }
 
     AgentBootstrap::new(config, workspace, sink)
+        .runtime_env(config_extra.runtime_env)
         .build()
         .await
         .map(|result| result.engine)

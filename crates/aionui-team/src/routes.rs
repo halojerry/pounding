@@ -8,21 +8,23 @@ use axum::extract::{Extension, Json, Path, State};
 use axum::http::StatusCode;
 use axum::routing::{get, post};
 
+use aionui_ai_agent::ActiveLeaseRegistry;
 use aionui_api_types::{
     AddAgentRequest, ApiResponse, CancelTeamChildTurnRequest, CancelTeamRunRequest, CreateTeamRequest,
-    RenameAgentRequest, RenameTeamRequest, SendAgentMessageRequest, SendTeamMessageRequest, SetModeRequest,
-    TeamAgentResponse, TeamListResponse, TeamResponse, TeamRunAckResponse,
+    PauseTeamSlotRequest, RenameAgentRequest, RenameTeamRequest, SendAgentMessageRequest, SendTeamMessageRequest,
+    SetModeRequest, TeamAgentResponse, TeamListResponse, TeamResponse, TeamRunAckResponse, TeamRunStateResponse,
 };
 use aionui_auth::CurrentUser;
 use aionui_common::ApiError;
 use aionui_db::DbError;
 
-use crate::error::TeamError;
+use crate::error::{TeamError, classify_public_error};
 use crate::service::TeamSessionService;
 
 #[derive(Clone)]
 pub struct TeamRouterState {
     pub service: Arc<TeamSessionService>,
+    pub active_leases: Arc<ActiveLeaseRegistry>,
 }
 
 fn db_error_to_api_error(err: DbError) -> ApiError {
@@ -41,7 +43,14 @@ impl From<TeamError> for ApiError {
             TeamError::TeamNotFound(msg) => ApiError::NotFound(msg),
             TeamError::AgentNotFound(msg) => ApiError::NotFound(msg),
             TeamError::TaskNotFound(msg) => ApiError::NotFound(msg),
-            TeamError::InvalidRequest(msg) => ApiError::BadRequest(msg),
+            TeamError::InvalidRequest(msg) => {
+                if let Some(public) = classify_public_error(&msg) {
+                    ApiError::coded(StatusCode::BAD_REQUEST, public.code, msg, public.details)
+                } else {
+                    ApiError::BadRequest(msg)
+                }
+            }
+            TeamError::SlotBusy(msg) => ApiError::Conflict(format!("Team slot is busy: {msg}")),
             TeamError::LeaderOnly(msg) => ApiError::Forbidden(msg),
             TeamError::Forbidden(msg) => ApiError::Forbidden(msg),
             TeamError::SessionNotFound(msg) => ApiError::NotFound(msg),
@@ -60,6 +69,7 @@ pub fn team_routes(state: TeamRouterState) -> Router {
     Router::new()
         .route("/api/teams", post(create_team).get(list_teams))
         .route("/api/teams/{id}", get(get_team).delete(remove_team))
+        .route("/api/teams/{id}/run-state", get(get_run_state))
         .route("/api/teams/{id}/name", axum::routing::patch(rename_team))
         .route("/api/teams/{id}/agents", post(add_agent))
         .route("/api/teams/{id}/agents/{slot_id}", axum::routing::delete(remove_agent))
@@ -74,7 +84,12 @@ pub fn team_routes(state: TeamRouterState) -> Router {
             "/api/teams/{id}/runs/{team_run_id}/agents/{slot_id}/cancel",
             post(cancel_child_turn),
         )
+        .route(
+            "/api/teams/{id}/runs/{team_run_id}/agents/{slot_id}/pause",
+            post(pause_slot_work),
+        )
         .route("/api/teams/{id}/session", post(ensure_session).delete(stop_session))
+        .route("/api/teams/{id}/active-lease", post(active_lease))
         .route("/api/teams/{id}/session-mode", post(set_session_mode))
         .with_state(state)
 }
@@ -104,6 +119,15 @@ async fn get_team(
 ) -> Result<Json<ApiResponse<TeamResponse>>, ApiError> {
     let team = state.service.get_team(&user.id, &id).await?;
     Ok(Json(ApiResponse::ok(team)))
+}
+
+async fn get_run_state(
+    State(state): State<TeamRouterState>,
+    Extension(user): Extension<CurrentUser>,
+    Path(id): Path<String>,
+) -> Result<Json<ApiResponse<TeamRunStateResponse>>, ApiError> {
+    let run_state = state.service.get_run_state(&user.id, &id).await?;
+    Ok(Json(ApiResponse::ok(run_state)))
 }
 
 async fn remove_team(
@@ -244,6 +268,20 @@ async fn cancel_child_turn(
     Ok(Json(ApiResponse::success()))
 }
 
+async fn pause_slot_work(
+    State(state): State<TeamRouterState>,
+    Extension(user): Extension<CurrentUser>,
+    Path(params): Path<RunAgentPathParams>,
+    body: Result<Json<PauseTeamSlotRequest>, JsonRejection>,
+) -> Result<Json<ApiResponse<()>>, ApiError> {
+    let Json(req) = body.map_err(ApiError::from)?;
+    state
+        .service
+        .pause_slot_work(&user.id, &params.id, &params.team_run_id, &params.slot_id, req.reason)
+        .await?;
+    Ok(Json(ApiResponse::success()))
+}
+
 async fn set_session_mode(
     State(state): State<TeamRouterState>,
     Extension(user): Extension<CurrentUser>,
@@ -252,6 +290,18 @@ async fn set_session_mode(
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
     let Json(req) = body.map_err(ApiError::from)?;
     state.service.set_session_mode(&user.id, &id, &req.mode).await?;
+    Ok(Json(ApiResponse::success()))
+}
+
+async fn active_lease(
+    State(state): State<TeamRouterState>,
+    Extension(user): Extension<CurrentUser>,
+    Path(id): Path<String>,
+) -> Result<Json<ApiResponse<()>>, ApiError> {
+    state
+        .service
+        .renew_active_lease(&user.id, &id, &state.active_leases)
+        .await?;
     Ok(Json(ApiResponse::success()))
 }
 
@@ -276,6 +326,7 @@ async fn stop_session(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn team_router_state_is_clone() {
@@ -305,6 +356,44 @@ mod tests {
     fn invalid_request_maps_to_bad_request() {
         let err: ApiError = TeamError::InvalidRequest("empty agents".into()).into();
         assert!(matches!(err, ApiError::BadRequest(_)));
+    }
+
+    #[test]
+    fn invalid_request_maps_missing_assistant_identity_to_coded_api_error() {
+        let err: ApiError = TeamError::InvalidRequest("spawn_agent.assistant_id is required".into()).into();
+        assert_eq!(err.error_code(), "TEAM_ASSISTANT_ID_REQUIRED");
+        assert_eq!(err.error_details(), Some(json!({ "field": "assistant_id" })));
+    }
+
+    #[test]
+    fn invalid_request_maps_unknown_assistant_to_coded_api_error() {
+        let err: ApiError = TeamError::InvalidRequest("Preset assistant not found: bare:deadbeef".into()).into();
+        assert_eq!(err.error_code(), "TEAM_ASSISTANT_NOT_FOUND");
+        assert_eq!(
+            err.error_details(),
+            Some(json!({
+                "assistant_id": "bare:deadbeef",
+            }))
+        );
+    }
+
+    #[test]
+    fn invalid_request_maps_legacy_identity_field_to_coded_api_error() {
+        let err: ApiError = TeamError::InvalidRequest("backend is no longer accepted; use assistant_id".into()).into();
+        assert_eq!(err.error_code(), "TEAM_ASSISTANT_FIELD_UNSUPPORTED");
+        assert_eq!(
+            err.error_details(),
+            Some(json!({
+                "field": "backend",
+                "required_field": "assistant_id",
+            }))
+        );
+    }
+
+    #[test]
+    fn slot_busy_maps_to_conflict() {
+        let api_error: ApiError = TeamError::SlotBusy("lead-1".into()).into();
+        assert_eq!(api_error.status_code(), StatusCode::CONFLICT);
     }
 
     #[test]

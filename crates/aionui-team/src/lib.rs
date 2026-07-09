@@ -1,11 +1,11 @@
 #![warn(clippy::disallowed_types)]
 
 //! Multi-agent team sessions with role-based prompts, task board, mailbox, and scheduling.
+pub mod capability;
 pub mod crash_detection;
 pub mod error;
 pub mod event_loop;
 pub mod events;
-pub mod guide;
 pub mod mailbox;
 pub mod mcp;
 pub mod message_projection;
@@ -16,6 +16,7 @@ pub mod routes;
 pub mod scheduler;
 pub mod service;
 pub mod session;
+mod slot_wake_gate;
 pub mod task_board;
 pub mod team_run;
 #[cfg(test)]
@@ -23,11 +24,11 @@ pub(crate) mod test_utils;
 pub mod types;
 pub mod visibility;
 mod wake;
+mod workspace;
 
 pub use crash_detection::{CrashReason, detect_crash, is_rate_limited};
 pub use error::TeamError;
 pub use events::TeamEventEmitter;
-pub use guide::{GuideMcpServer, handle_aion_list_models};
 pub use mailbox::Mailbox;
 pub use mcp::{TEAM_MCP_SERVER_NAME, TeamMcpServer, TeamMcpStdioConfig, TeamMcpStdioServerSpec};
 pub use message_projection::{
@@ -36,13 +37,13 @@ pub use message_projection::{
 };
 pub use ports::{
     AgentTurnCancellationPort, AgentTurnExecutionError, AgentTurnExecutionPort, AgentTurnOutcome, AgentTurnRequest,
-    AgentTurnSource, AgentTurnStarted, AgentTurnStartedCallback, AgentTurnStatus, TeamConversationBindingLookup,
-    TeamConversationLookupPort,
+    AgentTurnSource, AgentTurnStarted, AgentTurnStartedCallback, AgentTurnStatus, TeamAssistantCatalogEntry,
+    TeamAssistantCatalogPort, TeamConversationBindingLookup, TeamConversationLookupPort,
 };
 
 pub use prompts::{build_lead_prompt, build_teammate_prompt, build_wake_payload};
 pub use provisioning::{
-    TeamAgentProvisioner, TeamConversationAdoptRequest, TeamConversationCreateRequest, TeamConversationProvisioningPort,
+    TeamAgentProvisioner, TeamConversationCreateRequest, TeamConversationCreateResult, TeamConversationProvisioningPort,
 };
 pub use routes::{TeamRouterState, team_routes};
 pub use scheduler::{

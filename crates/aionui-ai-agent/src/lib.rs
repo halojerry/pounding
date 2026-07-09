@@ -1,10 +1,12 @@
 #![warn(clippy::disallowed_types)]
 
 //! AI agent lifecycle, worker task dispatch, and skill management.
+pub mod active_lease;
 pub(crate) mod agent_runtime;
 pub mod agent_task;
 pub mod capability;
 pub mod cc_switch;
+pub(crate) mod dev_prompt_dump;
 pub mod error;
 pub mod factory;
 pub(crate) mod idle_scanner;
@@ -20,6 +22,7 @@ pub mod shared_kernel;
 pub mod task_manager;
 pub mod types;
 
+pub use active_lease::{ACTIVE_LEASE_TTL_MS, ActiveLeaseRegistry};
 pub use agent_runtime::AgentRuntime;
 #[cfg(any(test, feature = "test-support"))]
 pub use agent_task::IMockAgent;
@@ -39,6 +42,7 @@ pub use protocol::events::AgentStreamEvent;
 pub use protocol::send_error::AgentSendError;
 pub use registry::{AgentRegistry, UnavailableReason};
 pub use routes::{AgentRouterState, RemoteAgentRouterState, agent_routes, remote_agent_routes};
+pub use services::AgentAvailabilityFeedbackPort;
 pub use services::AgentService;
 pub use services::RemoteAgentService;
 pub use session_context::{

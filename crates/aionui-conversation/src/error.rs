@@ -59,6 +59,9 @@ pub enum ConversationError {
     #[error("Workspace path is unavailable during execution: {path}")]
     WorkspacePathRuntimeUnavailable { path: String },
 
+    #[error("OpenClaw Gateway is not reachable: {detail}")]
+    OpenClawGatewayUnreachable { detail: String },
+
     #[error("ACP error")]
     Acp(#[from] AcpError),
 }
@@ -66,6 +69,10 @@ pub enum ConversationError {
 impl ConversationError {
     pub(crate) fn internal(reason: impl Into<String>) -> Self {
         Self::Internal { reason: reason.into() }
+    }
+
+    pub(crate) fn bad_request(reason: impl Into<String>) -> Self {
+        Self::BadRequest { reason: reason.into() }
     }
 
     pub(crate) fn not_found_reason(reason: impl Into<String>) -> Self {
@@ -95,6 +102,7 @@ impl ConversationError {
             Self::WorkspacePathRuntimeUnavailable { path } => {
                 AgentError::workspace_path_runtime_unavailable(path.clone())
             }
+            Self::OpenClawGatewayUnreachable { detail } => AgentError::bad_gateway(detail.clone()),
             Self::Acp(err) => AgentError::bad_gateway(err.to_string()),
         }
     }
@@ -118,6 +126,7 @@ impl ConversationError {
             Self::Archived { .. } => "CONVERSATION_ARCHIVED",
             Self::WorkspacePathUnavailable { .. } => "WORKSPACE_PATH_UNAVAILABLE",
             Self::WorkspacePathRuntimeUnavailable { .. } => "WORKSPACE_PATH_RUNTIME_UNAVAILABLE",
+            Self::OpenClawGatewayUnreachable { .. } => "USER_AGENT_OPENCLAW_GATEWAY_UNREACHABLE",
         }
     }
 }

@@ -26,9 +26,9 @@ impl NativeCliToolId {
 
     pub fn version(self) -> &'static str {
         match self {
-            Self::Hermes => "0.1.0",
-            Self::OpenCode => "0.1.0",
-            Self::OpenClaw => "0.1.0",
+            Self::Hermes => "0.18.2",
+            Self::OpenCode => "1.17.18",
+            Self::OpenClaw => "2026.6.11",
         }
     }
 

@@ -73,6 +73,16 @@ impl NativeCliToolId {
             Self::OpenClaw => NativeCliRuntimeKind::Node,
         }
     }
+
+    /// Return the official install command so users get a clear error instead
+    /// of a misleading 404 from the dead poundingcore download fallback.
+    pub fn install_instruction(self) -> &'static str {
+        match self {
+            Self::Hermes => "pip install hermes-agent[acp]",
+            Self::OpenCode => "npm install -g opencode-ai",
+            Self::OpenClaw => "npm install -g openclaw@latest",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

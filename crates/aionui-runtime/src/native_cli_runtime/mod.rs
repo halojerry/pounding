@@ -148,52 +148,18 @@ pub async fn ensure_native_cli_tool_with_reporter(
         ));
     }
 
-    info!(
-        tool = tool.slug(),
-        version = tool.version(),
-        platform = spec.manifest_key,
-        root = %root.display(),
-        "native CLI install started"
-    );
-    install_archive_with_retry(&root, tool, spec, reporter).await?;
-    match validate_tool_root(tool, &root, reporter) {
-        Ok(resolved) => {
-            emit_progress(
-                reporter,
-                NativeCliProgress::ready(format!("native CLI {} is ready", tool.display_name())),
-            );
-            info!(
-                tool = tool.slug(),
-                version = tool.version(),
-                root = %root.display(),
-                "native CLI install completed"
-            );
-            Ok(resolved)
-        }
-        Err(first_error) => {
-            warn!(
-                error = %first_error,
-                root = %root.display(),
-                "native CLI validation failed after install; retrying"
-            );
-            let _ = fs::remove_dir_all(&root);
-            install_archive_with_retry(&root, tool, spec, reporter).await?;
-            validate_tool_root(tool, &root, reporter)
-                .inspect(|_| {
-                    emit_progress(
-                        reporter,
-                        NativeCliProgress::ready(format!("native CLI {} is ready", tool.display_name())),
-                    );
-                    info!(
-                        tool = tool.slug(),
-                        version = tool.version(),
-                        root = %root.display(),
-                        "native CLI install completed"
-                    );
-                })
-                .map_err(|retry_error| combined_retry_error(first_error, retry_error, reporter))
-        }
-    }
+    // No suitable CLI found on PATH or in bundled resources. The download
+    // fallback (install_archive_with_retry) pointed at a poundingcore release
+    // that has never existed. Instead of a misleading 404, give a clear error
+    // telling the user how to install the CLI from the official source.
+    Err(report_failure(
+        NativeCliToolError::invalid(format!(
+            "{} CLI is not installed. Install it via the official source: {}",
+            tool.display_name(),
+            tool.install_instruction()
+        )),
+        reporter,
+    ))
 }
 
 fn validate_tool_root(

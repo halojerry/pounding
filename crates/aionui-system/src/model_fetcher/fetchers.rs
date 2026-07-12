@@ -334,13 +334,50 @@ async fn fetch_models_at_url(
 }
 
 async fn fetch_new_api(client: &reqwest::Client, base_url: &str, api_key: &str) -> Result<Vec<ModelInfo>, SystemError> {
-    // POUNDING: only fetch models from the POUNDING group, not all models.
-    // The upstream OpenAI-compatible /v1/models endpoint returns every model
-    // the API key has access to, which includes non-POUNDING groups. Use the
-    // POUNDING API's /api/user/models?group=POUNDING endpoint instead.
+    // POUNDING: the mxou API returns models grouped by `?grouped=true` in the
+    // shape `{ "POUNDING": ["model-id", ...], "default": [...], ... }`.
+    // We call grouped, then extract only the POUNDING group's model list.
     let trimmed = base_url.trim_end_matches('/');
-    let url = format!("{trimmed}/api/user/models?group=POUNDING");
-    fetch_models_at_url(client, &url, api_key).await
+    let url = format!("{trimmed}/api/user/models?grouped=true");
+    let resp = client
+        .get(&url)
+        .header("Authorization", format!("Bearer {api_key}"))
+        .timeout(REQUEST_TIMEOUT)
+        .send()
+        .await
+        .map_err(|e| remote_error(&e))?;
+
+    check_response_status(&resp)?;
+
+    let text = resp.text().await.map_err(|e| remote_error(&e))?;
+    let body: serde_json::Value = serde_json::from_str(&text).map_err(|e| {
+        SystemError::BadGateway(format!("Failed to parse POUNDING API grouped models: {e}"))
+    })?;
+
+    // The response is either at the top level or nested in data:
+    // `{ "POUNDING": [...], "default": [...] }` or
+    // `{ "data": { "POUNDING": [...], "default": [...] } }`
+    let grouped_obj = body
+        .get("data")
+        .and_then(|d| d.as_object())
+        .or_else(|| body.as_object());
+    let models: Vec<String> = grouped_obj
+        .and_then(|obj| obj.get("POUNDING"))
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .filter(|s| !s.is_empty())
+                .collect()
+        })
+        .unwrap_or_default();
+
+    if models.is_empty() {
+        // Fallback: if no POUNDING key, try flat array format
+        return fetch_models_at_url(client, &url, api_key).await;
+    }
+
+    Ok(models.into_iter().map(ModelInfo::Id).collect())
 }
 
 /// Ensure the URL path ends with `/v1`.

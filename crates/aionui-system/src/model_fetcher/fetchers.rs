@@ -262,9 +262,12 @@ fn minimax_models() -> Vec<ModelInfo> {
 // POUNDING new-api (with group filtering)
 // ---------------------------------------------------------------------------
 
-/// Fetch models from a full URL endpoint (like the POUNDING API
-/// `/api/user/models?group=POUNDING`) that returns either a
-/// `{ data: [ { id: "..." } ] }` array or a flat `[ "model-id", ... ]` array.
+/// Fetch models from the POUNDING API `/api/user/models?group=POUNDING`.
+///
+/// The POUNDING API returns a `NewApiResponse` wrapper:
+/// `{ "data": [ "model-id-1", "model-id-2", ... ] }`
+/// or `{ "data": { "data": [ "model-id-1", ... ] } }`
+/// Each element may be a flat string or `{ "id": "...", "owned_by": "..." }`.
 async fn fetch_models_at_url(
     client: &reqwest::Client,
     url: &str,
@@ -280,51 +283,54 @@ async fn fetch_models_at_url(
 
     check_response_status(&resp)?;
 
-    // Try standard `{ data: [ { id: "..." } ] }` first.
-    if let Ok(body) = resp.json::<OpenAiModelsResponse>().await {
-        return Ok(body.data.into_iter().map(|m| ModelInfo::Id(m.id)).collect());
-    }
-    // The raw body might already be consumed after the first json parse failed;
-    // but reqwest buffers it, so a second parse is fine.
-    // Fallback: try flat string array.
-    // Re-fetch to reset the body stream:
-    let resp2 = client
-        .get(url)
-        .header("Authorization", format!("Bearer {api_key}"))
-        .timeout(REQUEST_TIMEOUT)
-        .send()
-        .await
-        .map_err(|e| remote_error(&e))?;
+    // Read the raw body as text first so we can retry parsing without
+    // re-fetching (resp.json() consumes the body).
+    let text = resp.text().await.map_err(|e| remote_error(&e))?;
+    let body: serde_json::Value = serde_json::from_str(&text).map_err(|e| {
+        SystemError::BadGateway(format!("Failed to parse POUNDING API response: {e}"))
+    })?;
 
-    check_response_status(&resp2)?;
+    // Normalize: extract the flat model array, matching the same field order
+    // as the frontend's normalizeModelList().
+    let data = body.get("data");
+    let models_arr = data
+        .and_then(|d| {
+            d.get("data")         // { data: { data: [...] } }
+                .or_else(|| d.get("models")) // { data: { models: [...] } }
+                .or_else(|| {
+                    if d.is_array() {
+                        Some(d)
+                    } else {
+                        None
+                    }
+                }) // { data: [...] }
+        })
+        .or_else(|| body.get("data").filter(|d| d.is_array())) // { data: [...] }
+        .and_then(|v| v.as_array());
 
-    let body: serde_json::Value = resp2.json().await.map_err(|e| remote_error(&e))?;
-
-    // Try data.data (new-api wrapper), data.models, or data directly
-    let models_val = body
-        .get("data")
-        .and_then(|d| d.get("data").or_else(|| d.get("models")))
-        .or_else(|| body.get("data"));
-
-    if let Some(arr) = models_val.and_then(|v| v.as_array()) {
-        return Ok(arr
+    let items: Vec<String> = match models_arr {
+        Some(arr) => arr
             .iter()
             .filter_map(|item| {
                 if let Some(s) = item.as_str() {
                     return Some(s.to_string());
                 }
                 if let Some(obj) = item.as_object() {
-                    let id = obj.get("id").or_else(|| obj.get("model_name")).or_else(|| obj.get("model"));
-                    return id.and_then(|v| v.as_str()).map(String::from);
+                    obj.get("id")
+                        .or_else(|| obj.get("model_name"))
+                        .or_else(|| obj.get("model"))
+                        .and_then(|v| v.as_str())
+                        .map(String::from)
+                } else {
+                    None
                 }
-                None
             })
             .filter(|s| !s.is_empty())
-            .map(ModelInfo::Id)
-            .collect());
-    }
+            .collect(),
+        None => Vec::new(),
+    };
 
-    Ok(Vec::new())
+    Ok(items.into_iter().map(ModelInfo::Id).collect())
 }
 
 async fn fetch_new_api(client: &reqwest::Client, base_url: &str, api_key: &str) -> Result<Vec<ModelInfo>, SystemError> {

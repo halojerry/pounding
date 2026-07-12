@@ -259,10 +259,82 @@ fn minimax_models() -> Vec<ModelInfo> {
 // ---------------------------------------------------------------------------
 // new-api (OpenAI-compatible with /v1 enforcement)
 // ---------------------------------------------------------------------------
+// POUNDING new-api (with group filtering)
+// ---------------------------------------------------------------------------
+
+/// Fetch models from a full URL endpoint (like the POUNDING API
+/// `/api/user/models?group=POUNDING`) that returns either a
+/// `{ data: [ { id: "..." } ] }` array or a flat `[ "model-id", ... ]` array.
+async fn fetch_models_at_url(
+    client: &reqwest::Client,
+    url: &str,
+    api_key: &str,
+) -> Result<Vec<ModelInfo>, SystemError> {
+    let resp = client
+        .get(url)
+        .header("Authorization", format!("Bearer {api_key}"))
+        .timeout(REQUEST_TIMEOUT)
+        .send()
+        .await
+        .map_err(|e| remote_error(&e))?;
+
+    check_response_status(&resp)?;
+
+    // Try standard `{ data: [ { id: "..." } ] }` first.
+    if let Ok(body) = resp.json::<OpenAiModelsResponse>().await {
+        return Ok(body.data.into_iter().map(|m| ModelInfo::Id(m.id)).collect());
+    }
+    // The raw body might already be consumed after the first json parse failed;
+    // but reqwest buffers it, so a second parse is fine.
+    // Fallback: try flat string array.
+    // Re-fetch to reset the body stream:
+    let resp2 = client
+        .get(url)
+        .header("Authorization", format!("Bearer {api_key}"))
+        .timeout(REQUEST_TIMEOUT)
+        .send()
+        .await
+        .map_err(|e| remote_error(&e))?;
+
+    check_response_status(&resp2)?;
+
+    let body: serde_json::Value = resp2.json().await.map_err(|e| remote_error(&e))?;
+
+    // Try data.data (new-api wrapper), data.models, or data directly
+    let models_val = body
+        .get("data")
+        .and_then(|d| d.get("data").or_else(|| d.get("models")))
+        .or_else(|| body.get("data"));
+
+    if let Some(arr) = models_val.and_then(|v| v.as_array()) {
+        return Ok(arr
+            .iter()
+            .filter_map(|item| {
+                if let Some(s) = item.as_str() {
+                    return Some(s.to_string());
+                }
+                if let Some(obj) = item.as_object() {
+                    let id = obj.get("id").or_else(|| obj.get("model_name")).or_else(|| obj.get("model"));
+                    return id.and_then(|v| v.as_str()).map(String::from);
+                }
+                None
+            })
+            .filter(|s| !s.is_empty())
+            .map(ModelInfo::Id)
+            .collect());
+    }
+
+    Ok(Vec::new())
+}
 
 async fn fetch_new_api(client: &reqwest::Client, base_url: &str, api_key: &str) -> Result<Vec<ModelInfo>, SystemError> {
-    let normalized = ensure_v1_path(base_url);
-    fetch_openai_compatible(client, &normalized, api_key).await
+    // POUNDING: only fetch models from the POUNDING group, not all models.
+    // The upstream OpenAI-compatible /v1/models endpoint returns every model
+    // the API key has access to, which includes non-POUNDING groups. Use the
+    // POUNDING API's /api/user/models?group=POUNDING endpoint instead.
+    let trimmed = base_url.trim_end_matches('/');
+    let url = format!("{trimmed}/api/user/models?group=POUNDING");
+    fetch_models_at_url(client, &url, api_key).await
 }
 
 /// Ensure the URL path ends with `/v1`.

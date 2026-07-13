@@ -411,10 +411,17 @@ impl AcpSession {
             .push(PendingStartupConfigSeed { category, value });
     }
 
-    /// Resolve all queued startup config seeds against the advertised catalog,
-    /// mapping each to a concrete config option and recording it as desired.
-    /// Drains the queue and returns per-seed outcomes for logging/diagnostics.
+    #[cfg(test)]
     pub(crate) fn resolve_pending_startup_config_seeds(&mut self) -> Vec<PendingStartupConfigSeedResult> {
+        self.resolve_pending_startup_config_seeds_with_mode_normalizer(|requested, _available_values| {
+            requested.to_owned()
+        })
+    }
+
+    pub(crate) fn resolve_pending_startup_config_seeds_with_mode_normalizer(
+        &mut self,
+        mode_normalizer: impl Fn(&str, Vec<&str>) -> String,
+    ) -> Vec<PendingStartupConfigSeedResult> {
         let seeds = std::mem::take(&mut self.desired.pending_startup_config);
         if seeds.is_empty() {
             return Vec::new();
@@ -438,7 +445,13 @@ impl AcpSession {
                 continue;
             };
 
-            if !select_option_contains_value(&option.kind, seed.value.as_str()) {
+            let resolved_value = if seed.category == SessionConfigOptionCategory::Mode {
+                ConfigValue::new(mode_normalizer(seed.value.as_str(), select_option_values(&option.kind)))
+            } else {
+                seed.value.clone()
+            };
+
+            if !select_option_contains_value(&option.kind, resolved_value.as_str()) {
                 self.handle_unresolved_startup_config_seed(&seed, true);
                 results.push(PendingStartupConfigSeedResult::ValueNotSelectable {
                     category: seed.category,
@@ -448,7 +461,7 @@ impl AcpSession {
 
             let option_id = ConfigKey::new(option.id.to_string());
             self.clear_legacy_desired_for_config_category(&seed.category);
-            self.set_desired_config(option_id.clone(), seed.value);
+            self.set_desired_config(option_id.clone(), resolved_value);
             results.push(PendingStartupConfigSeedResult::Applied {
                 category: seed.category,
                 option_id,
@@ -1069,9 +1082,26 @@ fn select_option_contains_value(kind: &SessionConfigKind, value: &str) -> bool {
     }
 }
 
-// Tests live in `session_tests.rs` (linked via `#[path]`) so this file
-// stays under the 1000-line per-file budget. Inside that file `super::*`
-// resolves to this module's private items.
+fn select_option_values(kind: &SessionConfigKind) -> Vec<&str> {
+    match kind {
+        SessionConfigKind::Select(select) => match &select.options {
+            SessionConfigSelectOptions::Ungrouped(options) => {
+                options.iter().map(|option| option.value.0.as_ref()).collect()
+            }
+            SessionConfigSelectOptions::Grouped(groups) => groups
+                .iter()
+                .flat_map(|group| group.options.iter())
+                .map(|option| option.value.0.as_ref())
+                .collect(),
+            _ => Vec::new(),
+        },
+        _ => Vec::new(),
+    }
+}
+
+// Tests live in sibling files linked via `#[path]` so this file stays under
+// the 1000-line per-file budget. Inside those files `super::*` resolves to
+// this module's private items.
 #[cfg(test)]
 #[path = "session_tests.rs"]
 mod tests;

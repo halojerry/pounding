@@ -748,17 +748,7 @@ fn validate_platform_binary(
     spec: PlatformSpec,
 ) -> Result<(), ManagedAcpToolError> {
     let expected = match tool {
-        ManagedAcpToolId::CodexAcp => {
-            let mut path = project_dir
-                .join("node_modules")
-                .join(format!("@zed-industries/codex-acp-{}", spec.manifest_key))
-                .join("bin")
-                .join("codex-acp");
-            if spec.manifest_key.starts_with("win32-") {
-                path.set_extension("exe");
-            }
-            path
-        }
+        ManagedAcpToolId::CodexAcp => codex_platform_binary_path(project_dir, spec)?,
         ManagedAcpToolId::ClaudeAgentAcp => {
             let mut path = project_dir
                 .join("node_modules")
@@ -780,6 +770,35 @@ fn validate_platform_binary(
             expected.display()
         )))
     }
+}
+
+fn codex_platform_binary_path(project_dir: &Path, spec: PlatformSpec) -> Result<PathBuf, ManagedAcpToolError> {
+    let vendor_triple = match spec.manifest_key {
+        "darwin-arm64" => "aarch64-apple-darwin",
+        "darwin-x64" => "x86_64-apple-darwin",
+        "linux-arm64" => "aarch64-unknown-linux-musl",
+        "linux-x64" => "x86_64-unknown-linux-musl",
+        "win32-arm64" => "aarch64-pc-windows-msvc",
+        "win32-x64" => "x86_64-pc-windows-msvc",
+        _ => {
+            return Err(ManagedAcpToolError::invalid(format!(
+                "unsupported Codex ACP platform {}",
+                spec.manifest_key
+            )));
+        }
+    };
+
+    let mut path = project_dir
+        .join("node_modules")
+        .join(format!("@openai/codex-{}", spec.manifest_key))
+        .join("vendor")
+        .join(vendor_triple)
+        .join("bin")
+        .join("codex");
+    if spec.manifest_key.starts_with("win32-") {
+        path.set_extension("exe");
+    }
+    Ok(path)
 }
 
 async fn validate_dependency_tree(
@@ -907,96 +926,32 @@ fn resolve_package_smoke_target(
     project_dir: &Path,
     package_json: &InstalledPackageJson,
 ) -> Result<PackageSmokeTarget, ManagedAcpToolError> {
-    let pkg_root = package_root(project_dir, &package_json.name);
-
-    // Try imports/exports first — but only if the resolved entry is a clean
-    // relative path that stays inside the package directory. Some packages
-    // (e.g. @zed-industries/codex-acp) ship `main`/`exports` fields with
-    // absolute build-machine paths or relative paths that escape the package
-    // (e.g. `../../../../../project/node_modules/...`), both of which would
-    // cause Node to fail with "Cannot find module".
-    if let Some(entry) = resolve_package_import_entry(&package_json.exports, package_json.main.as_deref()) {
-        // Absolute paths are build-machine artifacts — skip.
-        if !Path::new(&entry).is_absolute() {
-            let candidate = pkg_root.join(&entry);
-            // Only use import if the resolved path stays within the package
-            // directory. Using `starts_with(&pkg_root)` instead of
-            // `starts_with(project_dir)` catches paths that escape via `..`
-            // segments or doubled staging prefixes.
-            if candidate.starts_with(&pkg_root) && candidate.is_file() {
-                return Ok(PackageSmokeTarget::Import(candidate));
-            }
-        }
+    if let Some(entry) = resolve_package_exports_import_entry(&package_json.exports) {
+        return Ok(PackageSmokeTarget::Import(
+            package_root(project_dir, &package_json.name).join(entry),
+        ));
     }
 
-    // Fall back to syntax check on the bin entry.
-    let bin_entry = resolve_package_bin_entry(package_json.name.as_str(), &package_json.bin)?;
-    // Some npm packages ship a `bin` field containing an absolute build-machine
-    // path instead of a relative one. When that happens, use it directly.
-    let bin_path = if Path::new(&bin_entry).is_absolute() {
-        PathBuf::from(&bin_entry)
-    } else {
-        pkg_root.join(&bin_entry)
-    };
-
-    // Defence: if the constructed path doesn't exist (e.g. due to staging
-    // directory quirks or broken package metadata), search for a usable
-    // .js entry point in the package directory instead of failing.
-    if bin_path.is_file() {
-        return Ok(PackageSmokeTarget::SyntaxCheck(bin_path));
+    if let Ok(bin_entry) = resolve_package_bin_entry(package_json.name.as_str(), &package_json.bin) {
+        return Ok(PackageSmokeTarget::SyntaxCheck(
+            package_root(project_dir, &package_json.name).join(bin_entry),
+        ));
     }
 
-    // Try common entry point names first (fast path).
-    for candidate_rel in ["bin/codex-acp.js", "dist/index.js", "index.js", "main.js"] {
-        let candidate = pkg_root.join(candidate_rel);
-        if candidate.is_file() {
-            return Ok(PackageSmokeTarget::SyntaxCheck(candidate));
-        }
+    if let Some(entry) = package_json.main.as_deref().filter(|value| !value.is_empty()) {
+        return Ok(PackageSmokeTarget::Import(
+            package_root(project_dir, &package_json.name).join(entry),
+        ));
     }
 
-    // Last resort: walk the package directory for any .js file.
-    if let Some(found) = find_first_js_file(&pkg_root, /* max_depth */ 4) {
-        return Ok(PackageSmokeTarget::SyntaxCheck(found));
-    }
-
-    // If nothing was found at all, return the original bin_path so the
-    // smoke test fails with a clear "Cannot find module" that includes
-    // the path we computed — easier to debug than a synthetic error.
-    Ok(PackageSmokeTarget::SyntaxCheck(bin_path))
+    Err(ManagedAcpToolError::invalid(format!(
+        "package {} does not expose a usable smoke-test entry",
+        package_json.name
+    )))
 }
 
-/// Walk `dir` recursively up to `max_depth` levels, returning the first
-/// `.js` file found (breadth-first within each depth level).
-fn find_first_js_file(dir: &Path, max_depth: usize) -> Option<PathBuf> {
-    let mut current = vec![dir.to_path_buf()];
-    for _depth in 0..=max_depth {
-        let mut next = Vec::new();
-        for entry_dir in &current {
-            let rd = match fs::read_dir(entry_dir) {
-                Ok(rd) => rd,
-                Err(_) => continue,
-            };
-            for entry in rd.flatten() {
-                let path = entry.path();
-                let ft = match entry.file_type() {
-                    Ok(ft) => ft,
-                    Err(_) => continue,
-                };
-                if ft.is_file() && path.extension().is_some_and(|ext| ext == "js") {
-                    return Some(path);
-                }
-                if ft.is_dir() && !path.is_symlink() {
-                    next.push(path);
-                }
-            }
-        }
-        current = next;
-    }
-    None
-}
-
-fn resolve_package_import_entry(exports_field: &serde_json::Value, main_field: Option<&str>) -> Option<String> {
-    let exports_entry = match exports_field {
+fn resolve_package_exports_import_entry(exports_field: &serde_json::Value) -> Option<String> {
+    match exports_field {
         serde_json::Value::String(value) if !value.is_empty() => Some(value.clone()),
         serde_json::Value::Object(entries) => entries.get(".").and_then(|root| match root {
             serde_json::Value::String(value) if !value.is_empty() => Some(value.clone()),
@@ -1015,9 +970,7 @@ fn resolve_package_import_entry(exports_field: &serde_json::Value, main_field: O
             _ => None,
         }),
         _ => None,
-    };
-
-    exports_entry.or_else(|| main_field.and_then(|value| if value.is_empty() { None } else { Some(value.to_owned()) }))
+    }
 }
 
 fn normalize_slashes(path: &Path) -> String {
@@ -1244,15 +1197,15 @@ mod tests {
 
         let entrypoint = root
             .join("node_modules")
-            .join("@zed-industries")
+            .join("@agentclientprotocol")
             .join("codex-acp")
-            .join("bin")
-            .join("codex-acp.js");
+            .join("dist")
+            .join("index.js");
         std::fs::create_dir_all(entrypoint.parent().unwrap()).unwrap();
         std::fs::write(&entrypoint, "console.log('codex bridge');\n").unwrap();
         std::fs::write(
             root.join("manifest.json"),
-            br#"{"entrypoint":"node_modules/@zed-industries/codex-acp/bin/codex-acp.js","path_entries":["node_modules/.bin"]}"#,
+            br#"{"entrypoint":"node_modules/@agentclientprotocol/codex-acp/dist/index.js","path_entries":["node_modules/.bin"]}"#,
         )
         .unwrap();
 
@@ -1392,15 +1345,15 @@ mod tests {
     }
 
     #[test]
-    fn resolve_package_smoke_target_falls_back_to_bin_check_for_cli_only_package() {
+    fn resolve_package_smoke_target_prefers_bin_check_for_cli_package_with_main() {
         let tmp = tempfile::tempdir().unwrap();
         let project_dir = tmp.path();
         let package_json = InstalledPackageJson {
-            name: "@zed-industries/codex-acp".into(),
+            name: "@agentclientprotocol/codex-acp".into(),
             bin: json!({
-                "codex-acp": "bin/codex-acp.js",
+                "codex-acp": "dist/index.js",
             }),
-            main: None,
+            main: Some("dist/index.js".into()),
             exports: serde_json::Value::Null,
         };
 
@@ -1411,10 +1364,10 @@ mod tests {
             PackageSmokeTarget::SyntaxCheck(
                 project_dir
                     .join("node_modules")
-                    .join("@zed-industries")
+                    .join("@agentclientprotocol")
                     .join("codex-acp")
-                    .join("bin")
-                    .join("codex-acp.js")
+                    .join("dist")
+                    .join("index.js")
             )
         );
     }
@@ -1422,8 +1375,8 @@ mod tests {
     #[test]
     fn package_path_segments_preserve_scoped_package_structure() {
         assert_eq!(
-            package_path_segments("@zed-industries/codex-acp"),
-            vec!["@zed-industries", "codex-acp"]
+            package_path_segments("@agentclientprotocol/codex-acp"),
+            vec!["@agentclientprotocol", "codex-acp"]
         );
     }
 

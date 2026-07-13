@@ -1,7 +1,8 @@
 use crate::manager::acp::AcpAgentManager;
 
 use crate::manager::acp::error_mapping::is_acp_session_not_found;
-use crate::manager::acp::mode_normalize::normalize_requested_mode;
+use crate::manager::acp::mode_normalize::normalize_requested_mode_for_available_values;
+use crate::manager::acp::session::PendingStartupConfigSeedResult;
 use crate::protocol::error::AcpError;
 use crate::shared_kernel::{ConfigKey, ConfigValue, ModeId, ModelId};
 use agent_client_protocol::schema::{
@@ -41,9 +42,14 @@ impl AcpAgentManager {
 
         let (startup_config_seed_results, invalid_mode, invalid_model, actions) = {
             let mut session = self.session.write().await;
-            // Apply any pending startup config seeds (mode/model/thought_level
-            // from build extras) now that the advertised catalog is known.
-            let startup_config_seed_results = session.resolve_pending_startup_config_seeds();
+            let startup_config_seed_results =
+                session.resolve_pending_startup_config_seeds_with_mode_normalizer(|requested, available_values| {
+                    normalize_requested_mode_for_available_values(
+                        &self.params.metadata,
+                        requested,
+                        available_values.iter().copied(),
+                    )
+                });
             let invalid_mode = session.clear_invalid_desired_mode();
             let invalid_model = session.clear_invalid_desired_model();
             let actions = session.plan_reconcile();
@@ -73,7 +79,15 @@ impl AcpAgentManager {
         for action in actions {
             match action {
                 ReconcileAction::SetMode { mode } => {
-                    let normalized = normalize_requested_mode(&self.params.metadata, mode.as_str());
+                    let normalized = {
+                        let session = self.session.read().await;
+                        let snapshot = session.config_snapshot();
+                        normalize_requested_mode_for_available_values(
+                            &self.params.metadata,
+                            mode.as_str(),
+                            snapshot.selectable_values("mode"),
+                        )
+                    };
                     if normalized.is_empty() {
                         continue;
                     }
@@ -148,33 +162,102 @@ impl AcpAgentManager {
                 }
 
                 ReconcileAction::SetConfigOption { key, value } => {
-                    if let Err(err) = self
+                    let resolved_value = if key.as_str() == "mode" {
+                        let session = self.session.read().await;
+                        let snapshot = session.config_snapshot();
+                        normalize_requested_mode_for_available_values(
+                            &self.params.metadata,
+                            value.as_str(),
+                            snapshot.selectable_values("mode"),
+                        )
+                    } else {
+                        value.as_str().trim().to_owned()
+                    };
+                    if key.as_str() == "mode" && resolved_value != value.as_str() {
+                        let mut session = self.session.write().await;
+                        session.set_desired_config(key.clone(), ConfigValue::new(resolved_value.clone()));
+                    }
+                    info!(
+                        conversation_id = %self.params.conversation_id,
+                        agent_backend = ?self.params.metadata.backend,
+                        config_id = %key,
+                        desired = %resolved_value,
+                        "acp_reconcile_config_option_requested"
+                    );
+                    let executed_action = ReconcileAction::SetConfigOption {
+                        key: key.clone(),
+                        value: ConfigValue::new(resolved_value.clone()),
+                    };
+                    match self
                         .protocol
                         .set_config_option(SetSessionConfigOptionRequest::new(
                             SessionId::new(session_id),
                             key.as_str().to_owned(),
-                            value.as_str().to_owned(),
+                            resolved_value.clone(),
                         ))
                         .await
                     {
-                        if is_acp_session_not_found(&err) {
-                            warn!(
+                        Ok(response) => {
+                            info!(
+                                conversation_id = %self.params.conversation_id,
+                                agent_backend = ?self.params.metadata.backend,
+                                config_id = %key,
+                                desired = %resolved_value,
+                                "acp_reconcile_config_option_ack"
+                            );
+                            let (startup_config_seed_results, invalid_mode, invalid_model, followup_actions) = {
+                                let mut session = self.session.write().await;
+                                session.apply_advertised_config_options(response.config_options);
+                                let startup_config_seed_results = session
+                                    .resolve_pending_startup_config_seeds_with_mode_normalizer(
+                                        |requested, available_values| {
+                                            normalize_requested_mode_for_available_values(
+                                                &self.params.metadata,
+                                                requested,
+                                                available_values.iter().copied(),
+                                            )
+                                        },
+                                    );
+                                let invalid_mode = session.clear_invalid_desired_mode();
+                                let invalid_model = session.clear_invalid_desired_model();
+                                let followup_actions = session.plan_reconcile();
+                                self.commit_session_changes(&mut session).await;
+                                (
+                                    startup_config_seed_results,
+                                    invalid_mode,
+                                    invalid_model,
+                                    followup_actions,
+                                )
+                            };
+                            self.log_reconcile_session_plan_results(
+                                startup_config_seed_results,
+                                invalid_mode,
+                                invalid_model,
+                            );
+                            let mut followup_actions = followup_actions;
+                            followup_actions.retain(|candidate| candidate != &executed_action);
+                            actions = followup_actions;
+                        }
+                        Err(err) => {
+                            if is_acp_session_not_found(&err) {
+                                warn!(
+                                    conversation_id = %self.params.conversation_id,
+                                    config_id = %key,
+                                    desired = %resolved_value,
+                                    error = %err,
+                                    "reconcile_session: set_config_option hit SessionNotFound; aborting reconcile"
+                                );
+                                return Err(err);
+                            }
+                            info!(
                                 conversation_id = %self.params.conversation_id,
                                 config_id = %key,
-                                desired = %value,
+                                desired = %resolved_value,
                                 error = %err,
-                                "reconcile_session: set_config_option hit SessionNotFound; aborting reconcile"
+                                "reconcile_session: set_config_option failed; skipping"
                             );
-                            return Err(err);
+                            continue;
                         }
-                        info!(
-                            conversation_id = %self.params.conversation_id,
-                            config_id = %key,
-                            desired = %value,
-                            error = %err,
-                            "reconcile_session: set_config_option failed; skipping"
-                        );
-                        continue;
                     }
                     // Sync observed ourselves so the next plan_reconcile
                     // does not replay this action. CLI does not push a

@@ -33,6 +33,7 @@ pub(super) async fn build(
     ctx: FactoryContext,
 ) -> Result<AgentInstance, AgentError> {
     let mut overrides = build_context.config;
+    let resolved_skills = overrides.skills.clone();
 
     // Merge preset assistant rules into system_prompt (used as custom_prompt
     // in aionrs's build_system_prompt). Mirrors the old architecture's
@@ -175,9 +176,11 @@ pub(super) async fn build(
         compat_overrides,
         session_directory,
         session_mode: overrides.session_mode,
+        skills: resolved_skills,
         extra_mcp_servers,
         bedrock_config,
         runtime_env: ctx.runtime_env,
+        prompt_dump_dir: crate::dev_prompt_dump::dump_dir_for_data_dir(&deps.data_dir, deps.dump_prompts),
     };
 
     if let Some(system_prompt) = config.system_prompt.as_deref()
@@ -632,9 +635,12 @@ fn team_mcp_to_config(cfg: &TeamMcpStdioConfig) -> HashMap<String, McpServerConf
 mod tests {
     use super::*;
     use aionui_realtime::BroadcastEventBus;
-    use aionui_runtime::init as init_runtime;
+    use aionui_runtime::{ManagedResourcesMode, init as init_runtime, set_managed_resources_mode};
     use std::sync::OnceLock;
-    use std::{mem, path::PathBuf};
+    use std::{
+        mem,
+        path::{Path, PathBuf},
+    };
 
     fn path_test_lock() -> &'static tokio::sync::Mutex<()> {
         static LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
@@ -658,7 +664,7 @@ mod tests {
         use std::os::unix::fs::PermissionsExt;
 
         let tmp = tempfile::tempdir().expect("tempdir");
-        let runtime_root = tmp.path().join("node").join("node-v24.11.0-darwin-arm64");
+        let runtime_root = tmp.path().join("node").join(current_node_runtime_directory_name());
         let bin = runtime_root.join("bin");
         std::fs::create_dir_all(&bin).expect("create bin");
 
@@ -671,6 +677,59 @@ mod tests {
         }
 
         tmp
+    }
+
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    fn current_node_runtime_directory_name() -> &'static str {
+        "node-v24.11.0-darwin-arm64"
+    }
+
+    #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+    fn current_node_runtime_directory_name() -> &'static str {
+        "node-v24.11.0-darwin-x64"
+    }
+
+    #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+    fn current_node_runtime_directory_name() -> &'static str {
+        "node-v24.11.0-linux-arm64"
+    }
+
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    fn current_node_runtime_directory_name() -> &'static str {
+        "node-v24.11.0-linux-x64"
+    }
+
+    #[cfg(all(
+        unix,
+        not(any(
+            all(target_os = "macos", target_arch = "aarch64"),
+            all(target_os = "macos", target_arch = "x86_64"),
+            all(target_os = "linux", target_arch = "aarch64"),
+            all(target_os = "linux", target_arch = "x86_64")
+        ))
+    ))]
+    fn current_node_runtime_directory_name() -> &'static str {
+        panic!("unsupported managed Node runtime test platform")
+    }
+
+    #[cfg(unix)]
+    struct BundledRuntimeModeGuard;
+
+    #[cfg(unix)]
+    impl BundledRuntimeModeGuard {
+        fn install(root: &Path) -> Self {
+            unsafe { std::env::set_var("POUNDING_BUNDLED_MANAGED_RESOURCES", root) };
+            set_managed_resources_mode(ManagedResourcesMode::Bundled);
+            Self
+        }
+    }
+
+    #[cfg(unix)]
+    impl Drop for BundledRuntimeModeGuard {
+        fn drop(&mut self) {
+            unsafe { std::env::remove_var("POUNDING_BUNDLED_MANAGED_RESOURCES") };
+            set_managed_resources_mode(ManagedResourcesMode::Download);
+        }
     }
 
     fn make_row(
@@ -786,7 +845,7 @@ mod tests {
         let _lock = path_test_lock().lock().await;
         let runtime = install_fake_bundled_runtime();
         let _runtime_data_dir = test_runtime_data_dir();
-        unsafe { std::env::set_var("POUNDING_BUNDLED_MANAGED_RESOURCES", runtime.path()) };
+        let _runtime_mode = BundledRuntimeModeGuard::install(runtime.path());
 
         let row = make_row(
             "ctx7",
@@ -799,7 +858,6 @@ mod tests {
         let config = row_to_mcp_server_config(&row, "conv-row", test_broadcaster())
             .await
             .expect("convert");
-        unsafe { std::env::remove_var("POUNDING_BUNDLED_MANAGED_RESOURCES") };
         let command = config.command.as_deref().expect("resolved command");
         assert_ne!(command, "npx");
         assert!(command.ends_with("/npx"), "unexpected stdio command path: {command}");

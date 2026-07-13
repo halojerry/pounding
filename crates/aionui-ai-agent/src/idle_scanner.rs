@@ -204,7 +204,7 @@ mod tests {
             Box::pin(std::future::ready(()))
         }
 
-        async fn clear(&self) {}
+        fn clear(&self) {}
 
         fn active_count(&self) -> usize {
             self.idle_ids.len()

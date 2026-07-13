@@ -40,7 +40,7 @@ impl AcpAgentManager {
     pub(super) async fn reconcile_session(&self, session_id: &str) -> Result<(), AcpError> {
         use crate::manager::acp::ReconcileAction;
 
-        let (startup_config_seed_results, invalid_mode, invalid_model, actions) = {
+        let (startup_config_seed_results, invalid_mode, invalid_model, mut actions) = {
             let mut session = self.session.write().await;
             let startup_config_seed_results =
                 session.resolve_pending_startup_config_seeds_with_mode_normalizer(|requested, available_values| {
@@ -229,11 +229,27 @@ impl AcpAgentManager {
                                     followup_actions,
                                 )
                             };
-                            self.log_reconcile_session_plan_results(
-                                startup_config_seed_results,
-                                invalid_mode,
-                                invalid_model,
-                            );
+                            if !startup_config_seed_results.is_empty() {
+                                debug!(
+                                    conversation_id = %self.params.conversation_id,
+                                    results = ?startup_config_seed_results,
+                                    "reconcile_session: resolved pending startup config seeds (followup)"
+                                );
+                            }
+                            if let Some(mode) = invalid_mode {
+                                warn!(
+                                    conversation_id = %self.params.conversation_id,
+                                    mode_id = %mode,
+                                    "reconcile_session: dropped unavailable desired mode (followup)"
+                                );
+                            }
+                            if let Some(model) = invalid_model {
+                                warn!(
+                                    conversation_id = %self.params.conversation_id,
+                                    model_id = %model,
+                                    "reconcile_session: dropped unavailable desired model (followup)"
+                                );
+                            }
                             let mut followup_actions = followup_actions;
                             followup_actions.retain(|candidate| candidate != &executed_action);
                             actions = followup_actions;

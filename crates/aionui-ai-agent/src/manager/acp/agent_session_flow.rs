@@ -1,6 +1,6 @@
 use super::agent::sdk_to_snake_value;
 use super::agent_close::STDERR_PEEK_LINES;
-use super::error_mapping::{AcpSendFailure, is_acp_session_not_found};
+use super::error_mapping::{AcpSendFailure, is_acp_session_not_found, is_missing_resumed_session};
 use crate::error::AgentError;
 use crate::manager::acp::AcpAgentManager;
 use crate::manager::acp::mode_normalize::agent_metadata_uses_meta_resume;
@@ -16,9 +16,6 @@ use agent_client_protocol::schema::{ContentBlock, LoadSessionRequest, PromptRequ
 use aionui_api_types::SlashCommandItem;
 use serde_json::Value;
 use tokio::sync::broadcast::error::TryRecvError;
-use super::agent::sdk_to_snake_value;
-use super::agent_close::STDERR_PEEK_LINES;
-use super::error_mapping::{AcpSendFailure, is_acp_session_not_found, is_missing_resumed_session};
 use tracing::{info, warn};
 
 #[derive(Debug)]

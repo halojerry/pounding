@@ -4147,7 +4147,7 @@ mod tests {
 
     #[tokio::test]
     async fn bootstrap_reactivates_soft_deleted_builtin_definition_by_source_ref() {
-        let mut builtin = mk_builtin("aionui-assistant", "AionUi Butler");
+        let mut builtin = mk_builtin("aionui-assistant", "POUNDING Butler");
         builtin.rule_file = Some("rules/aionui-assistant.{locale}.md".into());
         let fx = fixture_with_builtins(vec![builtin]).await;
 

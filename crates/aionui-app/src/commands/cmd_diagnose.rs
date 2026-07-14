@@ -304,7 +304,7 @@ async fn request_json(
             DiagnoseError::new(
                 DiagnoseErrorCode::HttpRequestFailed,
                 command,
-                "failed to call AionUi backend",
+                "failed to call poundingcore backend",
             )
             .field("path", path)
         })?;
@@ -314,7 +314,7 @@ async fn request_json(
         DiagnoseError::new(
             DiagnoseErrorCode::ResponseReadFailed,
             command,
-            "failed to read AionUi backend response",
+            "failed to read poundingcore backend response",
         )
         .field("path", path)
     })?;
@@ -323,7 +323,7 @@ async fn request_json(
         return Err(DiagnoseError::new(
             DiagnoseErrorCode::HttpStatusError,
             command,
-            "AionUi backend returned an error status",
+            "poundingcore backend returned an error status",
         )
         .field("path", path)
         .field("status", status.as_u16().to_string()));
@@ -337,7 +337,7 @@ async fn request_json(
         DiagnoseError::new(
             DiagnoseErrorCode::ResponseJsonInvalid,
             command,
-            "AionUi backend returned invalid JSON",
+            "poundingcore backend returned invalid JSON",
         )
         .field("path", path)
     })?;
@@ -356,7 +356,7 @@ fn extract_api_data(value: Value, command: &str) -> Result<Value, DiagnoseError>
     Err(DiagnoseError::new(
         DiagnoseErrorCode::HttpStatusError,
         command,
-        "AionUi backend returned an unsuccessful response",
+        "poundingcore backend returned an unsuccessful response",
     ))
 }
 

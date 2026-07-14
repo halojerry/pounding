@@ -2,7 +2,6 @@ use crate::manager::acp::AcpAgentManager;
 
 use crate::manager::acp::error_mapping::is_acp_session_not_found;
 use crate::manager::acp::mode_normalize::normalize_requested_mode_for_available_values;
-use crate::manager::acp::session::PendingStartupConfigSeedResult;
 use crate::protocol::error::AcpError;
 use crate::shared_kernel::{ConfigKey, ConfigValue, ModeId, ModelId};
 use agent_client_protocol::schema::{

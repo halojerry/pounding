@@ -342,16 +342,6 @@ async fn fetch_new_api(client: &reqwest::Client, base_url: &str, api_key: &str) 
     fetch_models_at_url(client, &url, api_key).await
 }
 
-/// Ensure the URL path ends with `/v1`.
-fn ensure_v1_path(base_url: &str) -> String {
-    let trimmed = base_url.trim_end_matches('/');
-    if trimmed.ends_with("/v1") {
-        trimmed.to_string()
-    } else {
-        format!("{trimmed}/v1")
-    }
-}
-
 // ---------------------------------------------------------------------------
 // dashscope-coding (hardcoded + key validation)
 // ---------------------------------------------------------------------------
@@ -419,32 +409,6 @@ fn remote_error(e: &reqwest::Error) -> SystemError {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn ensure_v1_path_already_present() {
-        assert_eq!(
-            ensure_v1_path("https://api.example.com/v1"),
-            "https://api.example.com/v1"
-        );
-    }
-
-    #[test]
-    fn ensure_v1_path_missing() {
-        assert_eq!(ensure_v1_path("https://api.example.com"), "https://api.example.com/v1");
-    }
-
-    #[test]
-    fn ensure_v1_path_trailing_slash() {
-        assert_eq!(ensure_v1_path("https://api.example.com/"), "https://api.example.com/v1");
-    }
-
-    #[test]
-    fn ensure_v1_path_with_v1_and_trailing_slash() {
-        assert_eq!(
-            ensure_v1_path("https://api.example.com/v1/"),
-            "https://api.example.com/v1"
-        );
-    }
 
     #[test]
     fn vertex_ai_returns_expected_models() {

@@ -7,6 +7,7 @@ use crate::shared_kernel::{ConfigKey, ConfigValue, ModeId, ModelId};
 use agent_client_protocol::schema::{
     SessionId, SetSessionConfigOptionRequest, SetSessionModeRequest, SetSessionModelRequest,
 };
+use std::collections::VecDeque;
 use tracing::{debug, error, info, warn};
 
 /// Actions the session driver must execute to align CLI state with user intent.
@@ -39,7 +40,7 @@ impl AcpAgentManager {
     pub(super) async fn reconcile_session(&self, session_id: &str) -> Result<(), AcpError> {
         use crate::manager::acp::ReconcileAction;
 
-        let (startup_config_seed_results, invalid_mode, invalid_model, mut actions) = {
+        let (startup_config_seed_results, invalid_mode, invalid_model, actions) = {
             let mut session = self.session.write().await;
             let startup_config_seed_results =
                 session.resolve_pending_startup_config_seeds_with_mode_normalizer(|requested, available_values| {
@@ -54,6 +55,7 @@ impl AcpAgentManager {
             let actions = session.plan_reconcile();
             (startup_config_seed_results, invalid_mode, invalid_model, actions)
         };
+        let mut actions: VecDeque<_> = actions.into();
         if !startup_config_seed_results.is_empty() {
             debug!(
                 conversation_id = %self.params.conversation_id,
@@ -75,7 +77,7 @@ impl AcpAgentManager {
                 "reconcile_session: dropped unavailable desired model"
             );
         }
-        for action in actions {
+        while let Some(action) = actions.pop_front() {
             match action {
                 ReconcileAction::SetMode { mode } => {
                     let normalized = {
@@ -251,7 +253,7 @@ impl AcpAgentManager {
                             }
                             let mut followup_actions = followup_actions;
                             followup_actions.retain(|candidate| candidate != &executed_action);
-                            actions = followup_actions;
+                            actions.extend(followup_actions);
                         }
                         Err(err) => {
                             if is_acp_session_not_found(&err) {

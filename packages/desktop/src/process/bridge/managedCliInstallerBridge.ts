@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -55,7 +55,7 @@ const OPENCODE_CONFIG_ENV_NAME = 'OPENCODE_CONFIG';
 const XDG_CONFIG_HOME_ENV_NAME = 'XDG_CONFIG_HOME';
 const BUN_HOME_DIR = process.env.BUN_INSTALL?.trim() || path.join(os.homedir(), '.bun');
 
-function getAionUiDevDir(): string {
+function getPOUNDINGDevDir(): string {
   try {
     const { app } = require('electron');
     if (app && app.isReady()) {
@@ -68,11 +68,11 @@ function getAionUiDevDir(): string {
 }
 
 function getManagedOpencodeConfigPath(): string {
-  return path.join(getAionUiDevDir(), 'managed-opencode', 'opencode.json');
+  return path.join(getPOUNDINGDevDir(), 'managed-opencode', 'opencode.json');
 }
 
 function getManagedOpencodeXdgHome(): string {
-  return path.join(getAionUiDevDir(), 'xdg-config');
+  return path.join(getPOUNDINGDevDir(), 'xdg-config');
 }
 
 const BUN_BIN_DIR = path.join(BUN_HOME_DIR, 'bin');

@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  *
  * Pure Bun CLI — launches the WebUI (backend + static server + auth) without
@@ -51,7 +51,7 @@ const getFlag = (name: string): string | undefined => {
  * Resolve the directory where poundingcore persists its SQLite DB.
  *
  * `bun run webui` runs **independently of the Electron desktop app** — it must
- * work on hosts that never installed AionUi.app, and its default work dir must
+ * work on hosts that never installed POUNDING.app, and its default work dir must
  * NOT collide with Electron's.
  *
  *   --data-dir <path>       CLI override (highest priority)
@@ -215,7 +215,7 @@ async function main(): Promise<void> {
   });
   // One working dir for the whole standalone webui: backend SQLite and chat
   // history live here. Admin credentials live in the backend's users table.
-  // This keeps `bun run webui` fully self-contained on hosts without AionUi.app.
+  // This keeps `bun run webui` fully self-contained on hosts without POUNDING.app.
   const workDir = resolveBackendDataDir();
   const staticDir = resolveStaticDir();
   const backendBin = resolveBackendBinary();
@@ -253,7 +253,7 @@ async function main(): Promise<void> {
   });
 
   console.log('');
-  console.log('AionUi WebUI is ready');
+  console.log('POUNDING WebUI is ready');
   console.log(`  Local  : ${handle.localUrl}`);
   if (handle.networkUrl) console.log(`  Network: ${handle.networkUrl}`);
 

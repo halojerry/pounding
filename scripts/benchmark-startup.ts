@@ -2,8 +2,8 @@
  * Electron Cold Startup Benchmark
  *
  * Launches the Electron app N times and measures per-phase startup timings by
- * parsing the electron-log file for [AionUi:ready] / [AionUi:init] /
- * [AionUi:process] marks, plus `ready-to-show` / `did-finish-load` /
+ * parsing the electron-log file for [POUNDING:ready] / [POUNDING:init] /
+ * [POUNDING:process] marks, plus `ready-to-show` / `did-finish-load` /
  * time-to-interactive (chat input visible).
  *
  * Optional `--with-memory` mode samples RSS / heap in the main and renderer
@@ -111,14 +111,14 @@ type StartupTiming = {
   wallDomContentLoadedMs: number;
   wallTimeToInteractiveMs: number;
   wallTotalMs: number;
-  // Parsed from [AionUi:ready] marks
+  // Parsed from [POUNDING:ready] marks
   readyInitializeProcessMs: number;
   readyInitializeZoomFactorMs: number;
   readyCreateWindowMs: number;
   readyInitializeAcpDetectorMs: number;
-  // Parsed from [AionUi:init] marks
+  // Parsed from [POUNDING:init] marks
   initTotalMs: number;
-  // Parsed from [AionUi:process] marks
+  // Parsed from [POUNDING:process] marks
   processInitStorageMs: number;
   processExtensionRegistryMs: number;
   processChannelManagerMs: number;
@@ -143,13 +143,13 @@ function getLogFilePath(): string {
   if (process.platform === 'darwin') {
     candidates.push(
       path.join(os.homedir(), 'Library', 'Logs', 'POUNDING-Dev', `${today}.log`),
-      path.join(os.homedir(), 'Library', 'Logs', 'AionUi', `${today}.log`)
+      path.join(os.homedir(), 'Library', 'Logs', 'POUNDING', `${today}.log`)
     );
   } else if (process.platform === 'win32') {
     const appData = process.env.APPDATA ?? path.join(os.homedir(), 'AppData', 'Roaming');
-    candidates.push(path.join(appData, 'AionUi', 'logs', `${today}.log`));
+    candidates.push(path.join(appData, 'POUNDING', 'logs', `${today}.log`));
   } else {
-    candidates.push(path.join(os.homedir(), '.config', 'AionUi', 'logs', `${today}.log`));
+    candidates.push(path.join(os.homedir(), '.config', 'POUNDING', 'logs', `${today}.log`));
   }
   return candidates.find((p) => fs.existsSync(p)) ?? candidates[0];
 }
@@ -178,10 +178,10 @@ function readNewLogLines(logPath: string, offset: number): string[] {
 
 // ── Log parsing ─────────────────────────────────────────────────────────────
 
-// Matches: [AionUi:ready] <label> +<ms>ms
-// Matches: [AionUi:init]  <label> +<ms>ms
-// Matches: [AionUi:process] <label> +<ms>ms
-const MARK_REGEX = /\[AionUi:(ready|init|process)\]\s+([^+]+?)\s+\+(\d+)ms/;
+// Matches: [POUNDING:ready] <label> +<ms>ms
+// Matches: [POUNDING:init]  <label> +<ms>ms
+// Matches: [POUNDING:process] <label> +<ms>ms
+const MARK_REGEX = /\[POUNDING:(ready|init|process)\]\s+([^+]+?)\s+\+(\d+)ms/;
 
 type ParsedMarks = {
   ready: Map<string, number>;
@@ -210,9 +210,9 @@ function parseStartupLog(lines: string[]): ParsedMarks {
       continue;
     }
 
-    if (line.includes('[AionUi] Renderer did-finish-load')) marks.logs.rendererDidFinishLoad = true;
-    else if (line.includes('[AionUi] Window ready-to-show')) marks.logs.windowReadyToShow = true;
-    else if (line.includes('[AionUi] Showing main window')) marks.logs.showingMainWindow = true;
+    if (line.includes('[POUNDING] Renderer did-finish-load')) marks.logs.rendererDidFinishLoad = true;
+    else if (line.includes('[POUNDING] Window ready-to-show')) marks.logs.windowReadyToShow = true;
+    else if (line.includes('[POUNDING] Showing main window')) marks.logs.showingMainWindow = true;
   }
 
   return marks;

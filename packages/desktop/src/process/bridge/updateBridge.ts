@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -64,8 +64,11 @@ const DEFAULT_USER_AGENT = 'POUNDING';
 const ALLOWED_ASSET_EXTS = new Set(['.exe', '.msi', '.dmg', '.zip', '.deb', '.rpm']);
 const CDN_HOST = 'github.com/halojerry/pounding/releases/download';
 const CDN_BASE_URL = `https://${CDN_HOST}/releases`;
+// NOTE: entries must be hostnames (compared against URL.hostname). The POUNDING
+// release CDN lives under github.com/halojerry/pounding, which is covered by
+// the github.com entry; static.aionui.com stays allowed for upstream CDN URLs.
 const ALLOWED_DOWNLOAD_HOSTS = new Set<string>([
-  CDN_HOST,
+  'static.aionui.com',
   'github.com',
   'objects.githubusercontent.com',
   'github-releases.githubusercontent.com',

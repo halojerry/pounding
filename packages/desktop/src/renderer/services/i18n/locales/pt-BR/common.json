@@ -86,15 +86,15 @@
       "diagnosticsSent": "Diagnósticos enviados",
       "diagnosticsReportSuccess": "Relatório de diagnóstico enviado",
       "diagnosticsReportFailed": "Falha ao enviar o relatório de diagnóstico",
-      "runtimeComponentDescription": "Esta instalação não tem os componentes de runtime integrados necessários, portanto {{resource}} não pode iniciar. Reinstale o pacote mais recente do AionUi. Se isso continuar após a reinstalação, verifique se algum software de segurança ou antivírus colocou componentes do AionUi em quarentena."
+      "runtimeComponentDescription": "Esta instalação não tem os componentes de runtime integrados necessários, portanto {{resource}} não pode iniciar. Reinstale o pacote mais recente do POUNDING. Se isso continuar após a reinstalação, verifique se algum software de segurança ou antivírus colocou componentes do POUNDING em quarentena."
     },
     "packageArchitectureMismatch": {
-      "title": "AionUi package architecture mismatch",
-      "description": "This AionUi package is for {{packageArch}}, but this Mac is {{deviceArch}}. You may have downloaded the wrong package. Please download and install the {{expectedArch}} package."
+      "title": "POUNDING package architecture mismatch",
+      "description": "This POUNDING package is for {{packageArch}}, but this Mac is {{deviceArch}}. You may have downloaded the wrong package. Please download and install the {{expectedArch}} package."
     },
     "dataMigration": {
       "title": "Local data migration failed",
-      "description": "AionUi opened, but AionCore stopped while initializing local data. Reinstalling AionUi may not fix this. Send a diagnostics report or contact support so the local database migration can be inspected.",
+      "description": "POUNDING opened, but poundingcore stopped while initializing local data. Reinstalling POUNDING may not fix this. Send a diagnostics report or contact support so the local database migration can be inspected.",
       "sendDiagnostics": "Send diagnostics",
       "diagnosticsSent": "Diagnostics sent",
       "diagnosticsReportSuccess": "Diagnostics report sent",
@@ -102,7 +102,7 @@
     },
     "localDataRepair": {
       "title": "Local data repair failed",
-      "description": "AionUi opened, but AionCore stopped while repairing local agent cache data. Reinstalling AionUi may not fix this. Send a diagnostics report or contact support so the local database can be inspected.",
+      "description": "POUNDING opened, but poundingcore stopped while repairing local agent cache data. Reinstalling POUNDING may not fix this. Send a diagnostics report or contact support so the local database can be inspected.",
       "sendDiagnostics": "Send diagnostics",
       "diagnosticsSent": "Diagnostics sent",
       "diagnosticsReportSuccess": "Diagnostics report sent",
@@ -110,7 +110,7 @@
     },
     "startupDirectory": {
       "title": "Diretório de inicialização indisponível",
-      "description": "O AionUi abriu, mas o AionCore não pôde iniciar porque o diretório de trabalho ou de logs configurado não existe, está indisponível ou foi bloqueado por permissões. Verifique se os diretórios existem e permitem escrita, depois reinicie o AionUi.",
+      "description": "O POUNDING abriu, mas o poundingcore não pôde iniciar porque o diretório de trabalho ou de logs configurado não existe, está indisponível ou foi bloqueado por permissões. Verifique se os diretórios existem e permitem escrita, depois reinicie o POUNDING.",
       "sendDiagnostics": "Enviar diagnóstico",
       "diagnosticsSent": "Diagnóstico enviado",
       "diagnosticsReportSuccess": "Relatório de diagnóstico enviado",
@@ -118,7 +118,7 @@
     },
     "recoverableDatabaseCorruption": {
       "title": "Os dados locais estão corrompidos",
-      "description": "O AionUi detectou que o banco de dados local está corrompido e não pode continuar a inicialização. Após a confirmação, o banco de dados antigo será salvo como backup e um novo banco de dados local será criado para continuar a inicialização. Os dados locais históricos não serão exibidos por enquanto, e o banco antigo será mantido como backup.",
+      "description": "O POUNDING detectou que o banco de dados local está corrompido e não pode continuar a inicialização. Após a confirmação, o banco de dados antigo será salvo como backup e um novo banco de dados local será criado para continuar a inicialização. Os dados locais históricos não serão exibidos por enquanto, e o banco antigo será mantido como backup.",
       "confirmRebuild": "Fazer backup do DB antigo e criar novo DB",
       "sendDiagnostics": "Enviar diagnóstico",
       "diagnosticsHint": "Enviar diagnóstico não modificará o banco de dados local.",

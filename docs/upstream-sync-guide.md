@@ -66,7 +66,7 @@ git apply --3way /tmp/upstream.patch
 
 | 上游值 | POUNDING 值 |
 |--------|------------|
-| `AionUi` | `POUNDING` |
+| `POUNDING` | `POUNDING` |
 | `aionui` | `pounding` |
 | `AionCore` / `aioncore` | `poundingcore` |
 | `com.aionui.app` | `com.pounding.app` |

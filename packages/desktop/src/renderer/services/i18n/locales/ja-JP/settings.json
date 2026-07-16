@@ -85,7 +85,7 @@
     "officialSkillsEmpty": "利用可能な公式スキルがありません。",
     "noSearchResults": "一致するスキルがありません。",
     "customHint": "スキルフォルダ、親フォルダ、または zip をインポートできます。1 ファイルあたり最大 {{maxFileSize}}、1 スキルあたり最大 {{maxTotalSize}}。同名でインポートすると既存のスキルを上書きします。",
-    "officialHint": "AionUi に同梱される公式スキル。すぐに使え、読み取り専用で、リリースごとに更新されます。"
+    "officialHint": "POUNDING に同梱される公式スキル。すぐに使え、読み取り専用で、リリースごとに更新されます。"
   },
   "authMethod": "認証",
   "geminiApiKey": "Gemini API キー",
@@ -145,8 +145,8 @@
   "assistantGroupCli": "CLI アシスタント",
   "assistantGroupCreated": "カスタムアシスタント",
   "myAssistantsEmpty": "まだアシスタントがありません。公式アシスタントを有効にするか、ローカルのCLIツールを接続してください。",
-  "officialAssistantsHint": "公式アシスタントはAionUiが継続的にメンテナンスし、リリースごとに更新されます。有効にするとリストで使用できます。自分専用の版に調整したい場合は、マイアシスタントとして複製してください。",
-  "officialAssistantsHintShort": "AionUi に組み込まれた公式アシスタント。公式が継続的にメンテナンスし、バージョンごとに更新されます。「マイアシスタント」として複製すれば自由に編集できます。",
+  "officialAssistantsHint": "公式アシスタントはPOUNDINGが継続的にメンテナンスし、リリースごとに更新されます。有効にするとリストで使用できます。自分専用の版に調整したい場合は、マイアシスタントとして複製してください。",
+  "officialAssistantsHintShort": "POUNDING に組み込まれた公式アシスタント。公式が継続的にメンテナンスし、バージョンごとに更新されます。「マイアシスタント」として複製すれば自由に編集できます。",
   "customEmptyTitle": "カスタムアシスタントはまだありません",
   "customEmptyBody": "チャットから作成するか、公式アシスタントを複製してください。",
   "customEmptyCreate": "チャットで作成",
@@ -638,7 +638,7 @@
   "mcpAuthenticated": "認証済み",
   "mcpDisconnected": "未テスト",
   "mcpError": "直近のテストに失敗",
-  "mcpErrorNodeCommandNotFound": "コマンド {{command}} を準備できませんでした。AionCore は通常、管理対象の Node ランタイムを自動で準備します。接続テストを再試行し、それでも失敗する場合はバックエンドログを確認するか、この MCP サーバーに絶対コマンドパスを設定してください。",
+  "mcpErrorNodeCommandNotFound": "コマンド {{command}} を準備できませんでした。poundingcore は通常、管理対象の Node ランタイムを自動で準備します。接続テストを再試行し、それでも失敗する場合はバックエンドログを確認するか、この MCP サーバーに絶対コマンドパスを設定してください。",
   "mcpErrorBunCommandNotFound": "Command {{command}} was not found. Install Bun (which includes bun/bunx), restart POUNDING, or configure this MCP server to use an absolute command path.",
   "mcpErrorUvCommandNotFound": "Command {{command}} was not found. Install uv, restart POUNDING, or configure this MCP server to use an absolute command path.",
   "mcpErrorPythonCommandNotFound": "Command {{command}} was not found. Install Python, restart POUNDING, or configure this MCP server to use an absolute command path.",
@@ -1251,15 +1251,15 @@
     "addViaChat": "チャットで追加",
     "addManually": "手動で追加",
     "solveViaChat": "チャットで解決",
-    "enabledToast": "AionUi 執事を有効にしました",
+    "enabledToast": "POUNDING 執事を有効にしました",
     "prompt": {
       "createAssistant": "新しいアシスタントの作成と初期設定を手伝ってください。",
       "addCustomAgent": "カスタム Agent の追加を手伝ってください。",
       "addModel": "新しい LLM プロバイダーと API キーを追加し、デフォルトモデルに設定してください。",
       "addMcp": "MCP サーバーの設定を手伝ってください。",
       "addSkill": "スキルをインポートしてアシスタントに紐付けてください。",
-      "setupRemote": "スマホや外部ネットワークから AionUi を開けるよう、リモートアクセスを設定してください。",
-      "diagnose": "AionUi で問題が発生しました。診断を手伝ってください。\n\n【モジュール】{{module}}\n【問題の説明】{{description}}\n【添付】入力欄のスクリーンショットを参照。\n\n原因を診断し、解決方法を教えてください。"
+      "setupRemote": "スマホや外部ネットワークから POUNDING を開けるよう、リモートアクセスを設定してください。",
+      "diagnose": "POUNDING で問題が発生しました。診断を手伝ってください。\n\n【モジュール】{{module}}\n【問題の説明】{{description}}\n【添付】入力欄のスクリーンショットを参照。\n\n原因を診断し、解決方法を教えてください。"
     }
   },
   "providerIdConflict": "Provider ID は既に存在します。もう一度お試しください。",

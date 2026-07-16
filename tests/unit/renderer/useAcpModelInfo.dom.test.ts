@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -69,6 +69,7 @@ const buildLegacyModelInfo = (overrides: Partial<AcpModelInfo> = {}): AcpModelIn
     { id: 'sonnet-4', label: 'Claude Sonnet 4' },
     { id: 'opus-4', label: 'Claude Opus 4' },
   ],
+  ...overrides,
 });
 
 function deferred<T>() {
@@ -341,10 +342,6 @@ describe('useAcpModelInfo', () => {
       expect(result.current.canSwitch).toBe(true);
     });
 
-    // reloadModelInfo() calls getModel after setModel, so update the mock
-    // to return the new model (opus-4) for the subsequent refresh fetch.
-    getModelInvokeMock.mockResolvedValue({ model_info: buildModelInfo('opus-4') });
-
     act(() => {
       result.current.selectModel('opus-4');
     });
@@ -424,10 +421,6 @@ describe('useAcpModelInfo', () => {
       expect(first.result.current.canSwitch).toBe(true);
       expect(second.result.current.canSwitch).toBe(true);
     });
-
-    // reloadModelInfo() calls getModel after setModel, so update the mock
-    // to return the new model (opus-4) for the subsequent refresh fetch.
-    getModelInvokeMock.mockResolvedValue({ model_info: buildModelInfo('opus-4') });
 
     act(() => {
       first.result.current.selectModel('opus-4');

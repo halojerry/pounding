@@ -17,7 +17,7 @@
 ### Defer Accept Criteria
 
 - [ ] AionCore: `cargo fmt/clippy/nextest` green on `main`
-- [ ] AionUi: `bun lint/format:check/tsc/vitest` green on `main`
+- [ ] POUNDING: `bun lint/format:check/tsc/vitest` green on `main`
 - [ ] Manual packaged-path smoke (auto-update / login / CLI model sync)
 - [ ] Brand/Feishu smoke pass
 - [ ] **Then** cut `release/pounding-*` and run distribution validation

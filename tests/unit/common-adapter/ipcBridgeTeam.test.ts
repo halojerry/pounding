@@ -111,7 +111,7 @@ describe('ipcBridge team adapter', () => {
       body: {
         name: 'Alpha',
         workspace: '/tmp/ws',
-        agents: [
+        assistants: [
           {
             name: 'Lead',
             role: 'lead',
@@ -121,6 +121,6 @@ describe('ipcBridge team adapter', () => {
         ],
       },
     });
-    expect(JSON.stringify(httpBridgeMocks.calls.at(-1)?.body)).not.toContain('assistants');
+    expect(JSON.stringify(httpBridgeMocks.calls.at(-1)?.body)).not.toContain('agents');
   });
 });

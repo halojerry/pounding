@@ -6,7 +6,7 @@ import type { TChatConversation } from '@/common/config/storage';
 import ChatConversation from '@/renderer/pages/conversation/components/ChatConversation';
 
 const usePresetAssistantInfoMock = vi.fn();
-const acpChatMock = vi.fn(() => <div data-testid='mock-acp-chat'>acp chat</div>);
+const acpChatMock = vi.fn(() => <div data-testid='mock-acp-chat'>message history</div>);
 const acpModelSelectorMock = vi.fn(() => <div data-testid='mock-acp-model-selector'>model selector</div>);
 
 vi.mock('@/renderer/pages/conversation/Messages/MessageList', () => ({
@@ -65,10 +65,8 @@ vi.mock('@/renderer/pages/conversation/Preview', () => ({
 }));
 
 // ── Platform-specific chat component mocks ──
-// gemini / codex now route through AcpChat → should show "message history"
-vi.mock('@/renderer/pages/conversation/platforms/acp/AcpChat', () => ({
-  default: () => <div>message history</div>,
-}));
+// gemini / codex now route through AcpChat (mocked above with acpChatMock,
+// which renders "message history" plus the mock-acp-chat testid).
 
 // Legacy runtimes: mock to show message history without old runtime test-ids.
 vi.mock('@/renderer/pages/conversation/platforms/nanobot/NanobotChat', () => ({
@@ -79,9 +77,6 @@ vi.mock('@/renderer/pages/conversation/platforms/openclaw/OpenClawChat', () => (
 }));
 vi.mock('@/renderer/pages/conversation/platforms/remote/RemoteChat', () => ({
   default: () => <div>message history</div>,
-}));
-vi.mock('@/renderer/components/agent/AcpModelSelector', () => ({
-  default: () => null,
 }));
 vi.mock('@/renderer/pages/conversation/platforms/gemini/GoogleModelSelector', () => ({
   default: () => null,

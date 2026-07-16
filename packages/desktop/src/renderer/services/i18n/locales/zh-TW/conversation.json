@@ -125,7 +125,7 @@
       "send_feedback": "Send feedback with logs so the team can investigate."
     },
     "ownership": {
-      "aionui": "應用",
+      "pounding": "應用",
       "user_agent": "Agent",
       "user_llm_provider": "模型服務商",
       "unknown_upstream": "上游"
@@ -302,7 +302,7 @@
       },
       "MCP_HTTP_RESPONSE_READ_FAILED": {
         "title": "讀取團隊輔助程序回應失敗",
-        "body": "AionUi 無法讀取本地團隊輔助程序的回應。請先重試一次，若持續發生再重新啟動應用。"
+        "body": "POUNDING 無法讀取本地團隊輔助程序的回應。請先重試一次，若持續發生再重新啟動應用。"
       },
       "MCP_TOOL_REMOTE_ERROR": {
         "title": "本地團隊輔助程序拒絕了這次請求",
@@ -310,11 +310,11 @@
       },
       "MCP_TOOL_RESPONSE_UNEXPECTED": {
         "title": "團隊輔助程序回傳了異常回應",
-        "body": "AionUi 收到了本地團隊輔助程序的異常回應。請先重試一次，若持續發生再回報問題。"
+        "body": "POUNDING 收到了本地團隊輔助程序的異常回應。請先重試一次，若持續發生再回報問題。"
       },
       "MCP_TCP_READ_FAILED": {
         "title": "讀取本地團隊輔助程序失敗",
-        "body": "AionUi 無法讀取本地團隊輔助程序的 TCP 回應。請先重試一次，如仍失敗可重新啟動應用。"
+        "body": "POUNDING 無法讀取本地團隊輔助程序的 TCP 回應。請先重試一次，如仍失敗可重新啟動應用。"
       },
       "TEAM_SERVICE_UNAVAILABLE": {
         "title": "團隊服務尚未就緒",

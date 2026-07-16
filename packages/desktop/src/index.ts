@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -439,12 +439,12 @@ function markBackendReady(backendPort: number, source: string): void {
 }
 
 function resolveDebugBackendStartupFailure(): BackendStartupFailureInfo | null {
-  const reason = process.env.AIONUI_DEBUG_BACKEND_STARTUP_FAILURE as BackendStartupFailureInfo['reason'] | undefined;
+  const reason = process.env.POUNDING_DEBUG_BACKEND_STARTUP_FAILURE as BackendStartupFailureInfo['reason'] | undefined;
   if (!reason) {
     return null;
   }
   if ((app.isPackaged && !isE2ETestMode) || isWebUIMode || isResetPasswordMode) {
-    console.warn('[AionUi] Ignoring AIONUI_DEBUG_BACKEND_STARTUP_FAILURE outside desktop dev/e2e mode.');
+    console.warn('[POUNDING] Ignoring POUNDING_DEBUG_BACKEND_STARTUP_FAILURE outside desktop dev/e2e mode.');
     return null;
   }
 
@@ -475,7 +475,7 @@ function resolveDebugBackendStartupFailure(): BackendStartupFailureInfo | null {
     };
   }
 
-  console.warn(`[AionUi] Ignoring unknown AIONUI_DEBUG_BACKEND_STARTUP_FAILURE value: ${reason}`);
+  console.warn(`[POUNDING] Ignoring unknown POUNDING_DEBUG_BACKEND_STARTUP_FAILURE value: ${reason}`);
   return null;
 }
 
@@ -869,7 +869,7 @@ const handleAppReady = async (): Promise<void> => {
     const resolvedPort = resolveWebUIPort(userConfigInfo.config, getSwitchValue);
     const allowRemote = resolveRemoteAccess(userConfigInfo.config, isRemoteMode);
     try {
-      // Inside Electron (`AionUi --webui` or packaged `aionui-web` mode that
+      // Inside Electron (`POUNDING --webui` or packaged `aionui-web` mode that
       // launches via the Electron shell), reuse the desktop app's data-dir so
       // that conversations / cron jobs created in any path show up everywhere.
       // Matches the desktop IPC path at line 493 above.

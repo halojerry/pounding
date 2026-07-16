@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  *
  * Unit tests for renderer/hooks/assistant/useAssistantEditor.ts (A2 in N4a).

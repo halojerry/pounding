@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  *
  * White-box tests for FeedbackReportModal's prefill behavior.
@@ -213,13 +213,17 @@ describe('FeedbackReportModal — prefill', () => {
 
     expect(sentryMocks.setTag).toHaveBeenCalledWith('type', 'user-feedback');
     expect(sentryMocks.setTag).toHaveBeenCalledWith('module', 'conversation-session');
-    // The IPC bridge (main process) receives module / description / summary
-    // but does not forward agent_error to Sentry extras — that metadata
-    // is local to the renderer for UI categorization only.
+    // v2.1.34 forwards agent_error metadata to Sentry for improved error triage.
     expect(sentryMocks.captureEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         level: 'info',
-        extra: { description: 'provider failed' },
+        extra: expect.objectContaining({
+          description: 'provider failed',
+          agent_error: {
+            code: 'USER_LLM_PROVIDER_AUTH_FAILED',
+            ownership: 'user_llm_provider',
+          },
+        }),
       }),
       expect.objectContaining({ attachments: [] })
     );

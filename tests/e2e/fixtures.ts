@@ -5,7 +5,7 @@
  *
  * Two modes:
  *   1. **Packaged mode** (CI default): Launches from electron-builder's unpacked output
- *      (e.g. out/linux-unpacked/aionui, out/mac-arm64/AionUi.app, out/win-unpacked/POUNDING.exe).
+ *      (e.g. out/linux-unpacked/aionui, out/mac-arm64/POUNDING.app, out/win-unpacked/POUNDING.exe).
  *      This validates that packaged resources are intact.
  *   2. **Dev mode** (local default): Launches via `electron .` from project root with
  *      the Vite dev server (electron-vite dev).
@@ -163,7 +163,7 @@ function resolvePackagedApp(): { executablePath: string; cwd: string } | null {
       if (fs.existsSync(legacyExe)) return { executablePath: legacyExe, cwd: path.join(outDir, dir) };
     }
   } else if (platform === 'darwin') {
-    // out/mac-arm64/POUNDING.app/Contents/MacOS/POUNDING  or fallback AionUi.app/...
+    // out/mac-arm64/POUNDING.app/Contents/MacOS/POUNDING  or fallback POUNDING.app/...
     for (const dir of ['mac-arm64', 'mac-x64', 'mac', 'mac-universal']) {
       const macDir = path.join(outDir, dir);
       if (!fs.existsSync(macDir)) continue;

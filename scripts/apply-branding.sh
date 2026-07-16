@@ -181,12 +181,17 @@ apply_text_replacements() {
 
   # --- readme.md / CICD_SETUP.md / CHANGELOG.md ---
   replace_in_dir "$ROOT" "AionUi" "POUNDING" "root md: AionUi→POUNDING"
+  # Undo collateral damage: upstream GitHub URLs must keep the AionUi repo name
+  # (iOfficeAI org has no POUNDING repo — those links would 404).
+  replace_in_dir "$ROOT" "iOfficeAI/POUNDING" "iOfficeAI/AionUi" "restore upstream URLs"
 
   # --- iOfficeAI → halojerry ---
   replace_in_dir "$SRC" "iOfficeAI/AionUi"   "halojerry/AionUi"   "URL: iOfficeAI/AionUi"
   replace_in_dir "$SRC" "iOfficeAI/AionCore" "halojerry/AionCore" "URL: iOfficeAI/AionCore"
 
   # --- Locale files ---
+  # Two-pass sed: quoted patterns match JSON values that ARE exactly the brand name;
+  # unquoted patterns catch mid-sentence occurrences (e.g. "Afficher AionUi" in fr-FR).
   local LOCALE_DIR="$SRC/renderer/services/i18n/locales"
   if [ "$MODE" = "apply" ]; then
     while IFS= read -r -d '' f; do
@@ -195,12 +200,14 @@ apply_text_replacements() {
         -e 's|"AionCore"|"poundingcore"|g' \
         -e 's|"aionui"|"pounding"|g' \
         -e 's|"aioncore"|"poundingcore"|g' \
+        -e 's|AionUi|POUNDING|g' \
+        -e 's|AionCore|poundingcore|g' \
         "$f" 2>/dev/null || true
     done < <(find "$LOCALE_DIR" -name "*.json" -print0)
-    echo -e "  ${GREEN}DONE${NC} Locale files: AionUi/AionCore→POUNDING/poundingcore"
+    echo -e "  ${GREEN}DONE${NC} Locale files: AionUi/AionCore→POUNDING/poundingcore (quoted + inline)"
     COUNT=$((COUNT + 1))
   else
-    if grep -rq '"AionUi"' "$LOCALE_DIR" --include="*.json" 2>/dev/null; then
+    if grep -rqE '"AionUi"|AionUi[^"]' "$LOCALE_DIR" --include="*.json" 2>/dev/null; then
       echo -e "  ${YELLOW}FIX${NC}  Locale files: AionUi references remain"
     else
       echo -e "  ${GREEN}OK${NC}   Locale files: clean"

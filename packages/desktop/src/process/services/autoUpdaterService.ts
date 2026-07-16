@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -26,8 +26,8 @@ import {
 } from './autoUpdateDiagnostics';
 import { buildCdnFeedOptions } from './updateFeed';
 
-const FORCE_DEV_AUTO_UPDATE_ENV = 'AIONUI_FORCE_DEV_AUTO_UPDATE';
-const DEBUG_AUTO_UPDATE_CURRENT_VERSION_ENV = 'AIONUI_DEBUG_AUTO_UPDATE_CURRENT_VERSION';
+const FORCE_DEV_AUTO_UPDATE_ENV = 'POUNDING_FORCE_DEV_AUTO_UPDATE';
+const DEBUG_AUTO_UPDATE_CURRENT_VERSION_ENV = 'POUNDING_DEBUG_AUTO_UPDATE_CURRENT_VERSION';
 const MAC_NATIVE_INSTALL_READY_TIMEOUT_MS = 60_000;
 
 /**
@@ -198,7 +198,7 @@ class AutoUpdaterService extends EventEmitter {
       const devConfig = [
         'provider: generic',
         `url: ${cdnFeedOptions.url}`,
-        'updaterCacheDirName: com.aionui.app',
+        'updaterCacheDirName: com.pounding.app',
         '',
       ].join('\n');
       const configPath = path.join(app.getPath('userData'), 'dev-app-update.yml');
@@ -458,7 +458,7 @@ class AutoUpdaterService extends EventEmitter {
 
   /**
    * In dev mode the running shell is the stock Electron bundle (com.github.Electron),
-   * while the downloaded archive contains the packaged app (com.aionui.app). Squirrel.Mac
+   * while the downloaded archive contains the packaged app (com.pounding.app). Squirrel.Mac
    * looks for a bundle matching the *running* id, fails to find it, and reports
    * "Could not locate update bundle". This is expected in dev and cannot be reproduced
    * without a packaged build, so surface a clearer message instead of the raw error.

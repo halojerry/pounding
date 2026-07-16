@@ -41,12 +41,10 @@ vi.mock('@/common', () => ({
       addAgent: { invoke: vi.fn() },
       renameAgent: { invoke: vi.fn() },
       removeAgent: { invoke: vi.fn() },
-      agentStatusChanged: eventChannel,
+      agentStatusChanged: makeTeamEventChannel('agentStatusChanged'),
       agentSpawned: eventChannel,
       agentRemoved: eventChannel,
       agentRenamed: eventChannel,
-      agentRuntimeStatusChanged: makeTeamEventChannel('agentRuntimeStatusChanged'),
-      sessionStatusChanged: eventChannel,
       taskChanged: eventChannel,
       sessionChanged: eventChannel,
     },
@@ -89,7 +87,7 @@ describe('useTeamSession cron cleanup', () => {
 
   it('refreshes runtime config options when a current team agent runtime becomes ready', () => {
     renderHook(() => useTeamSession(team()));
-    const handler = teamEventHandlers.agentRuntimeStatusChanged as
+    const handler = teamEventHandlers.agentStatusChanged as
       | ((event: { team_id: string; conversation_id: string; status: string }) => void)
       | undefined;
 
@@ -109,7 +107,7 @@ describe('useTeamSession cron cleanup', () => {
     const { result, rerender } = renderHook(({ warmupPhase }) => useTeamSession(team(), warmupPhase), {
       initialProps: { warmupPhase: 'warming' as const },
     });
-    const handler = teamEventHandlers.agentRuntimeStatusChanged as
+    const handler = teamEventHandlers.agentStatusChanged as
       | ((event: { team_id: string; slot_id: string; conversation_id: string; status: string }) => void)
       | undefined;
 

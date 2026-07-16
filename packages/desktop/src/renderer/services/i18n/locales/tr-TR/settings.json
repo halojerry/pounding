@@ -85,7 +85,7 @@
     "officialSkillsEmpty": "Kullanılabilir resmi beceri yok.",
     "noSearchResults": "Eşleşen beceri yok.",
     "customHint": "Bir beceri klasörü, üst klasör veya zip içe aktarın; dosya başına en fazla {{maxFileSize}} ve beceri başına {{maxTotalSize}}; aynı adla içe aktarma mevcut beceriyi değiştirir.",
-    "officialHint": "AionUi ile birlikte gelen resmi beceriler — kullanıma hazır, salt okunur ve her sürümde güncellenir."
+    "officialHint": "POUNDING ile birlikte gelen resmi beceriler — kullanıma hazır, salt okunur ve her sürümde güncellenir."
   },
   "authMethod": "Kimlik Doğrulama",
   "geminiApiKey": "Gemini API Anahtarı",
@@ -145,8 +145,8 @@
   "assistantGroupCli": "CLI Asistanları",
   "assistantGroupCreated": "Özel Asistanlar",
   "myAssistantsEmpty": "Burada henüz asistan yok. Resmi bir asistanı etkinleştirin veya yerel bir CLI aracı bağlayın.",
-  "officialAssistantsHint": "Resmi asistanlar AionUi tarafından sürdürülür ve her sürümle güncellenir. Listelerinizde kullanmak için birini etkinleştirin; kendinize özel bir sürüm uyarlamak için onu asistanınız olarak çoğaltın.",
-  "officialAssistantsHintShort": "AionUi içine gömülü resmi asistanlar; resmi olarak sürdürülür ve her sürümle güncellenir. Serbestçe özelleştirmek için \"Asistanım\" olarak çoğaltın.",
+  "officialAssistantsHint": "Resmi asistanlar POUNDING tarafından sürdürülür ve her sürümle güncellenir. Listelerinizde kullanmak için birini etkinleştirin; kendinize özel bir sürüm uyarlamak için onu asistanınız olarak çoğaltın.",
+  "officialAssistantsHintShort": "POUNDING içine gömülü resmi asistanlar; resmi olarak sürdürülür ve her sürümle güncellenir. Serbestçe özelleştirmek için \"Asistanım\" olarak çoğaltın.",
   "customEmptyTitle": "Henüz özel asistan yok",
   "customEmptyBody": "Sohbet yoluyla bir tane oluşturun veya resmi bir asistanı çoğaltın.",
   "customEmptyCreate": "Sohbetle oluştur",
@@ -638,7 +638,7 @@
   "mcpAuthenticated": "Kimlik doğrulandı",
   "mcpDisconnected": "Test edilmedi",
   "mcpError": "Son test başarısız",
-  "mcpErrorNodeCommandNotFound": "{{command}} komutu hazırlanamadı. AionCore genellikle yönetilen Node çalışma zamanını otomatik olarak hazırlar. Bağlantı testini yeniden deneyin; sorun sürerse arka uç günlüklerini kontrol edin veya bu MCP sunucusu için mutlak komut yolu yapılandırın.",
+  "mcpErrorNodeCommandNotFound": "{{command}} komutu hazırlanamadı. poundingcore genellikle yönetilen Node çalışma zamanını otomatik olarak hazırlar. Bağlantı testini yeniden deneyin; sorun sürerse arka uç günlüklerini kontrol edin veya bu MCP sunucusu için mutlak komut yolu yapılandırın.",
   "mcpErrorBunCommandNotFound": "Command {{command}} was not found. Install Bun (which includes bun/bunx), restart POUNDING, or configure this MCP server to use an absolute command path.",
   "mcpErrorUvCommandNotFound": "Command {{command}} was not found. Install uv, restart POUNDING, or configure this MCP server to use an absolute command path.",
   "mcpErrorPythonCommandNotFound": "Command {{command}} was not found. Install Python, restart POUNDING, or configure this MCP server to use an absolute command path.",
@@ -1249,15 +1249,15 @@
     "addViaChat": "Sohbetle ekle",
     "addManually": "Elle ekle",
     "solveViaChat": "Sohbetle çöz",
-    "enabledToast": "AionUi Kâhyası sizin için etkinleştirildi",
+    "enabledToast": "POUNDING Kâhyası sizin için etkinleştirildi",
     "prompt": {
       "createAssistant": "Yeni bir asistan oluşturmama ve kurulumunda bana yol göstermene yardım et.",
       "addCustomAgent": "Özel bir Agent eklememe yardım et.",
       "addModel": "Yeni bir LLM sağlayıcısı ve API anahtarı ekle, ardından varsayılan model olarak ayarla.",
       "addMcp": "Bir MCP sunucusu kurmama yardım et.",
       "addSkill": "Bir beceri içe aktarıp bir asistana eklememe yardım et.",
-      "setupRemote": "Telefonumdan veya internetten AionUi’yi açabilmem için uzaktan erişimi ayarlamama yardım et.",
-      "diagnose": "AionUi kullanırken bir sorunla karşılaştım, teşhis etmeme yardım et.\n\n[Modül] {{module}}\n[Açıklama] {{description}}\n[Ekler] giriş alanındaki ekran görüntülerine bakın.\n\nLütfen nedenini teşhis et ve nasıl düzelteceğimi söyle."
+      "setupRemote": "Telefonumdan veya internetten POUNDING’yi açabilmem için uzaktan erişimi ayarlamama yardım et.",
+      "diagnose": "POUNDING kullanırken bir sorunla karşılaştım, teşhis etmeme yardım et.\n\n[Modül] {{module}}\n[Açıklama] {{description}}\n[Ekler] giriş alanındaki ekran görüntülerine bakın.\n\nLütfen nedenini teşhis et ve nasıl düzelteceğimi söyle."
     }
   },
   "providerIdConflict": "Provider ID zaten var. Lütfen tekrar deneyin.",

@@ -1,4 +1,4 @@
-# AionUi - Project Guide
+# POUNDING - Project Guide
 
 All contributors (human and AI) must follow [CONTRIBUTING.md](CONTRIBUTING.md) before opening a PR. ([Chinese version](CONTRIBUTING.zh.md))
 
@@ -219,13 +219,13 @@ Lessons from POUNDING branding/fix sessions. When debugging similar symptoms, ch
 
 **Key files**: `SiderFooter.tsx`, `useDealerConfig.ts`, `applicationBridge.ts`, `pack-usb-zip.sh`
 
-### pt-BR locale: AionUi branding residue
+### pt-BR locale: POUNDING branding residue
 
-**Symptom**: pt-BR users see "AionUi" instead of "POUNDING" in login page, tray menu, and backend startup errors.
+**Symptom**: pt-BR users see "POUNDING" instead of "POUNDING" in login page, tray menu, and backend startup errors.
 
-**Root cause**: 5 strings in `locales/pt-BR/login.json` and `locales/pt-BR/common.json` were never updated from upstream AionUi branding.
+**Root cause**: 5 strings in `locales/pt-BR/login.json` and `locales/pt-BR/common.json` were never updated from upstream POUNDING branding.
 
-**Fix**: Replaced all "AionUi"→"POUNDING" and "AionCore"→"poundingcore" in pt-BR locale files.
+**Fix**: Replaced all "POUNDING"→"POUNDING" and "AionCore"→"poundingcore" in pt-BR locale files.
 
 **Key files**: `locales/pt-BR/login.json`, `locales/pt-BR/common.json`
 
@@ -233,7 +233,7 @@ Lessons from POUNDING branding/fix sessions. When debugging similar symptoms, ch
 
 **Symptom**: Branding regressions (pt-BR, iOfficeAI comments, Sentry config) go undetected after upstream syncs.
 
-**Fix**: Created `scripts/check-branding.sh` (37 checks for AionUi, 11 for AionCore) and added `branding-check` job to CI (`pr-checks.yml` for AionUi, `ci.yml` for AionCore).
+**Fix**: Created `scripts/check-branding.sh` (37 checks for POUNDING, 11 for AionCore) and added `branding-check` job to CI (`pr-checks.yml` for POUNDING, `ci.yml` for AionCore).
 
 **Key files**: `scripts/check-branding.sh`, `.github/workflows/pr-checks.yml`
 
@@ -273,13 +273,13 @@ The proxy is **auto-started by `CodexProxyManager`** at backend-ready time. `wri
 
 **See also**: [[Codex: UNKNOWN_UPSTREAM_ERROR]], [[Codex: proxy not auto-started]]
 
-### OpenClaw: NOT_PAIRED scope-upgrade deadlock (AionCore fix, AionUi awareness)
+### OpenClaw: NOT_PAIRED scope-upgrade deadlock (AionCore fix, POUNDING awareness)
 
 **Symptom**: OpenClaw conversations permanently fail with `NOT_PAIRED: device identity changed and must be re-approved`.
 
 **Root cause (AionCore)**: Backend and CLI shared device identity → scope upgrade → deadlock. Fixed in AionCore by using separate identity path.
 
-**AionUi relevance**: No TypeScript changes needed for this fix, but the `NewApiDesktopAccountService.ts` `writeOpenClawConfigForProviderSync()` writes the gateway config that the backend reads. When debugging OpenClaw issues, check both `~/.openclaw/openclaw.json` (CLI config) and `~/.pounding/openclaw/identity/device.json` (backend identity).
+**POUNDING relevance**: No TypeScript changes needed for this fix, but the `NewApiDesktopAccountService.ts` `writeOpenClawConfigForProviderSync()` writes the gateway config that the backend reads. When debugging OpenClaw issues, check both `~/.openclaw/openclaw.json` (CLI config) and `~/.pounding/openclaw/identity/device.json` (backend identity).
 
 **Diagnostic**: `openclaw devices list --json --url ws://127.0.0.1:18789 --token "<token>"` shows pending/paired devices and their scopes. A "scope-upgrade" kind with different `approvedScopes` vs `requestedScopes` indicates this issue.
 

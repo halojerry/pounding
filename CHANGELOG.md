@@ -223,7 +223,7 @@
 - **runtime:** harden managed Node command resolution (#565)
 - **runtime:** protect active ACP tasks from idle cleanup (#561)
 - **skill:** raise import size limits (#564)
-- **skills:** correct AionUi Butler skill drift against current backend (#557)
+- **skills:** correct POUNDING Butler skill drift against current backend (#557)
 
 ---
 
@@ -326,7 +326,7 @@
 - **agent:** expose runtime catalogs from metadata (#523)
 - **assistant:** expose auto-inject skills and preserve assistant rules (#525)
 - repair invalid UTF-8 agent metadata cache fields (#526)
-- **skills:** sync AionUi Butler skills + rule with current backend (#520)
+- **skills:** sync POUNDING Butler skills + rule with current backend (#520)
 
 ---
 
@@ -463,8 +463,8 @@
 
 #### Features
 
-- **assistant:** add built-in AionUi self-management assistant ([#474](https://github.com/iOfficeAI/AionCore/issues/474))
-- **assistant:** expand AionUi assistant into a butler with remote-access ([#481](https://github.com/iOfficeAI/AionCore/issues/481))
+- **assistant:** add built-in POUNDING self-management assistant ([#474](https://github.com/iOfficeAI/AionCore/issues/474))
+- **assistant:** expand POUNDING assistant into a butler with remote-access ([#481](https://github.com/iOfficeAI/AionCore/issues/481))
 - enforce TeamRun ownership for agent turns ([#483](https://github.com/iOfficeAI/AionCore/issues/483))
 - **team:** support queued team_send_message semantics ([#479](https://github.com/iOfficeAI/AionCore/issues/479))
 

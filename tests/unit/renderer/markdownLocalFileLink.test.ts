@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -13,8 +13,8 @@ import {
 
 describe('resolveLocalFileLinkPath', () => {
   it('recognizes Windows absolute paths emitted as root-relative markdown links', () => {
-    expect(resolveLocalFileLinkPath('/C:/Users/Administrator/AppData/Roaming/AionUi/report.xlsx')).toBe(
-      'C:/Users/Administrator/AppData/Roaming/AionUi/report.xlsx'
+    expect(resolveLocalFileLinkPath('/C:/Users/Administrator/AppData/Roaming/POUNDING/report.xlsx')).toBe(
+      'C:/Users/Administrator/AppData/Roaming/POUNDING/report.xlsx'
     );
   });
 
@@ -33,31 +33,31 @@ describe('resolveLocalFileLinkPath', () => {
   });
 
   it('recognizes line suffixes without confusing Windows drive letters', () => {
-    const reference = resolveLocalFileLinkReference('C:/Users/Administrator/AppData/Roaming/AionUi/logs/app.log:1421');
+    const reference = resolveLocalFileLinkReference('C:/Users/Administrator/AppData/Roaming/POUNDING/logs/app.log:1421');
 
     expect(reference).toEqual({
-      filePath: 'C:/Users/Administrator/AppData/Roaming/AionUi/logs/app.log',
-      rawReference: 'C:/Users/Administrator/AppData/Roaming/AionUi/logs/app.log:1421',
+      filePath: 'C:/Users/Administrator/AppData/Roaming/POUNDING/logs/app.log',
+      rawReference: 'C:/Users/Administrator/AppData/Roaming/POUNDING/logs/app.log:1421',
       line: 1421,
     });
-    expect(resolveLocalFileLinkPath('C:/Users/Administrator/AppData/Roaming/AionUi/logs/app.log:1421')).toBe(
-      'C:/Users/Administrator/AppData/Roaming/AionUi/logs/app.log'
+    expect(resolveLocalFileLinkPath('C:/Users/Administrator/AppData/Roaming/POUNDING/logs/app.log:1421')).toBe(
+      'C:/Users/Administrator/AppData/Roaming/POUNDING/logs/app.log'
     );
   });
 
   it('recognizes line and column suffixes without including the line in the file path', () => {
     const reference = resolveLocalFileLinkReference(
-      'C:/Users/Administrator/AppData/Roaming/AionUi/logs/app.log:1421:7'
+      'C:/Users/Administrator/AppData/Roaming/POUNDING/logs/app.log:1421:7'
     );
 
     expect(reference).toEqual({
-      filePath: 'C:/Users/Administrator/AppData/Roaming/AionUi/logs/app.log',
-      rawReference: 'C:/Users/Administrator/AppData/Roaming/AionUi/logs/app.log:1421:7',
+      filePath: 'C:/Users/Administrator/AppData/Roaming/POUNDING/logs/app.log',
+      rawReference: 'C:/Users/Administrator/AppData/Roaming/POUNDING/logs/app.log:1421:7',
       line: 1421,
       column: 7,
     });
-    expect(resolveLocalFileLinkPath('C:/Users/Administrator/AppData/Roaming/AionUi/logs/app.log:1421:7')).toBe(
-      'C:/Users/Administrator/AppData/Roaming/AionUi/logs/app.log'
+    expect(resolveLocalFileLinkPath('C:/Users/Administrator/AppData/Roaming/POUNDING/logs/app.log:1421:7')).toBe(
+      'C:/Users/Administrator/AppData/Roaming/POUNDING/logs/app.log'
     );
   });
 
@@ -143,8 +143,8 @@ describe('resolveLocalFileLinkPath', () => {
   });
 
   it('formats local file paths as file URLs for browser link copying', () => {
-    expect(toLocalFileHref('C:/Users/Administrator/AppData/Roaming/AionUi/report.xlsx')).toBe(
-      'file:///C:/Users/Administrator/AppData/Roaming/AionUi/report.xlsx'
+    expect(toLocalFileHref('C:/Users/Administrator/AppData/Roaming/POUNDING/report.xlsx')).toBe(
+      'file:///C:/Users/Administrator/AppData/Roaming/POUNDING/report.xlsx'
     );
     expect(toLocalFileHref('/var/folders/demo/report.xlsx')).toBe('file:///var/folders/demo/report.xlsx');
   });

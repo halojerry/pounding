@@ -85,7 +85,7 @@
     "officialSkillsEmpty": "Немає доступних офіційних навичок.",
     "noSearchResults": "Немає відповідних навичок.",
     "customHint": "Імпортуйте теку навички, батьківську теку або zip; до {{maxFileSize}} на файл і {{maxTotalSize}} на навичку; імпорт з тією самою назвою перезаписує наявну навичку.",
-    "officialHint": "Офіційні навички, що постачаються з AionUi, — готові до використання, лише для читання та оновлюються з кожним випуском."
+    "officialHint": "Офіційні навички, що постачаються з POUNDING, — готові до використання, лише для читання та оновлюються з кожним випуском."
   },
   "authMethod": "Автентифікація",
   "geminiApiKey": "API-ключ Gemini",
@@ -145,8 +145,8 @@
   "assistantGroupCli": "CLI-асистенти",
   "assistantGroupCreated": "Користувацькі асистенти",
   "myAssistantsEmpty": "Тут поки немає асистентів. Увімкніть офіційного асистента або підключіть локальний CLI-інструмент.",
-  "officialAssistantsHint": "Офіційні асистенти підтримуються AionUi і оновлюються з кожним релізом. Увімкніть одного, щоб використовувати його у своїх списках; щоб налаштувати власну версію, продублюйте його як свого асистента.",
-  "officialAssistantsHintShort": "Офіційні асистенти, вбудовані в AionUi, підтримуються офіційно та оновлюються з кожним випуском; продублюйте як «Мій асистент», щоб вільно налаштовувати.",
+  "officialAssistantsHint": "Офіційні асистенти підтримуються POUNDING і оновлюються з кожним релізом. Увімкніть одного, щоб використовувати його у своїх списках; щоб налаштувати власну версію, продублюйте його як свого асистента.",
+  "officialAssistantsHintShort": "Офіційні асистенти, вбудовані в POUNDING, підтримуються офіційно та оновлюються з кожним випуском; продублюйте як «Мій асистент», щоб вільно налаштовувати.",
   "customEmptyTitle": "Користувацьких асистентів поки немає",
   "customEmptyBody": "Створіть асистента через чат або продублюйте офіційного.",
   "customEmptyCreate": "Створити через чат",
@@ -636,7 +636,7 @@
   "mcpAuthenticated": "Автентифіковано",
   "mcpDisconnected": "Не тестувалося",
   "mcpError": "Останній тест завершився помилкою",
-  "mcpErrorNodeCommandNotFound": "Не вдалося підготувати команду {{command}}. Зазвичай AionCore автоматично готує кероване середовище Node. Повторіть тест підключення; якщо помилка не зникне, перевірте логи бекенда або вкажіть для цього MCP-сервера абсолютний шлях до команди.",
+  "mcpErrorNodeCommandNotFound": "Не вдалося підготувати команду {{command}}. Зазвичай poundingcore автоматично готує кероване середовище Node. Повторіть тест підключення; якщо помилка не зникне, перевірте логи бекенда або вкажіть для цього MCP-сервера абсолютний шлях до команди.",
   "mcpErrorBunCommandNotFound": "Command {{command}} was not found. Install Bun (which includes bun/bunx), restart POUNDING, or configure this MCP server to use an absolute command path.",
   "mcpErrorUvCommandNotFound": "Command {{command}} was not found. Install uv, restart POUNDING, or configure this MCP server to use an absolute command path.",
   "mcpErrorPythonCommandNotFound": "Command {{command}} was not found. Install Python, restart POUNDING, or configure this MCP server to use an absolute command path.",
@@ -1163,15 +1163,15 @@
     "addViaChat": "Додати через чат",
     "addManually": "Додати вручну",
     "solveViaChat": "Вирішити через чат",
-    "enabledToast": "Дворецького AionUi увімкнено для вас",
+    "enabledToast": "Дворецького POUNDING увімкнено для вас",
     "prompt": {
       "createAssistant": "Допоможи створити нового асистента та проведи мене через його налаштування.",
       "addCustomAgent": "Допоможи додати власний Agent.",
       "addModel": "Допоможи додати нового провайдера LLM та API-ключ, потім зроби його моделлю за замовчуванням.",
       "addMcp": "Допоможи налаштувати сервер MCP.",
       "addSkill": "Допоможи імпортувати навичку та прив’язати її до асистента.",
-      "setupRemote": "Допоможи налаштувати віддалений доступ, щоб відкривати AionUi з телефона або через інтернет.",
-      "diagnose": "У мене виникла проблема з AionUi, допоможи її діагностувати.\n\n[Модуль] {{module}}\n[Опис] {{description}}\n[Вкладення] див. скриншоти в полі введення.\n\nБудь ласка, визнач причину та підкажи, як виправити."
+      "setupRemote": "Допоможи налаштувати віддалений доступ, щоб відкривати POUNDING з телефона або через інтернет.",
+      "diagnose": "У мене виникла проблема з POUNDING, допоможи її діагностувати.\n\n[Модуль] {{module}}\n[Опис] {{description}}\n[Вкладення] див. скриншоти в полі введення.\n\nБудь ласка, визнач причину та підкажи, як виправити."
     }
   },
   "bugReportModuleLabel": "Module",
@@ -1261,6 +1261,6 @@
   },
   "providerIdConflict": "Provider ID вже існує. Спробуйте ще раз.",
   "channels.wecomTitle": "WeCom",
-  "channels.wecomDesc": "Chat with AionUi assistant via WeCom (Enterprise WeChat AI Bot)",
+  "channels.wecomDesc": "Chat with POUNDING assistant via WeCom (Enterprise WeChat AI Bot)",
   "autoInjectedSkillsHint": "Автоматично завантажуються в кожну розмову — вмикати не потрібно; агент сам вирішує, коли їх використовувати."
 }

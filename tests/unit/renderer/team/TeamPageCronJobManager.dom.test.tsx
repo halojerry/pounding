@@ -67,8 +67,6 @@ vi.mock('@/common', () => ({
       agentSpawned: makeTeamEventChannel('agentSpawned'),
       agentRemoved: makeTeamEventChannel('agentRemoved'),
       agentRenamed: makeTeamEventChannel('agentRenamed'),
-      agentRuntimeStatusChanged: makeTeamEventChannel('agentRuntimeStatusChanged'),
-      sessionStatusChanged: makeTeamEventChannel('sessionStatusChanged'),
       taskChanged: makeTeamEventChannel('taskChanged'),
       sessionChanged: makeTeamEventChannel('sessionChanged'),
       runAccepted: makeTeamEventChannel('runAccepted'),
@@ -212,7 +210,7 @@ describe('TeamPage cron job manager', () => {
     expect(addMember).toBeDisabled();
 
     act(() => {
-      for (const handler of teamEventHandlers.agentRuntimeStatusChanged ?? []) {
+      for (const handler of teamEventHandlers.agentStatusChanged ?? []) {
         handler({
           team_id: 'team-1',
           slot_id: 'member-slot',

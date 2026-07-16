@@ -6,7 +6,7 @@
 
 当前仓库已默认切换到：
 
-- GitHub 仓库：`halojerry/AionUi-2.0.2-dev-a3881e2`
+- GitHub 仓库：`halojerry/POUNDING-2.0.2-dev-a3881e2`
 - 桌面发布源：GitHub Releases
 - 应用产品名：`POUNDING`
 
@@ -26,7 +26,7 @@
 覆盖默认仓库，格式：
 
 ```bash
-AIONUI_GITHUB_REPO=halojerry/AionUi-2.0.2-dev-a3881e2
+AIONUI_GITHUB_REPO=halojerry/POUNDING-2.0.2-dev-a3881e2
 ```
 
 用途：
@@ -211,7 +211,7 @@ releases/latest/latest-win-arm64.yml
 
 当前仓库代码层已经完成：
 
-- 默认更新仓库切到 `halojerry/AionUi-2.0.2-dev-a3881e2`
+- 默认更新仓库切到 `halojerry/POUNDING-2.0.2-dev-a3881e2`
 - 默认桌面更新下载 / 自动更新源切到腾讯云 COS 默认域名
 - 手动下载地址支持自定义
 - 自动更新源支持切换到 generic feed

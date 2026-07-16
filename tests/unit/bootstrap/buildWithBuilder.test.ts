@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -144,7 +144,7 @@ childProcess.execSync = function mockedExecSync(command) {
     expect(queryScript).toContain("'installer-self-lock'");
     expect(queryScript).toContain('outerInstallerPid');
     expect(queryScript).toContain('currentOutDir');
-    expect(queryScript).toContain("name = 'AionUi installer'");
+    expect(queryScript).toContain("name = 'POUNDING installer'");
   });
 
   it('continues with the bundled uninstaller when installed-uninstaller repair remains locked', () => {
@@ -157,7 +157,7 @@ childProcess.execSync = function mockedExecSync(command) {
 
     expect(retryFailureBranch).toBeTruthy();
     expect(retryFailureBranch).toContain('copy-failed-using-bundled');
-    expect(retryFailureBranch).toContain('$AionUiBundledUninstaller');
+    expect(retryFailureBranch).toContain('$POUNDINGBundledUninstaller');
     expect(retryFailureBranch).not.toContain('MessageBox');
     expect(retryFailureBranch).not.toContain('AIONUI_MSG_UNINSTALLER_LOCKED');
     expect(messages).not.toContain('existing uninstaller is locked');
@@ -362,9 +362,9 @@ childProcess.execSync = function mockedExecSync(command) {
 
       if (args.includes('--win')) {
         const installUtil = readFileSync(resolveAppBuilderInstallUtil(), 'utf8');
-        expect(installUtil).toContain('AionUi-bundled-uninstaller override source');
-        expect(installUtil).toContain('$PLUGINSDIR\\AionUi-fixed-uninstaller.exe');
-        expect(installUtil.match(/AionUi-bundled-uninstaller override source/g)).toHaveLength(1);
+        expect(installUtil).toContain('POUNDING-bundled-uninstaller override source');
+        expect(installUtil).toContain('$PLUGINSDIR\\POUNDING-fixed-uninstaller.exe');
+        expect(installUtil.match(/POUNDING-bundled-uninstaller override source/g)).toHaveLength(1);
       }
 
       const calls = JSON.parse(readFileSync(callsPath, 'utf8')) as Array<{ arch?: string } | null>;

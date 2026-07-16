@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -83,6 +83,14 @@ vi.mock('@/renderer/components/chat/SendBox', () => ({
 }));
 
 vi.mock('@/renderer/components/agent/AgentModeSelector', () => ({ default: () => null }));
+vi.mock('@/renderer/components/agent/AcpThoughtLevelSelector', () => ({
+  default: ({ thoughtLevel }: { thoughtLevel: unknown }) =>
+    thoughtLevel ? <div data-testid='mock-thought-selector'>thought</div> : null,
+}));
+vi.mock('@/renderer/pages/guid/hooks/agentSelectionUtils', () => ({
+  savePreferredMode: vi.fn(),
+  savePreferredThoughtLevel: vi.fn(),
+}));
 vi.mock('@/renderer/components/chat/CommandQueuePanel', () => ({ default: () => null }));
 vi.mock('@/renderer/components/chat/MobileActionSheet', () => ({
   default: ({
@@ -404,7 +412,7 @@ describe('AcpSendBox', () => {
     });
   });
 
-  it('keeps ACP config options enabled on desktop without rendering a standalone thought selector', () => {
+  it('keeps ACP config options enabled on desktop and renders the standalone thought selector', () => {
     useAcpConfigOptionsMock.mockReturnValue({
       setStatus: { state: 'idle' },
       mode: null,
@@ -429,7 +437,9 @@ describe('AcpSendBox', () => {
     );
 
     expect(useAcpConfigOptionsMock).toHaveBeenCalledWith(expect.objectContaining({ enabled: true }));
-    expect(screen.queryByTestId('mock-thought-selector')).not.toBeInTheDocument();
+    // POUNDING keeps the desktop standalone thought selector (restored fork
+    // behavior on top of upstream v2.1.34, which had removed it).
+    expect(screen.getByTestId('mock-thought-selector')).toBeInTheDocument();
   });
 
   it('applies runtime thought level from the mobile action sheet without persisting a global preference', async () => {
@@ -467,8 +477,9 @@ describe('AcpSendBox', () => {
       mobileActionSheetEntries.current.find((entry) => entry.key === 'thought-level')?.submenu?.onSelect?.('high');
     });
 
-    // This branch dropped global-preference persistence: only the runtime
-    // config option is set; nothing is saved to a global agent preference.
+    // The runtime config option must be set; POUNDING additionally persists
+    // the preferred thought level globally (covered by the dedicated
+    // AcpSendBox test in tests/unit/renderer/AcpSendBox.dom.test.tsx).
     await waitFor(() => {
       expect(setConfigOption).toHaveBeenCalledWith('reasoning_effort', 'high');
     });

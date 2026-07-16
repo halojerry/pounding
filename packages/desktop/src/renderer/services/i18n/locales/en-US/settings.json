@@ -85,7 +85,7 @@
     "officialSkillsEmpty": "No official skills available.",
     "noSearchResults": "No matching skills.",
     "customHint": "Import a skill folder, parent folder, or zip; up to {{maxFileSize}} per file and {{maxTotalSize}} per skill; importing the same name overwrites the existing skill.",
-    "officialHint": "Official skills bundled with AionUi — ready to use out of the box, read-only, and updated with each release."
+    "officialHint": "Official skills bundled with POUNDING — ready to use out of the box, read-only, and updated with each release."
   },
   "authMethod": "Authentication",
   "geminiApiKey": "Gemini API Key",
@@ -149,8 +149,8 @@
   "customEmptyBody": "Create one through chat, or duplicate an official assistant.",
   "customEmptyCreate": "Create via chat",
   "customEmptyBrowseOfficial": "Browse official",
-  "officialAssistantsHint": "Official assistants are maintained by AionUi and updated with each release. Enable one to use it in your lists; to tailor your own version, duplicate it as your assistant.",
-  "officialAssistantsHintShort": "Official assistants built into AionUi, maintained and updated with each release; duplicate as \"My Assistant\" to customize freely.",
+  "officialAssistantsHint": "Official assistants are maintained by POUNDING and updated with each release. Enable one to use it in your lists; to tailor your own version, duplicate it as your assistant.",
+  "officialAssistantsHintShort": "Official assistants built into POUNDING, maintained and updated with each release; duplicate as \"My Assistant\" to customize freely.",
   "reorderCoachTitle": "Drag to reorder",
   "reorderCoachBody": "Drag your favorite assistants to the top — this order decides how they appear wherever you pick an assistant (home, teams, scheduled tasks).",
   "assistantFilter": {
@@ -561,7 +561,7 @@
   "channels.comingSoonDesc": "Support for {{channel}} is coming soon",
   "channels.notConfigured": "Not configured",
   "channels.configured": "Configured",
-  "channels.guide": "Connect Telegram, Lark, DingTalk and more to control your always-on AionUi assistant from any chat app.",
+  "channels.guide": "Connect Telegram, Lark, DingTalk and more to control your always-on POUNDING assistant from any chat app.",
   "channels.selectFirst": "Select a channel and configure credentials.",
   "channels.enableAfterConfig": "Enable the channel and start chatting with your AI assistant.",
   "channels.extension.requiredField": "Please fill required field: {{field}}",
@@ -1234,15 +1234,15 @@
     "addViaChat": "Add via chat",
     "addManually": "Add manually",
     "solveViaChat": "Solve via chat",
-    "enabledToast": "Enabled the AionUi Butler for you",
+    "enabledToast": "Enabled the POUNDING Butler for you",
     "prompt": {
       "createAssistant": "Help me create a new assistant and walk me through setting it up.",
       "addCustomAgent": "Help me add a custom Agent.",
       "addModel": "Help me add a new LLM provider and API key, then set it as the default model.",
       "addMcp": "Help me set up an MCP server.",
       "addSkill": "Help me import a skill and attach it to an assistant.",
-      "setupRemote": "Help me set up remote access so I can open AionUi from my phone or over the internet.",
-      "diagnose": "I ran into a problem with AionUi, please help me diagnose it.\n\n[Module] {{module}}\n[Description] {{description}}\n[Attachments] see the screenshots in the input.\n\nPlease diagnose the cause and tell me how to fix it."
+      "setupRemote": "Help me set up remote access so I can open POUNDING from my phone or over the internet.",
+      "diagnose": "I ran into a problem with POUNDING, please help me diagnose it.\n\n[Module] {{module}}\n[Description] {{description}}\n[Attachments] see the screenshots in the input.\n\nPlease diagnose the cause and tell me how to fix it."
     }
   },
   "providerIdConflict": "Provider ID already exists. Please try again.",

@@ -1,5 +1,5 @@
 {
-  "name": "AionUi",
+  "name": "POUNDING",
   "version": "2.1.34",
   "description": "Transform your command-line AI agent into a modern, efficient AI Chat interface.",
   "keywords": [],
@@ -264,6 +264,6 @@
   "patchedDependencies": {
     "7zip-bin@5.2.0": "patches/7zip-bin@5.2.0.patch"
   },
-  "poundingcoreVersion": "v0.1.41",
+  "poundingcoreVersion": "v0.1.46",
   "productName": "POUNDING"
 }

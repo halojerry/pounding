@@ -11,8 +11,8 @@ describe('classifyBackendStartupFailure', () => {
     error.details = {
       stage: 'early_exit',
       stderrTail:
-        "/opt/AionUi/resources/bundled-poundingcore/linux-x64/poundingcore.bin: /lib/x86_64-linux-gnu/libc.so.6: version `GLIBC_2.34' not found\n" +
-        "/opt/AionUi/resources/bundled-poundingcore/linux-x64/poundingcore.bin: /lib/x86_64-linux-gnu/libc.so.6: version `GLIBC_2.32' not found",
+        "/opt/POUNDING/resources/bundled-poundingcore/linux-x64/poundingcore.bin: /lib/x86_64-linux-gnu/libc.so.6: version `GLIBC_2.34' not found\n" +
+        "/opt/POUNDING/resources/bundled-poundingcore/linux-x64/poundingcore.bin: /lib/x86_64-linux-gnu/libc.so.6: version `GLIBC_2.32' not found",
     };
 
     expect(classifyBackendStartupFailure(error)).toEqual({
@@ -74,8 +74,8 @@ describe('classifyBackendStartupFailure', () => {
     };
     error.details = {
       stage: 'spawn_error',
-      binaryPath: 'D:\\apps\\AionUi\\resources\\bundled-aioncore\\win32-x64\\aioncore.exe',
-      causeMessage: 'spawn D:\\apps\\AionUi\\resources\\bundled-aioncore\\win32-x64\\aioncore.exe ENOENT',
+      binaryPath: 'D:\\apps\\POUNDING\\resources\\bundled-aioncore\\win32-x64\\aioncore.exe',
+      causeMessage: 'spawn D:\\apps\\POUNDING\\resources\\bundled-aioncore\\win32-x64\\aioncore.exe ENOENT',
     };
 
     expect(classifyBackendStartupFailure(error)).toEqual({
@@ -98,6 +98,8 @@ describe('classifyBackendStartupFailure', () => {
 
     expect(classifyBackendStartupFailure(error)).toEqual({
       reason: 'backend_startup_failed',
+      backendBoundaryCode: 'BOOTSTRAP_DATA_INIT_FAILED',
+      backendBoundaryStage: 'database.open',
     });
   });
 
@@ -235,7 +237,14 @@ describe('classifyBackendStartupFailure', () => {
 
     expect(classifyBackendStartupFailure(error)).toEqual({
       reason: 'backend_incomplete_installation',
+      incompleteInstallationKind: 'missing_directory_resources',
       missingResources: ['bundled-poundingcore/', 'bundled-poundingcore/win32-x64/'],
+      missingBackendBinary: true,
+      missingBundledAioncoreDir: true,
+      missingRuntimeDir: true,
+      missingHubDir: true,
+      missingPetStatesDir: true,
+      missingPwaDir: true,
     });
   });
 
@@ -260,12 +269,19 @@ describe('classifyBackendStartupFailure', () => {
         'manifest.webmanifest',
         'sw.js',
       ],
-      runtimeDirEntries: ['manifest.json'],
+      runtimeDirEntries: ['managed-resources/', 'manifest.json'],
     };
 
     expect(classifyBackendStartupFailure(error)).toEqual({
       reason: 'backend_incomplete_installation',
+      incompleteInstallationKind: 'missing_backend_binary',
       missingResources: ['bundled-poundingcore/win32-x64/poundingcore.exe'],
+      missingBackendBinary: true,
+      missingBundledAioncoreDir: false,
+      missingRuntimeDir: false,
+      missingHubDir: true,
+      missingPetStatesDir: true,
+      missingPwaDir: true,
     });
   });
 
@@ -284,7 +300,11 @@ describe('classifyBackendStartupFailure', () => {
     };
 
     expect(classifyBackendStartupFailure(error)).toEqual({
-      reason: 'backend_startup_failed',
+      reason: 'backend_package_architecture_mismatch',
+      packageArch: 'x64',
+      deviceArch: 'arm64',
+      expectedDownloadArch: 'arm64',
+      isRosettaTranslated: true,
     });
   });
 });

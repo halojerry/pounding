@@ -2,7 +2,7 @@
 
 ## Scope
 
-Desktop frontend (`AionUi`) managed runtime sync for 4 CLIs:
+Desktop frontend (`POUNDING`) managed runtime sync for 4 CLIs:
 
 - Claude (ACP agent via `@agentclientprotocol/claude-agent-acp`)
 - Hermes (Python CLI via `uv`)

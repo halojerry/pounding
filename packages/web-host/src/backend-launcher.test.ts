@@ -126,6 +126,8 @@ describe('buildSpawnArgs', () => {
       'info',
       '--app-version',
       '9.9.9',
+      '--managed-resources-mode',
+      'bundled',
       '--log-dir',
       '/log/dir',
       '--local',
@@ -147,9 +149,9 @@ describe('buildSpawnArgs', () => {
     expect(args).not.toContain('--local');
   });
 
-  it('passes prompt dump flag in development only when AIONUI_DUMP_PROMPTS is enabled', () => {
-    const prev = process.env.AIONUI_DUMP_PROMPTS;
-    process.env.AIONUI_DUMP_PROMPTS = '1';
+  it('passes prompt dump flag in development only when POUNDING_DUMP_PROMPTS is enabled', () => {
+    const prev = process.env.POUNDING_DUMP_PROMPTS;
+    process.env.POUNDING_DUMP_PROMPTS = '1';
     try {
       const args = buildSpawnArgs({
         port: 1,
@@ -161,14 +163,14 @@ describe('buildSpawnArgs', () => {
 
       expect(args).toContain('--dump-prompts');
     } finally {
-      if (prev === undefined) delete process.env.AIONUI_DUMP_PROMPTS;
-      else process.env.AIONUI_DUMP_PROMPTS = prev;
+      if (prev === undefined) delete process.env.POUNDING_DUMP_PROMPTS;
+      else process.env.POUNDING_DUMP_PROMPTS = prev;
     }
   });
 
   it('passes bundled managed resources mode when packaged', () => {
-    const prev = process.env.AIONUI_DUMP_PROMPTS;
-    process.env.AIONUI_DUMP_PROMPTS = '1';
+    const prev = process.env.POUNDING_DUMP_PROMPTS;
+    process.env.POUNDING_DUMP_PROMPTS = '1';
     try {
       const args = buildSpawnArgs({
         port: 1,
@@ -182,8 +184,8 @@ describe('buildSpawnArgs', () => {
       expect(args).toContain('bundled');
       expect(args).not.toContain('--dump-prompts');
     } finally {
-      if (prev === undefined) delete process.env.AIONUI_DUMP_PROMPTS;
-      else process.env.AIONUI_DUMP_PROMPTS = prev;
+      if (prev === undefined) delete process.env.POUNDING_DUMP_PROMPTS;
+      else process.env.POUNDING_DUMP_PROMPTS = prev;
     }
   });
 
@@ -200,9 +202,9 @@ describe('buildSpawnArgs', () => {
     expect(args).toContain('--recover-corrupted-database');
   });
 
-  it('respects AIONUI_LOG_LEVEL override', () => {
-    const prev = process.env.AIONUI_LOG_LEVEL;
-    process.env.AIONUI_LOG_LEVEL = 'trace';
+  it('respects POUNDING_LOG_LEVEL override', () => {
+    const prev = process.env.POUNDING_LOG_LEVEL;
+    process.env.POUNDING_LOG_LEVEL = 'trace';
     try {
       const args = buildSpawnArgs({
         port: 1,
@@ -338,6 +340,8 @@ describe('BackendLifecycleManager.start (success path)', () => {
       'info',
       '--app-version',
       '1.2.3',
+      '--managed-resources-mode',
+      'bundled',
       '--log-dir',
       '/log/dir',
       '--work-dir',
@@ -390,6 +394,8 @@ describe('BackendLifecycleManager.start (success path)', () => {
         'info',
         '--app-version',
         '1.2.3',
+        '--managed-resources-mode',
+        'bundled',
         '--log-dir',
         '/log/dir',
         '--work-dir',

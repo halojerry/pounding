@@ -35,6 +35,7 @@ import { usePreviewContext } from '@/renderer/pages/conversation/Preview';
 import { useConversationRuntimeView } from '@/renderer/pages/conversation/runtime/useConversationRuntimeView';
 import { getConversationRuntimeWorkspaceErrorMessage } from '@/renderer/pages/conversation/utils/conversationCreateError';
 import { getChatSurfaceWidthClass } from '@/renderer/pages/conversation/utils/chatSurfaceWidth';
+import { savePreferredThoughtLevel } from '@/renderer/pages/guid/hooks/agentSelectionUtils';
 import { useTeamPermission } from '@/renderer/pages/team/hooks/TeamPermissionContext';
 import type { TeamSendBoxRuntime } from '@/renderer/pages/team/components/teamSendRuntime';
 import { allSupportedExts } from '@/renderer/services/FileService';
@@ -152,9 +153,16 @@ const AcpSendBox: React.FC<{
   });
   const runtimeMode = runtimeConfig.mode;
   const runtimeThoughtLevel = runtimeConfig.thoughtLevel;
+  const assistantId = conversationContext?.assistantId;
   const handleThoughtLevelSetOption = useCallback(
-    async (optionId: string, value: string) => runtimeConfig.setConfigOption(optionId, value),
-    [runtimeConfig]
+    async (optionId: string, value: string) => {
+      const result = await runtimeConfig.setConfigOption(optionId, value);
+      if (backend && !assistantId) {
+        void savePreferredThoughtLevel(backend, value);
+      }
+      return result;
+    },
+    [assistantId, backend, runtimeConfig]
   );
 
   // Drive the mobile sheet's model entry off the same source AcpModelSelector uses
@@ -695,6 +703,14 @@ Please check your local CLI tool authentication status`,
         }
         rightTools={
           <div className='flex items-center gap-8px min-w-0'>
+            {!isMobile && (
+              <AcpThoughtLevelSelector
+                thoughtLevel={runtimeThoughtLevel}
+                setStatus={runtimeConfig.setStatus}
+                onSetOption={handleThoughtLevelSetOption}
+                iconOnly={Boolean(teamPermission)}
+              />
+            )}
             {showModeSelector && (
               <AgentModeSelector
                 backend={backend}

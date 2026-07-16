@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -52,6 +52,20 @@ vi.mock('@renderer/hooks/file/useDirectorySelection', () => ({
 vi.mock('@renderer/utils/ui/siderTooltip', () => ({ cleanupSiderTooltips: () => {} }));
 vi.mock('@renderer/hooks/ui/useConversationShortcuts', () => ({ useConversationShortcuts: () => {} }));
 vi.mock('@renderer/utils/platform', () => ({ isElectronDesktop: platformMocks.isElectronDesktopMock }));
+// Layout calls useNewApiAccount(); stub the context so no NewApiAccountProvider is required.
+vi.mock('@renderer/hooks/context/NewApiAccountContext', () => ({
+  NewApiAccountProvider: ({ children }: { children?: React.ReactNode }) => children,
+  useNewApiAccount: () => ({
+    ready: true,
+    status: { loggedIn: false, baseUrl: 'https://api.mxou.cn', models: [], updatedAt: 0 },
+    isLoggedIn: false,
+    prepStatus: { inProgress: false, completed: false, stage: 'idle', completedTargets: [], percent: 0 },
+    login: () => Promise.resolve({ success: true }),
+    logout: () => Promise.resolve(),
+    refresh: () => Promise.resolve(),
+    retryPrep: () => Promise.resolve(),
+  }),
+}));
 
 import Layout from '@renderer/components/layout/Layout';
 
@@ -140,7 +154,7 @@ describe('Layout sider brand Home button', () => {
 
     // No actionable role/label in chat routes.
     expect(screen.queryByLabelText(BACK_KEY)).toBeNull();
-    const wordmark = screen.getByText('AionUi');
+    const wordmark = screen.getByText('POUNDING');
     fireEvent.click(wordmark);
     expect(navigate).not.toHaveBeenCalled();
   });
@@ -149,7 +163,7 @@ describe('Layout sider brand Home button', () => {
     currentPathname = '/conversation/xyz';
     renderLayout();
 
-    fireEvent.click(screen.getByText('AionUi'));
+    fireEvent.click(screen.getByText('POUNDING'));
     expect(navigate).not.toHaveBeenCalled();
   });
 
@@ -158,8 +172,8 @@ describe('Layout sider brand Home button', () => {
     sessionStorage.setItem('aion:last-non-settings-path', '/conversation/abc');
     const { container } = renderLayout();
 
-    // The icon is the SVG-wrapping div (bg-black), separate from the wordmark.
-    const icon = container.querySelector('.bg-black') as HTMLElement;
+    // The icon is the logo-wrapping div (sider-brand-logo), separate from the wordmark.
+    const icon = container.querySelector('[data-testid="sider-brand-logo"]') as HTMLElement;
     expect(icon).toBeTruthy();
     for (let i = 0; i < 4; i++) fireEvent.click(icon);
     expect(openDevTools).toHaveBeenCalled();

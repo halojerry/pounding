@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  *
  * Node-environment tests for feedbackBridge's IPC handlers.
@@ -200,7 +200,7 @@ describe('feedback logs', () => {
       mkdirSync(previousDir, { recursive: true });
       mkdirSync(oldDir, { recursive: true });
       writeFileSync(path.join(recentDir, '2026-07-02.log'), 'today frontend nested\n');
-      writeFileSync(path.join(recentDir, '2026-07-02.aioncore.log'), 'today backend nested\n');
+      writeFileSync(path.join(recentDir, '2026-07-02.poundingcore.log'), 'today backend nested\n');
       writeFileSync(path.join(previousDir, '2026-07-01.aionrs.log'), 'yesterday rust nested\n');
       writeFileSync(path.join(oldDir, '2026-06-30.log'), 'third day frontend nested\n');
       writeFileSync(path.join(logsDir, '2026-06-29.log'), 'too old flat\n');
@@ -214,7 +214,7 @@ describe('feedback logs', () => {
       expect(content).toContain('yesterday rust nested');
       expect(content).toContain('third day frontend nested');
       expect(content).not.toContain('too old flat');
-      expect(content).toContain('2026/07/02/2026-07-02.aioncore.log');
+      expect(content).toContain('2026/07/02/2026-07-02.poundingcore.log');
     } finally {
       rmSync(logsDir, { recursive: true, force: true });
     }

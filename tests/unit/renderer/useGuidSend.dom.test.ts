@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -118,6 +118,7 @@ describe('useGuidSend', () => {
     deps.guidEnabledSkills = undefined;
     deps.guidDisabledBuiltinSkills = undefined;
     deps.selectedMcpServerIds = undefined;
+    deps.assistantDefaultDisabledBuiltinSkillIds = ['skill-b'];
 
     const { result } = renderHook(() => useGuidSend(deps));
 

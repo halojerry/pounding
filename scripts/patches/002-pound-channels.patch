@@ -1,0 +1,2083 @@
+diff --git a/packages/desktop/src/common/config/sentry.ts b/packages/desktop/src/common/config/sentry.ts
+new file mode 100644
+index 000000000..b558534a7
+--- /dev/null
++++ b/packages/desktop/src/common/config/sentry.ts
+@@ -0,0 +1,41 @@
++/**
++ * @license
++ * Copyright 2025 POUNDING (aionui.com)
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++const trimEnv = (value: string | undefined): string | undefined => {
++  const normalized = value?.trim();
++  return normalized ? normalized : undefined;
++};
++
++export type DesktopSentryConfig = {
++  enabled: boolean;
++  dsn?: string;
++  release?: string;
++  environment?: string;
++  serverName?: string;
++  brand: string;
++};
++
++// POUNDING Sentry DSN — set via environment variable or CI secret.
++// Get the DSN from https://sentry.io -> Settings -> Projects -> pound
++const POUNDING_SENTRY_DSN =
++  'https://50b2642878dae7371cff3a85e61a3a13@o4511410803441664.ingest.us.sentry.io/4511410809274368'; // POUNDING project DSN (halo-fx org)
++
++export function resolveDesktopSentryConfig(env: Record<string, string | undefined>): DesktopSentryConfig {
++  const dsn = trimEnv(env.POUNDING_SENTRY_DSN) || trimEnv(env.SENTRY_DSN) || trimEnv(POUNDING_SENTRY_DSN);
++  const release = trimEnv(env.POUNDING_SENTRY_RELEASE) || trimEnv(env.APP_VERSION);
++  const environment = trimEnv(env.POUNDING_SENTRY_ENVIRONMENT) || trimEnv(env.NODE_ENV) || 'production';
++  const serverName = trimEnv(env.POUNDING_SENTRY_SERVER_NAME) || trimEnv(env.npm_package_name);
++  const brand = trimEnv(env.POUNDING_BRAND_NAME) || 'POUNDING';
++
++  return {
++    enabled: Boolean(dsn),
++    dsn,
++    release,
++    environment,
++    serverName,
++    brand,
++  };
++}
+diff --git a/packages/desktop/src/common/types/dealerConfig.ts b/packages/desktop/src/common/types/dealerConfig.ts
+new file mode 100644
+index 000000000..8d77f4ade
+--- /dev/null
++++ b/packages/desktop/src/common/types/dealerConfig.ts
+@@ -0,0 +1,4 @@
++export type DealerConfig = {
++  aff: string;
++  [key: string]: unknown;
++};
+diff --git a/packages/desktop/src/process/bridge/applicationBridge.ts b/packages/desktop/src/process/bridge/applicationBridge.ts
+index 57d2673de..0383609a2 100644
+--- a/packages/desktop/src/process/bridge/applicationBridge.ts
++++ b/packages/desktop/src/process/bridge/applicationBridge.ts
+@@ -1,11 +1,13 @@
+ /**
+  * @license
+- * Copyright 2025 AionUi (aionui.com)
++ * Copyright 2025 POUNDING (aionui.com)
+  * SPDX-License-Identifier: Apache-2.0
+  */
+ 
+ import type { BrowserWindow } from 'electron';
+ import { app } from 'electron';
++import fs from 'node:fs';
++import path from 'node:path';
+ import { ipcBridge } from '@/common';
+ import { ProcessConfig } from '@process/utils/initStorage';
+ import { getZoomFactor, setZoomFactor } from '@process/utils/zoom';
+@@ -226,4 +228,53 @@ export function initApplicationBridge(): void {
+       return { success: false, msg: e.message || e.toString() };
+     }
+   });
++
++  // Dealer config for portable/USB distribution mode.
++  // Reads dealer-config.json next to the executable (same dir as PORTABLE marker).
++  ipcBridge.application.getDealerConfig.provider(async () => {
++    try {
++      // Build candidate paths: dev mode uses project root, packaged uses exe dir
++      const candidatePaths: string[] = [];
++      if (!app.isPackaged) {
++        // Dev mode: look in project root (where developer runs `bun run dev`)
++        candidatePaths.push(path.join(process.cwd(), 'dealer-config.json'));
++      }
++      // Packaged mode: match configureChromium.ts path calculation
++      let exeDir = path.dirname(app.getPath('exe'));
++      if (process.platform === 'darwin' && exeDir.endsWith('Contents/MacOS')) {
++        exeDir = path.dirname(path.dirname(path.dirname(exeDir)));
++      }
++      candidatePaths.push(path.join(exeDir, 'dealer-config.json'));
++
++      let configPath = '';
++      for (const p of candidatePaths) {
++        if (fs.existsSync(p)) {
++          configPath = p;
++          break;
++        }
++      }
++
++      console.log('[DealerConfig] Candidate paths:', candidatePaths);
++      console.log('[DealerConfig] Using config path:', configPath || '(not found)');
++
++      if (!configPath) {
++        console.log('[DealerConfig] No dealer-config.json found in any location');
++        return { success: true };
++      }
++
++      const raw = fs.readFileSync(configPath, 'utf-8');
++      console.log('[DealerConfig] File content:', raw);
++      const config = JSON.parse(raw);
++      console.log('[DealerConfig] Parsed config:', config);
++      if (config && typeof config.aff === 'string' && config.aff.trim()) {
++        console.log('[DealerConfig] Found aff code:', config.aff.trim());
++        return { success: true, data: { aff: config.aff.trim() } };
++      }
++      console.log('[DealerConfig] No valid aff code found');
++      return { success: true };
++    } catch (e) {
++      console.error('[DealerConfig] Error:', e);
++      return { success: false, msg: e.message || String(e) };
++    }
++  });
+ }
+diff --git a/packages/desktop/src/process/bridge/updateBridge.ts b/packages/desktop/src/process/bridge/updateBridge.ts
+index 9e69d69c3..38eff109e 100644
+--- a/packages/desktop/src/process/bridge/updateBridge.ts
++++ b/packages/desktop/src/process/bridge/updateBridge.ts
+@@ -1,6 +1,6 @@
+ /**
+  * @license
+- * Copyright 2025 AionUi (aionui.com)
++ * Copyright 2025 POUNDING (aionui.com)
+  * SPDX-License-Identifier: Apache-2.0
+  */
+ 
+@@ -59,10 +59,10 @@ interface AutoUpdateCheckParams {
+   includePrerelease?: boolean;
+ }
+ 
+-const DEFAULT_REPO = 'iOfficeAI/AionUi';
+-const DEFAULT_USER_AGENT = 'AionUi';
++const DEFAULT_REPO = 'halojerry/pounding';
++const DEFAULT_USER_AGENT = 'POUNDING';
+ const ALLOWED_ASSET_EXTS = new Set(['.exe', '.msi', '.dmg', '.zip', '.deb', '.rpm']);
+-const CDN_HOST = 'static.aionui.com';
++const CDN_HOST = 'github.com/halojerry/pounding/releases/download';
+ const CDN_BASE_URL = `https://${CDN_HOST}/releases`;
+ const ALLOWED_DOWNLOAD_HOSTS = new Set<string>([
+   CDN_HOST,
+@@ -198,7 +198,7 @@ export const pickRecommendedAsset = (
+ };
+ 
+ const resolveRepo = (requestRepo?: string): string => {
+-  const envRepo = process.env.AIONUI_GITHUB_REPO?.trim();
++  const envRepo = process.env.POUNDING_GITHUB_REPO?.trim();
+   const repo = (requestRepo || envRepo || DEFAULT_REPO).trim();
+   return repo || DEFAULT_REPO;
+ };
+@@ -325,7 +325,7 @@ const sanitizeFileName = (name: string): string => {
+   // Keep only base name and trim weird whitespace.
+   const base = path.basename(name).trim();
+   // Avoid empty names.
+-  return base || `AionUi-update-${Date.now()}`;
++  return base || `POUNDING-update-${Date.now()}`;
+ };
+ 
+ const ensureUniquePath = (target: string): string => {
+diff --git a/packages/desktop/src/process/services/autoUpdateDiagnostics.ts b/packages/desktop/src/process/services/autoUpdateDiagnostics.ts
+index 11887beef..f6e034624 100644
+--- a/packages/desktop/src/process/services/autoUpdateDiagnostics.ts
++++ b/packages/desktop/src/process/services/autoUpdateDiagnostics.ts
+@@ -1,6 +1,6 @@
+ /**
+  * @license
+- * Copyright 2025 AionUi (aionui.com)
++ * Copyright 2025 POUNDING (aionui.com)
+  * SPDX-License-Identifier: Apache-2.0
+  */
+ 
+diff --git a/packages/desktop/src/process/services/autoUpdaterService.ts b/packages/desktop/src/process/services/autoUpdaterService.ts
+index 6af8f7e90..75581397d 100644
+--- a/packages/desktop/src/process/services/autoUpdaterService.ts
++++ b/packages/desktop/src/process/services/autoUpdaterService.ts
+@@ -1,6 +1,6 @@
+ /**
+  * @license
+- * Copyright 2025 AionUi (aionui.com)
++ * Copyright 2025 POUNDING (aionui.com)
+  * SPDX-License-Identifier: Apache-2.0
+  */
+ 
+@@ -26,8 +26,8 @@ import {
+ } from './autoUpdateDiagnostics';
+ import { buildCdnFeedOptions } from './updateFeed';
+ 
+-const FORCE_DEV_AUTO_UPDATE_ENV = 'AIONUI_FORCE_DEV_AUTO_UPDATE';
+-const DEBUG_AUTO_UPDATE_CURRENT_VERSION_ENV = 'AIONUI_DEBUG_AUTO_UPDATE_CURRENT_VERSION';
++const FORCE_DEV_AUTO_UPDATE_ENV = 'POUNDING_FORCE_DEV_AUTO_UPDATE';
++const DEBUG_AUTO_UPDATE_CURRENT_VERSION_ENV = 'POUNDING_DEBUG_AUTO_UPDATE_CURRENT_VERSION';
+ const MAC_NATIVE_INSTALL_READY_TIMEOUT_MS = 60_000;
+ 
+ /**
+@@ -198,7 +198,7 @@ class AutoUpdaterService extends EventEmitter {
+       const devConfig = [
+         'provider: generic',
+         `url: ${cdnFeedOptions.url}`,
+-        'updaterCacheDirName: com.aionui.app',
++        'updaterCacheDirName: com.pounding.app',
+         '',
+       ].join('\n');
+       const configPath = path.join(app.getPath('userData'), 'dev-app-update.yml');
+@@ -458,7 +458,7 @@ class AutoUpdaterService extends EventEmitter {
+ 
+   /**
+    * In dev mode the running shell is the stock Electron bundle (com.github.Electron),
+-   * while the downloaded archive contains the packaged app (com.aionui.app). Squirrel.Mac
++   * while the downloaded archive contains the packaged app (com.pounding.app). Squirrel.Mac
+    * looks for a bundle matching the *running* id, fails to find it, and reports
+    * "Could not locate update bundle". This is expected in dev and cannot be reproduced
+    * without a packaged build, so surface a clearer message instead of the raw error.
+diff --git a/packages/desktop/src/process/services/cdnGenericProvider.ts b/packages/desktop/src/process/services/cdnGenericProvider.ts
+index 4c9b7cb44..ed13f54a5 100644
+--- a/packages/desktop/src/process/services/cdnGenericProvider.ts
++++ b/packages/desktop/src/process/services/cdnGenericProvider.ts
+@@ -1,6 +1,6 @@
+ /**
+  * @license
+- * Copyright 2025 AionUi (aionui.com)
++ * Copyright 2025 POUNDING (aionui.com)
+  * SPDX-License-Identifier: Apache-2.0
+  */
+ 
+diff --git a/packages/desktop/src/process/services/portableUpdater.ts b/packages/desktop/src/process/services/portableUpdater.ts
+new file mode 100644
+index 000000000..9cfb3b65c
+--- /dev/null
++++ b/packages/desktop/src/process/services/portableUpdater.ts
+@@ -0,0 +1,174 @@
++/**
++ * Portable (zip-based) auto-updater for USB/dealer deployments.
++ *
++ * Downloads the new zip from COS, extracts in-place while preserving
++ * user data (data/ directory and dealer-config.json), then restarts.
++ */
++
++import { app } from 'electron';
++import { execFile, execFileSync } from 'node:child_process';
++import fs from 'node:fs';
++import os from 'node:os';
++import path from 'node:path';
++import { createWriteStream } from 'node:fs';
++
++const COS_BASE = 'https://yss-1256275613.cos.ap-guangzhou.myqcloud.com';
++const COS_LATEST_YML = `${COS_BASE}/pounding/releases/latest/latest.yml`;
++
++export interface PortableUpdateInfo {
++  version: string;
++  zipUrl: string;
++}
++
++function getExeDir(): string {
++  let exeDir = path.dirname(app.getPath('exe'));
++  if (process.platform === 'darwin' && exeDir.endsWith('Contents/MacOS')) {
++    exeDir = path.dirname(path.dirname(path.dirname(exeDir)));
++  }
++  return exeDir;
++}
++
++export function isPortable(): boolean {
++  try {
++    return fs.existsSync(path.join(getExeDir(), 'PORTABLE'));
++  } catch {
++    return false;
++  }
++}
++
++/** Fetch the latest version info from COS latest.yml. */
++export async function fetchPortableUpdate(): Promise<PortableUpdateInfo | null> {
++  try {
++    const resp = await fetch(COS_LATEST_YML, {
++      headers: { 'Cache-Control': 'no-cache' },
++    });
++    if (!resp.ok) return null;
++    const yml = await resp.text();
++
++    const versionMatch = yml.match(/^version:\s*(.+)$/m);
++    const pathMatch = yml.match(/^path:\s*(.+)$/m);
++    if (!versionMatch || !pathMatch) return null;
++
++    const version = versionMatch[1].trim();
++    const zipFileName = pathMatch[1].trim();
++    const zipUrl = `${COS_BASE}/pounding/releases/download/v${version}/${zipFileName}`;
++
++    if (version === app.getVersion()) return null;
++
++    return { version, zipUrl };
++  } catch {
++    return null;
++  }
++}
++
++/** Download file with progress. */
++async function downloadFile(url: string, dest: string, onProgress?: (pct: number) => void): Promise<void> {
++  const resp = await fetch(url);
++  if (!resp.ok) throw new Error(`Download failed: HTTP ${resp.status}`);
++  const total = parseInt(resp.headers.get('content-length') || '0', 10);
++  const reader = resp.body?.getReader();
++  if (!reader) throw new Error('No response body');
++
++  const file = createWriteStream(dest);
++  let downloaded = 0;
++
++  try {
++    while (true) {
++      const { done, value } = await reader.read();
++      if (done) break;
++      downloaded += value.length;
++      file.write(value);
++      if (total > 0 && onProgress) onProgress(Math.round((downloaded / total) * 100));
++    }
++  } finally {
++    file.end();
++    reader.releaseLock();
++  }
++}
++
++/** Extract zip using system unzip (macOS/Linux) or PowerShell (Windows). */
++function extractZip(zipPath: string, destDir: string): void {
++  fs.mkdirSync(destDir, { recursive: true });
++  if (process.platform === 'win32') {
++    execFileSync('powershell', [
++      '-NoProfile',
++      '-Command',
++      `Expand-Archive -Path '${zipPath}' -DestinationPath '${destDir}' -Force`,
++    ]);
++  } else {
++    execFileSync('unzip', ['-qo', zipPath, '-d', destDir]);
++  }
++}
++
++/** Recursive directory copy, skipping protected files. */
++function copyDirOverwrite(src: string, dest: string, skipNames: Set<string> = new Set()): void {
++  fs.mkdirSync(dest, { recursive: true });
++  for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
++    if (skipNames.has(entry.name)) continue;
++    const s = path.join(src, entry.name);
++    const d = path.join(dest, entry.name);
++    if (entry.isDirectory()) {
++      copyDirOverwrite(s, d, skipNames);
++    } else {
++      fs.copyFileSync(s, d);
++    }
++  }
++}
++
++/**
++ * Perform the portable update.
++ */
++export async function performPortableUpdate(
++  updateInfo: PortableUpdateInfo,
++  onProgress?: (pct: number) => void
++): Promise<void> {
++  const exeDir = getExeDir();
++  const tmpDir = path.join(os.tmpdir(), `pounding-update-${Date.now()}`);
++  const zipPath = path.join(tmpDir, 'update.zip');
++  const extractDir = path.join(tmpDir, 'extracted');
++
++  fs.mkdirSync(tmpDir, { recursive: true });
++
++  onProgress?.(10);
++  await downloadFile(updateInfo.zipUrl, zipPath);
++
++  onProgress?.(50);
++  extractZip(zipPath, extractDir);
++
++  onProgress?.(80);
++  const skipNames = new Set(['data', 'dealer-config.json', 'PORTABLE', 'data-location']);
++
++  // Zip usually has one top-level dir (e.g. POUNDING-2.1.5-mac-arm64/)
++  const entries = fs.readdirSync(extractDir);
++  const appDir =
++    entries.length === 1 && fs.statSync(path.join(extractDir, entries[0])).isDirectory()
++      ? path.join(extractDir, entries[0])
++      : extractDir;
++
++  copyDirOverwrite(appDir, exeDir, skipNames);
++
++  // Restart
++  if (process.platform === 'win32') {
++    const bat = path.join(exeDir, '_update_restart.bat');
++    fs.writeFileSync(
++      bat,
++      `@echo off\r\n` +
++        `timeout /t 2 /nobreak >nul\r\n` +
++        `rmdir /s /q "${tmpDir}"\r\n` +
++        `start "" "${path.join(exeDir, app.getName() + '.exe')}"\r\n` +
++        `del "%~f0"\r\n`
++    );
++    execFile('cmd', ['/c', bat], { detached: true, cwd: exeDir } as any);
++  } else {
++    const script = path.join(tmpDir, 'restart.sh');
++    fs.writeFileSync(
++      script,
++      `#!/bin/bash\nsleep 1\nrm -rf "${tmpDir}"\n"${exeDir}/${app.getName()}.app/Contents/MacOS/${app.getName()}" &\n`,
++      { mode: 0o755 }
++    );
++    execFile('/bin/bash', [script], { detached: true } as any);
++  }
++
++  onProgress?.(100);
++  app.quit();
++}
+diff --git a/packages/desktop/src/process/services/updateFeed.ts b/packages/desktop/src/process/services/updateFeed.ts
+index 40a157cfc..77df449e1 100644
+--- a/packages/desktop/src/process/services/updateFeed.ts
++++ b/packages/desktop/src/process/services/updateFeed.ts
+@@ -1,6 +1,6 @@
+ /**
+  * @license
+- * Copyright 2025 AionUi (aionui.com)
++ * Copyright 2025 POUNDING (aionui.com)
+  * SPDX-License-Identifier: Apache-2.0
+  */
+ 
+diff --git a/packages/desktop/src/process/utils/configureChromium.ts b/packages/desktop/src/process/utils/configureChromium.ts
+index c58cf02fb..8fdb70cb1 100644
+--- a/packages/desktop/src/process/utils/configureChromium.ts
++++ b/packages/desktop/src/process/utils/configureChromium.ts
+@@ -1,10 +1,10 @@
+ /**
+  * @license
+- * Copyright 2025 AionUi (aionui.com)
++ * Copyright 2025 POUNDING (aionui.com)
+  * SPDX-License-Identifier: Apache-2.0
+  */
+ 
+-import { app } from 'electron';
++import { app, dialog } from 'electron';
+ import http from 'http';
+ import * as fs from 'fs';
+ import * as path from 'path';
+@@ -12,32 +12,115 @@ import os from 'os';
+ import { getDevAppName } from '@/common/platform';
+ import { applyGpuRecoveryFlags } from './gpuRecovery';
+ 
+-// ============ E2E test isolation ============
+-// When running under E2E with an explicit sandbox dir, redirect userData there
+-// BEFORE any getPath() call so the whole data tree (config, aioncore DB, logs)
+-// lives in a disposable directory. This keeps tests off the developer's real
+-// database — critical because AionCore refuses to boot when a shared DB fails
+-// migration. Guarded by AIONUI_E2E_TEST so it never affects dev/production.
+-// 仅 E2E：把 userData 指向一次性沙箱目录，避免测试读写真实数据库。
+-const e2eUserDataDir = process.env.AIONUI_E2E_TEST === '1' ? process.env.AIONUI_E2E_USER_DATA_DIR : undefined;
+-if (e2eUserDataDir && e2eUserDataDir.trim() !== '') {
+-  fs.mkdirSync(e2eUserDataDir, { recursive: true });
+-  app.setPath('userData', e2eUserDataDir);
+-}
+-
+ // ============ Environment Separation ============
+ // Set app name before any getPath() call so userData is isolated from production.
+-// Note: getPlatformServices() auto-registration also applies this as a safety net
+-// in case Rollup loads initStorage's chunk before this module runs.
+-// 开发模式下设置独立 app 名称，userData 目录将与正式版隔离，允许同时运行
+-// E2E 沙箱已显式设置 userData 时跳过，避免被 dev app 名覆盖。
+-if (!app.isPackaged && !e2eUserDataDir) {
++
++// Portable mode: detected via PORTABLE marker file next to the executable.
++// On first launch the user chooses where to store data:
++//   - USB  drive → ./data/   (portable, takes data anywhere)
++//   - This computer → system default AppData
++// Choice is persisted in data-location next to PORTABLE.
++export let portableChoicePending: { exeDir: string; choiceFile: string } | null = null;
++
++if (!app.isPackaged) {
+   const devAppName = getDevAppName();
+   app.setName(devAppName);
+-  // In Electron 28+, setName alone no longer updates userData path on macOS.
+-  // Explicitly override userData to the dev directory.
+   const appSupportDir = path.dirname(app.getPath('userData'));
+   app.setPath('userData', path.join(appSupportDir, devAppName));
++} else {
++  let exeDir = path.dirname(app.getPath('exe'));
++  if (process.platform === 'darwin' && exeDir.endsWith('Contents/MacOS')) {
++    exeDir = path.dirname(path.dirname(path.dirname(exeDir)));
++  }
++  const portableMarker = path.join(exeDir, 'PORTABLE');
++  if (fs.existsSync(portableMarker)) {
++    const choiceFile = path.join(exeDir, 'data-location');
++    const useUSB = (() => {
++      if (fs.existsSync(choiceFile)) {
++        try {
++          const choice = JSON.parse(fs.readFileSync(choiceFile, 'utf-8'));
++          return choice.location !== 'computer';
++        } catch {
++          /* corrupt → ask again */
++        }
++      }
++      // No choice yet → default to USB, ask on first launch
++      return true;
++    })();
++
++    if (useUSB) {
++      const portableDataDir = path.join(exeDir, 'data');
++      if (!fs.existsSync(portableDataDir)) {
++        fs.mkdirSync(portableDataDir, { recursive: true });
++      }
++      const portableLogsDir = path.join(portableDataDir, 'logs');
++      if (!fs.existsSync(portableLogsDir)) {
++        fs.mkdirSync(portableLogsDir, { recursive: true });
++      }
++      app.setPath('userData', portableDataDir);
++      app.setPath('logs', portableLogsDir);
++    }
++
++    // Defer storage choice dialog until app is ready
++    if (!fs.existsSync(choiceFile)) {
++      portableChoicePending = { exeDir, choiceFile };
++    }
++  }
++}
++
++/**
++ * Whether this is the first time the app has been launched in this data directory.
++ * Used to trigger the CLI auto-installation on first login instead of waiting for
++ * manual intervention.
++ */
++export function isFirstRun(): boolean {
++  try {
++    const userData = app.getPath('userData');
++    const marker = path.join(userData, '.first-run-done');
++    return !fs.existsSync(marker);
++  } catch {
++    return false;
++  }
++}
++
++export function markFirstRunDone(): void {
++  try {
++    const userData = app.getPath('userData');
++    const marker = path.join(userData, '.first-run-done');
++    fs.writeFileSync(marker, new Date().toISOString(), 'utf8');
++  } catch {
++    /* best-effort */
++  }
++}
++
++export async function showPortableStorageChoice(): Promise<void> {
++  if (!portableChoicePending) return;
++  const { exeDir, choiceFile } = portableChoicePending;
++  portableChoicePending = null;
++
++  const zh = app.getLocale().startsWith('zh');
++
++  const { response } = await dialog.showMessageBox({
++    type: 'question',
++    title: 'POUNDING',
++    message: zh ? '请选择数据存储位置' : 'Where would you like to store your data?',
++    detail: zh ? '包含聊天记录、设置、缓存等' : 'Includes chat history, settings, and cache.',
++    buttons: zh ? ['这台电脑', 'U盘'] : ['This Computer', 'USB Drive'],
++    defaultId: 1,
++    cancelId: 0,
++  });
++
++  const choice = response === 1 ? 'usb' : 'computer';
++  fs.writeFileSync(choiceFile, JSON.stringify({ location: choice }), 'utf-8');
++
++  if (choice === 'computer') {
++    dialog.showMessageBox({
++      type: 'info',
++      title: 'POUNDING',
++      message: zh ? '下次启动生效' : 'The change will take effect on the next launch.',
++      buttons: ['OK'],
++    });
++  }
+ }
+ 
+ // app.disableHardwareAcceleration() must run before app is ready.
+@@ -65,6 +148,11 @@ if (isWebUI || isResetPassword) {
+     app.commandLine.appendSwitch('disable-software-rasterizer');
+   }
+ 
++  // macOS: disable GPU sandbox to prevent GPU process from being killed (SIGTERM)
++  if (process.platform === 'darwin') {
++    app.commandLine.appendSwitch('disable-gpu-sandbox');
++  }
++
+   // For root user, disable sandbox to prevent crash
+   // 对于 root 用户，禁用沙箱以防止崩溃
+   if (typeof process.getuid === 'function' && process.getuid() === 0) {
+@@ -85,13 +173,13 @@ if (isWebUI || isResetPassword) {
+ //
+ // Multi-instance support: a file-based registry tracks all active instances
+ // so each one gets a unique port and MCP tools can discover them all.
+-// Registry file: ~/.aionui-cdp-registry.json
++// Registry file: ~/.pounding-cdp-registry.json
+ // ---------------------------------------------------------------------------
+ 
+ export const DEFAULT_CDP_PORT = 9230;
+ export const CDP_PORT_RANGE_START = 9230;
+ export const CDP_PORT_RANGE_END = 9250;
+-const CDP_REGISTRY_FILE = path.join(os.homedir(), '.aionui-cdp-registry.json');
++const CDP_REGISTRY_FILE = path.join(os.homedir(), '.pounding-cdp-registry.json');
+ const CDP_CONFIG_FILE = 'cdp.config.json';
+ 
+ /** CDP configuration stored in userData directory */
+@@ -178,7 +266,7 @@ function findAvailablePort(preferredPort: number): number {
+   }
+ 
+   console.log(
+-    `[CDP] Port ${preferredPort} is occupied by another AionUi instance, scanning range ${CDP_PORT_RANGE_START}-${CDP_PORT_RANGE_END}`
++    `[CDP] Port ${preferredPort} is occupied by another POUNDING instance, scanning range ${CDP_PORT_RANGE_START}-${CDP_PORT_RANGE_END}`
+   );
+ 
+   for (let p = CDP_PORT_RANGE_START; p <= CDP_PORT_RANGE_END; p++) {
+@@ -189,7 +277,7 @@ function findAvailablePort(preferredPort: number): number {
+   }
+ 
+   console.warn(
+-    `[CDP] All ports in range ${CDP_PORT_RANGE_START}-${CDP_PORT_RANGE_END} are used by active AionUi instances, trying ${preferredPort}`
++    `[CDP] All ports in range ${CDP_PORT_RANGE_START}-${CDP_PORT_RANGE_END} are used by active POUNDING instances, trying ${preferredPort}`
+   );
+   return preferredPort;
+ }
+@@ -262,7 +350,7 @@ export function saveCdpConfig(config: CdpConfig): void {
+  * Returns null if explicitly disabled via env.
+  */
+ function resolveCdpPortFromEnv(): number | null | undefined {
+-  const envVal = process.env.AIONUI_CDP_PORT;
++  const envVal = process.env.POUNDING_CDP_PORT;
+   if (envVal === '0' || envVal === 'false') return null;
+   if (envVal) {
+     const parsed = Number(envVal);
+@@ -276,7 +364,7 @@ function resolveCdpPortFromEnv(): number | null | undefined {
+  * Priority: env variable > config file > default (dev mode: true, production: false)
+  */
+ function shouldEnableCdp(config: CdpConfig): boolean {
+-  const envVal = process.env.AIONUI_CDP_PORT;
++  const envVal = process.env.POUNDING_CDP_PORT;
+   if (envVal === '0' || envVal === 'false') return false;
+   if (envVal) return true;
+ 
+diff --git a/packages/desktop/src/renderer/components/layout/Sider/index.tsx b/packages/desktop/src/renderer/components/layout/Sider/index.tsx
+index eb14d348e..a0322c9a6 100644
+--- a/packages/desktop/src/renderer/components/layout/Sider/index.tsx
++++ b/packages/desktop/src/renderer/components/layout/Sider/index.tsx
+@@ -6,7 +6,11 @@ import { cleanupSiderTooltips, getSiderTooltipProps } from '@renderer/utils/ui/s
+ import { useAuth } from '@renderer/hooks/context/AuthContext';
+ import { useLayoutContext } from '@renderer/hooks/context/LayoutContext';
+ import { blurActiveElement } from '@renderer/utils/ui/focus';
++import { isElectronDesktop, openExternalUrl } from '@renderer/utils/platform';
+ import { useThemeContext } from '@renderer/hooks/context/ThemeContext';
++import { useNewApiAccount } from '@renderer/hooks/context/NewApiAccountContext';
++import { useAllCronJobs } from '@renderer/pages/cron/useCronJobs';
++import { useTeamCreatedRedirect } from '@renderer/pages/team/hooks/useTeamCreatedRedirect';
+ import { SiderToolbar, SiderSearchEntry, SiderScheduledEntry, SiderAssistantEntry } from './SiderNav';
+ import SiderFooter from './SiderFooter';
+ import TeamSiderSection from './TeamSiderSection';
+@@ -30,6 +34,7 @@ const Sider: React.FC<SiderProps> = ({ onSessionClick, collapsed = false }) => {
+   const { closePreview } = usePreviewContext();
+   const { logout, status } = useAuth();
+   const { theme, setTheme } = useThemeContext();
++  const { status: newApiStatus, isLoggedIn: isNewApiLoggedIn, logout: logoutNewApi, refresh } = useNewApiAccount();
+   const [isBatchMode, setIsBatchMode] = useState(false);
+   const isSettings = pathname.startsWith('/settings');
+   const lastNonSettingsPathRef = useRef('/guid');
+@@ -125,6 +130,20 @@ const Sider: React.FC<SiderProps> = ({ onSessionClick, collapsed = false }) => {
+     }
+   }, [closePreview, logout, onSessionClick]);
+ 
++  const handleDesktopNewApiLogout = useCallback(async () => {
++    cleanupSiderTooltips();
++    blurActiveElement();
++    closePreview();
++    await logoutNewApi();
++    if (onSessionClick) {
++      onSessionClick();
++    }
++  }, [closePreview, logoutNewApi, onSessionClick]);
++
++  const handleHelpCenterClick = useCallback(() => {
++    void openExternalUrl('https://wcnb2ddshm1z.feishu.cn/wiki/Zsr9wqyHHi3e5IkQYtwcQu6Knab');
++  }, []);
++
+   useEffect(() => {
+     if (!showLogout) return;
+ 
+@@ -236,6 +255,12 @@ const Sider: React.FC<SiderProps> = ({ onSessionClick, collapsed = false }) => {
+         onThemeToggle={handleQuickThemeToggle}
+         showLogout={showLogout}
+         onLogoutClick={handleLogout}
++        showDesktopAccount={isElectronDesktop()}
++        desktopAccountLoggedIn={isNewApiLoggedIn}
++        desktopAccountStatus={newApiStatus}
++        onDesktopHelpCenterClick={handleHelpCenterClick}
++        onDesktopLogoutClick={handleDesktopNewApiLogout}
++        onAccountPanelOpen={refresh}
+       />
+     </div>
+   );
+diff --git a/packages/desktop/src/renderer/components/settings/SettingsModal/contents/AboutModalContent.tsx b/packages/desktop/src/renderer/components/settings/SettingsModal/contents/AboutModalContent.tsx
+index a4f4619bf..9f1200bce 100644
+--- a/packages/desktop/src/renderer/components/settings/SettingsModal/contents/AboutModalContent.tsx
++++ b/packages/desktop/src/renderer/components/settings/SettingsModal/contents/AboutModalContent.tsx
+@@ -1,6 +1,6 @@
+ /**
+  * @license
+- * Copyright 2025 AionUi (aionui.com)
++ * Copyright 2025 POUNDING (aionui.com)
+  * SPDX-License-Identifier: Apache-2.0
+  */
+ 
+@@ -10,6 +10,8 @@ import React, { useEffect, useState } from 'react';
+ import { useTranslation } from 'react-i18next';
+ import classNames from 'classnames';
+ import { useSettingsViewMode } from '../settingsViewContext';
++import { useFeedback } from '@renderer/hooks/context/FeedbackContext';
++import PoundingInteractiveLogo from '@renderer/components/layout/PoundingInteractiveLogo';
+ import { isElectronDesktop, openExternalUrl } from '@/renderer/utils/platform';
+ import FeedbackReportModal from './FeedbackReportModal';
+ import { ipcBridge } from '@/common';
+@@ -37,6 +39,7 @@ const AboutModalContent: React.FC = () => {
+   const viewMode = useSettingsViewMode();
+   const isPageMode = viewMode === 'page';
+   const isElectron = isElectronDesktop();
++  const { openFeedback } = useFeedback();
+ 
+   const [includePrerelease, setIncludePrerelease] = useState(false);
+   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+@@ -103,27 +106,24 @@ const AboutModalContent: React.FC = () => {
+   const linkItems: LinkItem[] = [
+     {
+       title: t('settings.helpDocumentation'),
+-      url: 'https://github.com/iOfficeAI/AionUi/wiki',
++      url: 'https://wcnb2ddshm1z.feishu.cn/wiki/Zsr9wqyHHi3e5IkQYtwcQu6Knab',
+       icon: <Right theme='outline' size='16' />,
+     },
+     {
+       title: t('settings.updateLog'),
+-      url: 'https://github.com/iOfficeAI/AionUi/releases',
++      url: 'https://wcnb2ddshm1z.feishu.cn/wiki/EA0lw5xjhiSR2AkOSeacIhsCnab?from=from_copylink',
+       icon: <Right theme='outline' size='16' />,
+     },
+     {
+-      title: t('settings.bugReport'),
+-      onClick: () => setShowFeedbackModal(true),
+-      icon: <Right theme='outline' size='16' />,
+-    },
+-    {
+-      title: t('settings.contactMe'),
+-      url: 'https://x.com/WailiVery',
++      title: t('settings.feedback'),
++      onClick: () => {
++        void openFeedback({ autoScreenshot: true });
++      },
+       icon: <Right theme='outline' size='16' />,
+     },
+     {
+       title: t('settings.officialWebsite'),
+-      url: 'https://www.aionui.com',
++      url: 'https://api.mxou.cn',
+       icon: <Right theme='outline' size='16' />,
+     },
+   ];
+@@ -140,8 +140,11 @@ const AboutModalContent: React.FC = () => {
+         <div className='flex flex-col max-w-500px mx-auto'>
+           {/* App Info Section */}
+           <div className='flex flex-col items-center pb-24px'>
++            <div className='w-88px h-88px mb-12px' aria-hidden='true'>
++              <PoundingInteractiveLogo className='size-full' />
++            </div>
+             <Typography.Title heading={3} className='text-24px font-bold text-t-primary mb-8px'>
+-              AionUi
++              POUNDING
+             </Typography.Title>
+             <Typography.Text className='text-14px text-t-secondary mb-12px text-center'>
+               {t('settings.appDescription')}
+@@ -150,16 +153,6 @@ const AboutModalContent: React.FC = () => {
+               <span className='px-10px py-4px rd-6px text-13px bg-fill-2 text-t-primary font-500'>
+                 v{__APP_VERSION__}
+               </span>
+-              <div
+-                className='text-t-primary cursor-pointer hover:text-t-secondary transition-colors p-4px'
+-                onClick={() =>
+-                  openLink('https://github.com/iOfficeAI/AionUi').catch((error) =>
+-                    console.error('Failed to open link:', error)
+-                  )
+-                }
+-              >
+-                <Github theme='outline' size='20' />
+-              </div>
+             </div>
+ 
+             {/* Check Update Section */}
+@@ -216,7 +209,6 @@ const AboutModalContent: React.FC = () => {
+           </div>
+         </div>
+       </div>
+-      <FeedbackReportModal visible={showFeedbackModal} onCancel={() => setShowFeedbackModal(false)} />
+     </div>
+   );
+ };
+diff --git a/packages/desktop/src/renderer/hooks/useDealerConfig.ts b/packages/desktop/src/renderer/hooks/useDealerConfig.ts
+new file mode 100644
+index 000000000..683ba719c
+--- /dev/null
++++ b/packages/desktop/src/renderer/hooks/useDealerConfig.ts
+@@ -0,0 +1,52 @@
++import { useCallback, useEffect, useState } from 'react';
++import { ipcBridge } from '@/common';
++
++interface DealerConfig {
++  aff: string;
++}
++
++const REGISTER_BASE_URL = 'https://api.mxou.cn/sign-up';
++
++const isDesktopRuntime = typeof window !== 'undefined' && Boolean(window.electronAPI);
++
++export function useDealerConfig(): {
++  dealerConfig: DealerConfig | null;
++  loading: boolean;
++  openRegisterUrl: () => Promise<void>;
++} {
++  const [dealerConfig, setDealerConfig] = useState<DealerConfig | null>(null);
++  const [loading, setLoading] = useState(isDesktopRuntime);
++
++  useEffect(() => {
++    if (!isDesktopRuntime) {
++      setLoading(false);
++      return;
++    }
++    console.log('[useDealerConfig] Fetching dealer config...');
++    ipcBridge.application.getDealerConfig
++      .invoke()
++      .then((result: any) => {
++        console.log('[useDealerConfig] IPC result:', result);
++        if (result.success && result.data) {
++          console.log('[useDealerConfig] Setting dealer config:', result.data);
++          setDealerConfig(result.data);
++        } else {
++          console.log('[useDealerConfig] No dealer config data');
++        }
++      })
++      .catch((err: any) => {
++        console.error('[useDealerConfig] IPC error:', err);
++      })
++      .finally(() => setLoading(false));
++  }, []);
++
++  const openRegisterUrl = useCallback(async () => {
++    const aff = dealerConfig?.aff;
++    const url = aff ? `${REGISTER_BASE_URL}?aff=${encodeURIComponent(aff)}` : REGISTER_BASE_URL;
++    console.log('[useDealerConfig] Opening register URL:', url);
++    console.log('[useDealerConfig] Dealer config:', dealerConfig);
++    await ipcBridge.shell.openExternal.invoke(url);
++  }, [dealerConfig]);
++
++  return { dealerConfig, loading, openRegisterUrl };
++}
+diff --git a/packages/desktop/src/renderer/pages/settings/AgentSettings/RemoteAgentManagement.tsx b/packages/desktop/src/renderer/pages/settings/AgentSettings/RemoteAgentManagement.tsx
+new file mode 100644
+index 000000000..a750a00cf
+--- /dev/null
++++ b/packages/desktop/src/renderer/pages/settings/AgentSettings/RemoteAgentManagement.tsx
+@@ -0,0 +1,562 @@
++/**
++ * @license
++ * Copyright 2025 POUNDING (aionui.com)
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++import { ipcBridge } from '@/common';
++import type { RemoteAgentConfig, RemoteAgentInput } from '@/common/types/agent/remoteAgentTypes';
++import EmojiPicker from '@/renderer/components/chat/EmojiPicker';
++import { openExternalUrl } from '@/renderer/utils/platform';
++import {
++  Avatar,
++  Button,
++  Form,
++  Input,
++  Link,
++  Message,
++  Modal,
++  Select,
++  Spin,
++  Switch,
++  Tag,
++  Typography,
++} from '@arco-design/web-react';
++import AionModal from '@/renderer/components/base/AionModal';
++import { Attention, Edit, Plus, ReduceOne, Robot, Speed } from '@icon-park/react';
++import React, { useCallback, useEffect, useRef, useState } from 'react';
++import { useTranslation } from 'react-i18next';
++import useSWR from 'swr';
++
++const FormItem = Form.Item;
++
++const PAIRING_POLL_INTERVAL = 5_000;
++const PAIRING_TIMEOUT = 5 * 60 * 1000;
++const REMOTE_AGENT_GUIDE_URL = 'https://wcnb2ddshm1z.feishu.cn/wiki/MKMSwCUE0ii7Itkv71ScJCdOniI';
++
++type PairingState = 'idle' | 'handshaking' | 'pending' | 'timeout';
++
++const formatTimeLeft = (ms: number): string => {
++  const totalSec = Math.ceil(ms / 1000);
++  const min = Math.floor(totalSec / 60);
++  const sec = totalSec % 60;
++  return `${min}:${sec.toString().padStart(2, '0')}`;
++};
++
++const statusColor = (status?: string): string => {
++  switch (status) {
++    case 'connected':
++      return 'green';
++    case 'pending':
++      return 'orange';
++    case 'error':
++      return 'red';
++    default:
++      return 'gray';
++  }
++};
++
++const openRemoteAgentGuide = (): void => {
++  void openExternalUrl(REMOTE_AGENT_GUIDE_URL).catch(console.error);
++};
++
++const RemoteAgentFormModal: React.FC<{
++  visible: boolean;
++  editAgent?: RemoteAgentConfig;
++  onClose: () => void;
++  onSaved: () => void;
++}> = ({ visible, editAgent, onClose, onSaved }) => {
++  const { t } = useTranslation();
++  const [form] = Form.useForm<RemoteAgentInput>();
++  const [testing, setTesting] = useState(false);
++  const [saving, setSaving] = useState(false);
++  const [activeProtocol, setActiveProtocol] = useState<string>('openclaw');
++  const [avatar, setAvatar] = useState<string>('\u{1F916}');
++  const [pairingState, setPairingState] = useState<PairingState>('idle');
++  const [pairingTimeLeft, setPairingTimeLeft] = useState(0);
++  const pollTimerRef = useRef<ReturnType<typeof setInterval>>(undefined);
++  const countdownRef = useRef<ReturnType<typeof setInterval>>(undefined);
++  const savedAgentIdRef = useRef<string>(undefined);
++
++  const stopPolling = useCallback(() => {
++    if (pollTimerRef.current) {
++      clearInterval(pollTimerRef.current);
++      pollTimerRef.current = undefined;
++    }
++    if (countdownRef.current) {
++      clearInterval(countdownRef.current);
++      countdownRef.current = undefined;
++    }
++  }, []);
++
++  useEffect(() => {
++    return () => stopPolling();
++  }, [stopPolling]);
++
++  const startPairingPoll = useCallback(
++    (agentId: string) => {
++      setPairingState('pending');
++      setPairingTimeLeft(PAIRING_TIMEOUT);
++      const startedAt = Date.now();
++
++      countdownRef.current = setInterval(() => {
++        const elapsed = Date.now() - startedAt;
++        const remaining = Math.max(0, PAIRING_TIMEOUT - elapsed);
++        setPairingTimeLeft(remaining);
++        if (remaining <= 0) {
++          stopPolling();
++          setPairingState('timeout');
++        }
++      }, 1_000);
++
++      pollTimerRef.current = setInterval(async () => {
++        try {
++          const result = await ipcBridge.remoteAgent.handshake.invoke({ id: agentId });
++          if (result.status === 'ok') {
++            stopPolling();
++            setPairingState('idle');
++            Message.success(t('settings.remoteAgent.created'));
++            onSaved();
++            onClose();
++          }
++          // pending_approval → keep polling
++        } catch {
++          // ignore, keep polling
++        }
++      }, PAIRING_POLL_INTERVAL);
++    },
++    [stopPolling, onSaved, onClose, t]
++  );
++
++  const handleTestConnection = useCallback(async () => {
++    const values = form.getFieldsValue(['url', 'auth_type', 'auth_token', 'allow_insecure']) as {
++      url?: string;
++      auth_type?: string;
++      auth_token?: string;
++      allow_insecure?: boolean;
++    };
++    if (!values.url) {
++      Message.warning(t('settings.remoteAgent.urlRequired'));
++      return;
++    }
++    setTesting(true);
++    try {
++      const result = await ipcBridge.remoteAgent.testConnection.invoke({
++        url: values.url,
++        auth_type: values.auth_type || 'none',
++        auth_token: values.auth_token,
++        allow_insecure: values.allow_insecure,
++      });
++      if (result.success) {
++        Message.success(t('settings.remoteAgent.testSuccess'));
++      } else {
++        Message.error(t('settings.remoteAgent.testFailed', { error: result.error }));
++      }
++    } catch (error) {
++      Message.error(t('settings.remoteAgent.testError', { error: String(error) }));
++    } finally {
++      setTesting(false);
++    }
++  }, [form, t]);
++
++  const handleSave = useCallback(async () => {
++    try {
++      const values = await form.validate();
++      setSaving(true);
++      const payload: RemoteAgentInput = { ...values, protocol: activeProtocol as RemoteAgentInput['protocol'], avatar };
++
++      let agentId: string;
++      if (editAgent) {
++        await ipcBridge.remoteAgent.update.invoke({ id: editAgent.id, updates: payload });
++        agentId = editAgent.id;
++      } else {
++        const created = await ipcBridge.remoteAgent.create.invoke(payload);
++        agentId = created.id;
++      }
++      savedAgentIdRef.current = agentId;
++
++      // For openclaw protocol, perform full handshake
++      if (activeProtocol === 'openclaw') {
++        setPairingState('handshaking');
++        const result = await ipcBridge.remoteAgent.handshake.invoke({ id: agentId });
++
++        if (result.status === 'ok') {
++          Message.success(editAgent ? t('settings.remoteAgent.updated') : t('settings.remoteAgent.created'));
++          onSaved();
++          onClose();
++        } else if (result.status === 'pending_approval') {
++          startPairingPoll(agentId);
++          onSaved(); // refresh list to show 'pending' status
++        } else {
++          Message.warning(
++            `${editAgent ? t('settings.remoteAgent.updated') : t('settings.remoteAgent.created')} — ${result.error || 'Handshake failed'}`
++          );
++          onSaved();
++          onClose();
++        }
++      } else {
++        Message.success(editAgent ? t('settings.remoteAgent.updated') : t('settings.remoteAgent.created'));
++        onSaved();
++        onClose();
++      }
++    } catch {
++      // validation error or API error
++    } finally {
++      setSaving(false);
++    }
++  }, [form, editAgent, activeProtocol, avatar, onSaved, onClose, startPairingPoll, t]);
++
++  const handleCancelPairing = useCallback(() => {
++    stopPolling();
++    setPairingState('idle');
++    onSaved();
++    onClose();
++  }, [stopPolling, onSaved, onClose]);
++
++  // Render pairing waiting UI
++  if (pairingState === 'pending' || pairingState === 'timeout') {
++    return (
++      <AionModal
++        visible={visible}
++        onCancel={handleCancelPairing}
++        header={{
++          title: editAgent ? t('settings.remoteAgent.editTitle') : t('settings.remoteAgent.addTitle'),
++          showClose: true,
++        }}
++        style={{ maxWidth: '92vw', borderRadius: 16 }}
++        contentStyle={{
++          background: 'var(--dialog-fill-0)',
++          borderRadius: 16,
++          padding: '20px 24px 16px',
++          overflow: 'auto',
++        }}
++        footer={{
++          render: () => <Button onClick={handleCancelPairing}>{t('settings.remoteAgent.pendingCancel')}</Button>,
++        }}
++        afterClose={() => {
++          stopPolling();
++          setPairingState('idle');
++          form.resetFields();
++        }}
++      >
++        <div className='flex flex-col items-center gap-16px py-32px'>
++          {pairingState === 'pending' ? (
++            <>
++              <Spin size={32} />
++              <Typography.Text className='text-16px font-medium'>
++                {t('settings.remoteAgent.pendingApproval')}
++              </Typography.Text>
++              <Typography.Text type='secondary'>{t('settings.remoteAgent.pendingApprovalHint')}</Typography.Text>
++              <Typography.Text type='secondary' className='text-12px'>
++                {t('settings.remoteAgent.pendingTimeRemaining', { time: formatTimeLeft(pairingTimeLeft) })}
++              </Typography.Text>
++            </>
++          ) : (
++            <>
++              <Typography.Text className='text-16px font-medium' type='warning'>
++                {t('settings.remoteAgent.pendingTimeout')}
++              </Typography.Text>
++            </>
++          )}
++        </div>
++      </AionModal>
++    );
++  }
++
++  return (
++    <AionModal
++      visible={visible}
++      onCancel={onClose}
++      header={{
++        title: editAgent ? t('settings.remoteAgent.editTitle') : t('settings.remoteAgent.addTitle'),
++        showClose: true,
++      }}
++      style={{ maxWidth: '92vw', borderRadius: 16 }}
++      contentStyle={{
++        background: 'var(--dialog-fill-0)',
++        borderRadius: 16,
++        padding: '20px 24px 16px',
++        overflow: 'auto',
++      }}
++      okText={pairingState === 'handshaking' ? t('settings.remoteAgent.handshaking') : t('settings.remoteAgent.save')}
++      cancelText={t('settings.remoteAgent.cancel')}
++      onOk={handleSave}
++      confirmLoading={saving || pairingState === 'handshaking'}
++      afterOpen={() => {
++        if (editAgent) {
++          setActiveProtocol(editAgent.protocol);
++          setAvatar(editAgent.avatar || '\u{1F916}');
++          form.setFieldsValue({
++            name: editAgent.name,
++            url: editAgent.url,
++            auth_type: editAgent.auth_type,
++            auth_token: editAgent.auth_token,
++            allow_insecure: editAgent.allow_insecure,
++          });
++        } else {
++          setActiveProtocol('openclaw');
++          setAvatar('\u{1F916}');
++          form.setFieldsValue({ auth_type: 'none' });
++        }
++      }}
++      afterClose={() => {
++        setPairingState('idle');
++        form.resetFields();
++      }}
++    >
++      <div className='flex flex-col gap-16px pt-8px pb-20px'>
++        <div className='flex gap-10px rounded-12px border border-solid border-[rgba(var(--warning-6),0.14)] bg-[rgba(var(--warning-6),0.08)] px-16px py-12px'>
++          <Attention theme='filled' size={16} className='mt-2px shrink-0 text-[rgb(var(--warning-6))]' />
++          <div className='min-w-0 text-13px leading-20px text-t-secondary'>
++            <span>{t('settings.agentManagement.remoteAgentsDescription')} </span>
++            <Link className='text-13px leading-20px' onClick={openRemoteAgentGuide}>
++              {t('settings.remoteAgent.guideAction')}
++            </Link>
++          </div>
++        </div>
++
++        {/* Avatar + Name row */}
++        <div className='flex items-center gap-12px'>
++          <EmojiPicker onChange={(emoji) => setAvatar(emoji)}>
++            <div className='cursor-pointer shrink-0'>
++              <Avatar
++                size={48}
++                shape='square'
++                style={{ backgroundColor: 'var(--color-fill-2)', fontSize: 24, borderRadius: 12 }}
++              >
++                {avatar}
++              </Avatar>
++            </div>
++          </EmojiPicker>
++          <div className='flex-1 min-w-0'>
++            <Form form={form} layout='vertical' autoComplete='off'>
++              <FormItem
++                field='name'
++                rules={[{ required: true, message: t('settings.remoteAgent.nameRequired') }]}
++                style={{ marginBottom: 0 }}
++              >
++                <Input size='large' placeholder={t('settings.remoteAgent.namePlaceholder')} />
++              </FormItem>
++            </Form>
++          </div>
++        </div>
++
++        {/* Connection fields */}
++        <Form form={form} layout='vertical' autoComplete='off'>
++          <FormItem
++            label={t('settings.remoteAgent.url')}
++            field='url'
++            rules={[{ required: true, message: t('settings.remoteAgent.urlRequired') }]}
++          >
++            <Input placeholder='wss://example.com/gateway' />
++          </FormItem>
++
++          <FormItem label={t('settings.remoteAgent.auth_type')} field='auth_type' rules={[{ required: true }]}>
++            <Select>
++              <Select.Option value='none'>{t('settings.remoteAgent.authNone')}</Select.Option>
++              <Select.Option value='bearer'>{t('settings.remoteAgent.authBearer')}</Select.Option>
++            </Select>
++          </FormItem>
++
++          <Form.Item shouldUpdate noStyle>
++            {(values: Record<string, unknown>) =>
++              values.auth_type === 'bearer' ? (
++                <FormItem
++                  label={t('settings.remoteAgent.auth_token')}
++                  field='auth_token'
++                  rules={[{ required: true, message: t('settings.remoteAgent.tokenRequired') }]}
++                >
++                  <Input.Password placeholder={t('settings.remoteAgent.tokenPlaceholder')} />
++                </FormItem>
++              ) : null
++            }
++          </Form.Item>
++
++          <Form.Item shouldUpdate noStyle>
++            {(values: Record<string, unknown>) =>
++              typeof values.url === 'string' && values.url.startsWith('wss://') ? (
++                <FormItem
++                  label={t('settings.remoteAgent.allow_insecure')}
++                  field='allow_insecure'
++                  triggerPropName='checked'
++                  extra={
++                    <Typography.Text type='secondary' className='text-12px'>
++                      {t('settings.remoteAgent.allowInsecureHint')}
++                    </Typography.Text>
++                  }
++                >
++                  <Switch />
++                </FormItem>
++              ) : null
++            }
++          </Form.Item>
++
++          <Button
++            long
++            type='outline'
++            icon={<Speed theme='outline' size='14' />}
++            loading={testing}
++            onClick={handleTestConnection}
++          >
++            {t('settings.remoteAgent.testConnection')}
++          </Button>
++        </Form>
++      </div>
++    </AionModal>
++  );
++};
++
++const RemoteAgentManagement: React.FC = () => {
++  const { t } = useTranslation();
++  const { data: agents, mutate } = useSWR('remote-agents.list', () => ipcBridge.remoteAgent.list.invoke());
++  const [modalVisible, setModalVisible] = useState(false);
++  const [editAgent, setEditAgent] = useState<RemoteAgentConfig>();
++  const remoteActionButtonClassName = '!rounded-10px !px-10px';
++
++  const handleAdd = useCallback(() => {
++    setEditAgent(undefined);
++    setModalVisible(true);
++  }, []);
++
++  const handleEdit = useCallback((agent: RemoteAgentConfig) => {
++    setEditAgent(agent);
++    setModalVisible(true);
++  }, []);
++
++  const handleDelete = useCallback(
++    async (agent: RemoteAgentConfig) => {
++      Modal.confirm({
++        title: t('settings.remoteAgent.deleteConfirm'),
++        content: t('settings.remoteAgent.deleteConfirmContent', { name: agent.name }),
++        okButtonProps: { status: 'danger' },
++        onOk: async () => {
++          await ipcBridge.remoteAgent.delete.invoke({ id: agent.id });
++          Message.success(t('settings.remoteAgent.deleted'));
++          await mutate();
++        },
++      });
++    },
++    [t, mutate]
++  );
++
++  const handleSaved = useCallback(async () => {
++    await mutate();
++  }, [mutate]);
++
++  return (
++    <div className='flex flex-col gap-16px py-16px'>
++      <div className='flex flex-wrap items-start justify-between gap-12px'>
++        <div className='flex flex-1 flex-wrap items-center gap-x-6px gap-y-2px px-16px'>
++          <Typography.Text type='secondary' className='text-12px leading-18px text-t-secondary'>
++            {t('settings.agentManagement.remoteAgentsDescription')}
++          </Typography.Text>
++          <Link className='text-12px leading-18px' onClick={openRemoteAgentGuide}>
++            {t('settings.remoteAgent.guideAction')}
++          </Link>
++        </div>
++        <Button
++          type='outline'
++          shape='round'
++          size='small'
++          icon={<Plus size='16' />}
++          onClick={handleAdd}
++          className='rd-100px border-1 border-solid border-[var(--color-border-2)] h-34px px-14px text-t-secondary hover:text-t-primary'
++        >
++          {t('settings.remoteAgent.add')}
++        </Button>
++      </div>
++
++      {!agents || agents.length === 0 ? (
++        <div className='flex flex-col items-center gap-12px py-48px'>
++          <Typography.Text type='secondary' className='text-14px'>
++            {t('settings.remoteAgent.emptyTitle')}
++          </Typography.Text>
++          <Button
++            type='outline'
++            shape='round'
++            size='small'
++            icon={<Plus size='16' />}
++            onClick={handleAdd}
++            className='rd-100px border-1 border-solid border-[var(--color-border-2)] h-34px px-14px text-t-secondary hover:text-t-primary'
++          >
++            {t('settings.remoteAgent.emptyAction')}
++          </Button>
++        </div>
++      ) : (
++        <div className='grid grid-cols-1 gap-12px px-16px md:grid-cols-2 xl:grid-cols-3'>
++          {agents.map((agent) => (
++            <div
++              key={agent.id}
++              className='flex min-h-[214px] flex-col rounded-12px border border-solid border-[var(--color-border-2)] bg-[var(--color-bg-2)] p-14px transition-colors hover:border-[var(--color-border-3)]'
++            >
++              <div className='mb-12px flex justify-center'>
++                <Avatar
++                  size={48}
++                  shape='square'
++                  style={{ backgroundColor: 'var(--color-fill-2)', fontSize: 24, flexShrink: 0 }}
++                >
++                  {agent.avatar || <Robot theme='outline' size='18' />}
++                </Avatar>
++              </div>
++
++              <div className='mb-10px text-center'>
++                <Typography.Text className='block text-14px font-medium leading-20px line-clamp-2'>
++                  {agent.name}
++                </Typography.Text>
++              </div>
++
++              <div className='mb-10px flex min-h-[24px] flex-wrap items-center justify-center gap-6px'>
++                {agent.status && agent.status !== 'unknown' && (
++                  <Tag size='small' color={statusColor(agent.status)}>
++                    {agent.status}
++                  </Tag>
++                )}
++                <Tag size='small' color='arcoblue'>
++                  {agent.protocol}
++                </Tag>
++              </div>
++
++              <Typography.Text
++                type='secondary'
++                className='mb-14px block min-h-[36px] text-center text-12px line-clamp-2'
++              >
++                {agent.url}
++              </Typography.Text>
++
++              <div className='mt-auto grid grid-cols-2 gap-8px'>
++                <Button
++                  size='small'
++                  type='secondary'
++                  icon={<Edit theme='outline' size='14' />}
++                  className={remoteActionButtonClassName}
++                  onClick={() => handleEdit(agent)}
++                >
++                  {t('common.edit', { defaultValue: 'Edit' })}
++                </Button>
++                <Button
++                  size='small'
++                  type='secondary'
++                  status='danger'
++                  icon={<ReduceOne theme='outline' size='14' />}
++                  className={remoteActionButtonClassName}
++                  onClick={() => void handleDelete(agent)}
++                >
++                  {t('common.delete', { defaultValue: 'Delete' })}
++                </Button>
++              </div>
++            </div>
++          ))}
++        </div>
++      )}
++
++      <RemoteAgentFormModal
++        visible={modalVisible}
++        editAgent={editAgent}
++        onClose={() => setModalVisible(false)}
++        onSaved={handleSaved}
++      />
++    </div>
++  );
++};
++
++export default RemoteAgentManagement;
+diff --git a/packages/desktop/src/renderer/pages/settings/components/SettingsSider.tsx b/packages/desktop/src/renderer/pages/settings/components/SettingsSider.tsx
+index 6276a5fd9..ddf9cf0e0 100644
+--- a/packages/desktop/src/renderer/pages/settings/components/SettingsSider.tsx
++++ b/packages/desktop/src/renderer/pages/settings/components/SettingsSider.tsx
+@@ -6,13 +6,13 @@ import { useExtensionSettingsTabs } from '@/renderer/hooks/system/useExtensionSe
+ import {
+   Cat,
+   Communication,
+-  Computer,
+   Earth,
+   Info,
+   Lightning,
+   LinkCloud,
+   Puzzle,
+   Speed,
++  Theme,
+   System,
+   Toolkit,
+ } from '@icon-park/react';
+@@ -54,7 +54,7 @@ export const LEGACY_ANCHOR_REMAP: Record<string, string> = {
+  */
+ const GROUP_HEADER_BEFORE: Record<string, string> = {
+   agent: 'settings.groupAiCore',
+-  appearance: 'settings.groupApp',
++  display: 'settings.groupApp',
+   about: 'settings.groupAbout',
+ };
+ 
+@@ -101,7 +101,7 @@ const SettingsSider: React.FC<{ collapsed?: boolean; tooltipEnabled?: boolean }>
+         icon: <Toolkit />,
+         path: 'tools',
+       },
+-      appearance: { id: 'appearance', label: t('settings.appearancePanel'), icon: <Computer />, path: 'appearance' },
++      display: { id: 'display', label: t('settings.display'), icon: <Theme />, path: 'display' },
+       webui: {
+         id: 'webui',
+         label: t('settings.webui'),
+@@ -114,7 +114,11 @@ const SettingsSider: React.FC<{ collapsed?: boolean; tooltipEnabled?: boolean }>
+     };
+ 
+     // Start with ordered builtin IDs, hiding desktop-only tabs in browser mode
+-    const result: SiderItem[] = BUILTIN_TAB_IDS.filter((id) => isDesktop || id !== 'pet').map((id) => builtinMap[id]);
++    // and hiding Pet in release builds.
++    const isProduction = process.env.NODE_ENV === 'production';
++    const result: SiderItem[] = BUILTIN_TAB_IDS.filter(
++      (id) => (isDesktop || id !== 'pet') && (!isProduction || id !== 'pet')
++    ).map((id) => builtinMap[id]);
+ 
+     // Extension tabs with position anchoring
+     const beforeMap = new Map<string, IExtensionSettingsTab[]>();
+diff --git a/packages/desktop/src/sentry.ts b/packages/desktop/src/sentry.ts
+index 954e5eff8..b409da1b3 100644
+--- a/packages/desktop/src/sentry.ts
++++ b/packages/desktop/src/sentry.ts
+@@ -1,6 +1,6 @@
+ /**
+  * @license
+- * Copyright 2025 AionUi (aionui.com)
++ * Copyright 2025 POUNDING (aionui.com)
+  * SPDX-License-Identifier: Apache-2.0
+  */
+ 
+@@ -28,6 +28,10 @@ const BACKEND_STARTUP_SECONDARY_DROP_PATTERNS = [
+   /ECONNREFUSED/,
+ ];
+ 
++const TRANSIENT_NETWORK_DROP_PATTERNS = [/fetch failed/, /network error/i, /ERR_CONNECTION_REFUSED/];
++
++const SUBPROCESS_IO_DROP_PATTERNS = [/write EIO/, /write EPIPE/, /afterWriteDispatched/];
++
+ type SearchableEvent = {
+   message?: unknown;
+   exception?: { values?: unknown[] };
+@@ -83,7 +87,7 @@ function hasBackendStartupFailed(): boolean {
+ }
+ 
+ function isBackendStartupFailureEvent(event: { tags?: Record<string, unknown> }): boolean {
+-  return event.tags?.['aionui.failure'] === 'backend_startup';
++  return event.tags?.['pounding.failure'] === 'backend_startup';
+ }
+ 
+ function isUserFeedbackEvent(event: { tags?: Record<string, unknown> }): boolean {
+@@ -100,8 +104,14 @@ function isBackendStartupSecondaryEvent(event: { tags?: Record<string, unknown>
+ }
+ 
+ export function initSentry(): void {
++  // POUNDING Sentry DSN — set via environment variable or CI secret.
++  // Get the DSN from https://sentry.io -> Settings -> Projects -> pound
++  const DSN =
++    process.env.SENTRY_DSN ||
++    process.env.POUNDING_SENTRY_DSN ||
++    'https://50b2642878dae7371cff3a85e61a3a13@o4511410803441664.ingest.us.sentry.io/4511410809274368'; // POUNDING project DSN (halo-fx org)
+   Sentry.init({
+-    dsn: process.env.SENTRY_DSN,
++    dsn: DSN,
+     environment: app.isPackaged ? 'production' : 'development',
+     beforeSend(event) {
+       const haystacks = collectEventSearchText(event);
+@@ -111,6 +121,12 @@ export function initSentry(): void {
+       if (isBackendStartupSecondaryEvent(event, haystacks)) {
+         return null;
+       }
++      if (TRANSIENT_NETWORK_DROP_PATTERNS.some((re) => haystacks.some((h) => re.test(h)))) {
++        return null;
++      }
++      if (SUBPROCESS_IO_DROP_PATTERNS.some((re) => haystacks.some((h) => re.test(h)))) {
++        return null;
++      }
+       return event;
+     },
+   });
+@@ -233,25 +249,25 @@ export async function captureBackendStartupFailure(error: unknown): Promise<void
+   });
+   const autoUpdateDiagnostics = readAutoUpdateDiagnostics(app.getPath('userData'));
+   Sentry.withScope((scope) => {
+-    scope.setTag('aionui.failure', 'backend_startup');
+-    scope.setTag('aionui.backend_startup.reason', failureInfo.reason);
++    scope.setTag('pounding.failure', 'backend_startup');
++    scope.setTag('pounding.backend_startup.reason', failureInfo.reason);
+     if (failureInfo.runtime) {
+-      scope.setTag('aionui.backend_startup.runtime', failureInfo.runtime);
++      scope.setTag('pounding.backend_startup.runtime', failureInfo.runtime);
+     }
+     if (failureInfo.packageArch) {
+-      scope.setTag('aionui.backend_startup.package_arch', failureInfo.packageArch);
++      scope.setTag('pounding.backend_startup.package_arch', failureInfo.packageArch);
+     }
+     if (failureInfo.deviceArch) {
+-      scope.setTag('aionui.backend_startup.device_arch', failureInfo.deviceArch);
++      scope.setTag('pounding.backend_startup.device_arch', failureInfo.deviceArch);
+     }
+     if (failureInfo.expectedDownloadArch) {
+-      scope.setTag('aionui.backend_startup.expected_download_arch', failureInfo.expectedDownloadArch);
++      scope.setTag('pounding.backend_startup.expected_download_arch', failureInfo.expectedDownloadArch);
+     }
+     if (typeof failureInfo.isRosettaTranslated === 'boolean') {
+-      scope.setTag('aionui.backend_startup.rosetta_translated', getBooleanTagValue(failureInfo.isRosettaTranslated));
++      scope.setTag('pounding.backend_startup.rosetta_translated', getBooleanTagValue(failureInfo.isRosettaTranslated));
+     }
+     if (typeof details?.stage === 'string') {
+-      scope.setTag('aionui.backend_startup.stage', details.stage);
++      scope.setTag('pounding.backend_startup.stage', details.stage);
+     }
+     if (failureInfo.backendBoundaryCode) {
+       scope.setTag('aionui.backend_startup.boundary_code', failureInfo.backendBoundaryCode);
+@@ -263,45 +279,51 @@ export async function captureBackendStartupFailure(error: unknown): Promise<void
+       scope.setTag('aionui.backend_startup.local_data_issue_kind', failureInfo.localDataIssueKind);
+     }
+     if (failureInfo.incompleteInstallationKind) {
+-      scope.setTag('aionui.backend_startup.incomplete_installation_kind', failureInfo.incompleteInstallationKind);
++      scope.setTag('pounding.backend_startup.incomplete_installation_kind', failureInfo.incompleteInstallationKind);
+     }
+     for (const [tag, value] of [
+-      ['aionui.backend_startup.missing_bundled_dir', getBooleanTagValue(failureInfo.missingBundledAioncoreDir)],
+-      ['aionui.backend_startup.missing_runtime_dir', getBooleanTagValue(failureInfo.missingRuntimeDir)],
+-      ['aionui.backend_startup.missing_binary', getBooleanTagValue(failureInfo.missingBackendBinary)],
+-      ['aionui.backend_startup.missing_hub_dir', getBooleanTagValue(failureInfo.missingHubDir)],
+-      ['aionui.backend_startup.missing_pet_states_dir', getBooleanTagValue(failureInfo.missingPetStatesDir)],
+-      ['aionui.backend_startup.missing_pwa_dir', getBooleanTagValue(failureInfo.missingPwaDir)],
+-      ['aionui.backend_startup.install_path_kind', getInstallPathKind(details?.resourcesPath)],
+-      ['aionui.backend_startup.last_update_status', getString(autoUpdateDiagnostics?.lastEvent?.status)],
++      ['pounding.backend_startup.missing_bundled_dir', getBooleanTagValue(failureInfo.missingBundledAioncoreDir)],
++      ['pounding.backend_startup.missing_runtime_dir', getBooleanTagValue(failureInfo.missingRuntimeDir)],
++      ['pounding.backend_startup.missing_binary', getBooleanTagValue(failureInfo.missingBackendBinary)],
++      ['pounding.backend_startup.missing_hub_dir', getBooleanTagValue(failureInfo.missingHubDir)],
++      ['pounding.backend_startup.missing_pet_states_dir', getBooleanTagValue(failureInfo.missingPetStatesDir)],
++      ['pounding.backend_startup.missing_pwa_dir', getBooleanTagValue(failureInfo.missingPwaDir)],
++      ['pounding.backend_startup.install_path_kind', getInstallPathKind(details?.resourcesPath)],
++      ['pounding.backend_startup.last_update_status', getString(autoUpdateDiagnostics?.lastEvent?.status)],
+       [
+-        'aionui.backend_startup.health_polling_delayed',
++        'pounding.backend_startup.health_polling_delayed',
+         getBooleanTagValue(
+           typeof details?.healthCheckPollingDelayed === 'boolean' ? details.healthCheckPollingDelayed : undefined
+         ),
+       ],
+-      ['aionui.backend_startup.health_attempts_bucket', getHealthAttemptBucket(details?.healthCheckAttempts)],
++      ['pounding.backend_startup.health_attempts_bucket', getHealthAttemptBucket(details?.healthCheckAttempts)],
+       [
+-        'aionui.backend_startup.health_attempt_deficit_bucket',
++        'pounding.backend_startup.health_attempt_deficit_bucket',
+         getHealthAttemptBucket(details?.healthCheckAttemptDeficit),
+       ],
+-      ['aionui.backend_startup.health_timeout_overrun_bucket', getDurationBucket(details?.healthCheckTimeoutOverrunMs)],
+-      ['aionui.backend_startup.health_max_attempt_gap_bucket', getDurationBucket(details?.healthCheckMaxAttemptGapMs)],
+       [
+-        'aionui.backend_startup.seconds_since_quit_and_install',
++        'pounding.backend_startup.health_timeout_overrun_bucket',
++        getDurationBucket(details?.healthCheckTimeoutOverrunMs),
++      ],
++      [
++        'pounding.backend_startup.health_max_attempt_gap_bucket',
++        getDurationBucket(details?.healthCheckMaxAttemptGapMs),
++      ],
++      [
++        'pounding.backend_startup.seconds_since_quit_and_install',
+         getSecondsSince(autoUpdateDiagnostics?.lastQuitAndInstallAt),
+       ],
+     ] as const) {
+       if (value) scope.setTag(tag, value);
+     }
+     if (details) {
+-      scope.setContext('aioncore_startup', details);
+-      scope.setExtra('aioncore_startup', details);
++      scope.setContext('poundingcore_startup', details);
++      scope.setExtra('poundingcore_startup', details);
+     }
+-    scope.setContext('aioncore_startup_classification', { ...failureInfo });
+-    scope.setExtra('aioncore_startup_classification', failureInfo);
+-    scope.setContext('aioncore_install_diagnostics', installDiagnostics);
+-    scope.setExtra('aioncore_install_diagnostics', installDiagnostics);
++    scope.setContext('poundingcore_startup_classification', { ...failureInfo });
++    scope.setExtra('poundingcore_startup_classification', failureInfo);
++    scope.setContext('poundingcore_install_diagnostics', installDiagnostics);
++    scope.setExtra('poundingcore_install_diagnostics', installDiagnostics);
+     if (autoUpdateDiagnostics) {
+       scope.setContext('auto_update_diagnostics', autoUpdateDiagnostics);
+       scope.setExtra('auto_update_diagnostics', autoUpdateDiagnostics);
+@@ -315,6 +337,40 @@ export async function captureBackendStartupFailure(error: unknown): Promise<void
+   }
+ }
+ 
++const AGENT_DIAGNOSTIC_FLUSH_TIMEOUT_MS = 3000;
++
++export async function captureAgentDiagnosticFailure(
++  agentInfo: { name: string; backend: string | null; available: boolean; reason: string | null },
++  repairAttempts: Array<{ source: string; success: boolean; error?: string }>
++): Promise<void> {
++  Sentry.withScope((scope) => {
++    scope.setTag('pounding.failure', 'agent_diagnostic');
++    scope.setTag('pounding.agent', agentInfo.name);
++    scope.setTag('pounding.backend', agentInfo.backend ?? 'unknown');
++    scope.setTag('pounding.reason', agentInfo.reason ?? 'unknown');
++    scope.setTag('pounding.repair_attempts', String(repairAttempts.length));
++
++    scope.setContext('agent_diagnostic', {
++      agent_name: agentInfo.name,
++      backend: agentInfo.backend,
++      unavailable_reason: agentInfo.reason,
++      repair_attempts: repairAttempts.map((r) => ({
++        source: r.source,
++        success: r.success,
++        error: r.error ?? '',
++      })),
++    });
++
++    Sentry.captureMessage('agent_diagnostic_failure', 'warning');
++  });
++
++  try {
++    await Sentry.flush(AGENT_DIAGNOSTIC_FLUSH_TIMEOUT_MS);
++  } catch {
++    // Don't block on Sentry
++  }
++}
++
+ /**
+  * How many recent days of logs the next startup report packs. Aligned with
+  * the 24h throttle: the previous report covers everything older, so each
+@@ -465,7 +521,13 @@ async function runStartupLogReport(): Promise<void> {
+ 
+   // DSN gate goes first so we don't read the disk for nothing.
+   // Don't write state — the next launch with a DSN should still fire.
+-  if (!process.env.SENTRY_DSN) {
++  // POUNDING Sentry DSN — set via environment variable or CI secret.
++  // Get the DSN from https://sentry.io -> Settings -> Projects -> pound
++  const DSN =
++    process.env.SENTRY_DSN ||
++    process.env.POUNDING_SENTRY_DSN ||
++    'https://50b2642878dae7371cff3a85e61a3a13@o4511410803441664.ingest.us.sentry.io/4511410809274368'; // POUNDING project DSN (halo-fx org)
++  if (!DSN) {
+     console.info('[sentry] startup log report skipped (SENTRY_DSN not set)');
+     throw new UnretryableError('no DSN');
+   }
+@@ -505,7 +567,7 @@ async function runStartupLogReport(): Promise<void> {
+ 
+   Sentry.withScope((scope) => {
+     scope.addAttachment({
+-      filename: 'aionui-logs.log.gz',
++      filename: 'pounding-logs.log.gz',
+       data: pack.gzipped,
+       contentType: 'application/gzip',
+     });
+diff --git a/scripts/check-portable-runtimes.sh b/scripts/check-portable-runtimes.sh
+new file mode 100755
+index 000000000..8aca5cc55
+--- /dev/null
++++ b/scripts/check-portable-runtimes.sh
+@@ -0,0 +1,286 @@
++#!/usr/bin/env bash
++# scripts/check-portable-runtimes.sh
++#
++# Check whether bundled runtimes can be found WITHOUT relying on system PATH.
++# This helps diagnose the gap between what is bundled in managed-resources and
++# what the application actually resolves at runtime.
++#
++# Usage:
++#   ./scripts/check-portable-runtimes.sh [MANAGED_RESOURCES_DIR]
++#
++# Arguments:
++#   MANAGED_RESOURCES_DIR   Path to managed-resources directory (default: /tmp/macos-managed)
++#
++# Exit 0 = all runtimes found, Exit 1 = one or more runtimes missing.
++
++set -euo pipefail
++
++# ---------------------------------------------------------------------------
++# Colour helpers
++# ---------------------------------------------------------------------------
++if [[ -t 1 ]]; then
++  GREEN='\033[0;32m'
++  RED='\033[0;31m'
++  YELLOW='\033[1;33m'
++  CYAN='\033[0;36m'
++  NC='\033[0m'
++else
++  GREEN='' RED='' YELLOW='' CYAN='' NC=''
++fi
++
++MANAGED_RESOURCES="${1:-/tmp/macos-managed}"
++
++echo ""
++echo "Portable runtime check"
++echo "======================"
++echo "Managed resources directory: ${MANAGED_RESOURCES}"
++echo ""
++
++# Pre-flight
++if [[ ! -d "${MANAGED_RESOURCES}" ]]; then
++  echo -e "${RED}ERROR:${NC} Directory does not exist: ${MANAGED_RESOURCES}"
++  echo "       Provide the path to a prepared managed-resources directory as the first argument."
++  exit 1
++fi
++
++FOUND=0
++MISSING=0
++REPORT=()
++
++report_status() {
++  local name="$1"
++  local status="$2"
++  local detail="$3"
++
++  if [[ "${status}" == "found" ]]; then
++    echo -e "  ${GREEN}[FOUND]${NC}    ${name}: ${detail}"
++    FOUND=$((FOUND + 1))
++  else
++    echo -e "  ${RED}[MISSING]${NC}  ${name}: ${detail}"
++    MISSING=$((MISSING + 1))
++  fi
++  REPORT+=("${name}: ${status} — ${detail}")
++}
++
++# ---------------------------------------------------------------------------
++# 1. Node runtime
++# ---------------------------------------------------------------------------
++echo -e "${CYAN}Node runtime${NC}"
++
++node_dir="${MANAGED_RESOURCES}/node"
++node_path=""
++
++if [[ -d "${node_dir}" ]]; then
++  for versioned_dir in "${node_dir}"/node-v* "${node_dir}"/v*; do
++    [[ ! -d "${versioned_dir}" ]] && continue
++    for candidate in "${versioned_dir}/bin/node" "${versioned_dir}/node"; do
++      if [[ -f "${candidate}" ]]; then
++        node_path="${candidate}"
++        break 2
++      fi
++    done
++  done
++
++  # Fallback: broad search for any node binary up to 3 levels deep
++  if [[ -z "${node_path}" ]]; then
++    node_path="$(find "${node_dir}" -maxdepth 3 -name 'node' -type f 2>/dev/null | head -1)"
++  fi
++
++  if [[ -n "${node_path}" ]]; then
++    version_output=""
++    if [[ -x "${node_path}" ]]; then
++      version_output="$("${node_path}" --version 2>/dev/null || true)"
++    fi
++    if [[ -n "${version_output}" ]]; then
++      report_status "node" "found" "${node_path#${MANAGED_RESOURCES}/} (${version_output})"
++    else
++      report_status "node" "found" "${node_path#${MANAGED_RESOURCES}/} (not executable or failed --version)"
++    fi
++  else
++    report_status "node" "missing" "no node binary found in ${node_dir}"
++  fi
++else
++  report_status "node" "missing" "directory ${node_dir} does not exist"
++fi
++
++echo ""
++
++# ---------------------------------------------------------------------------
++# 2. Python runtime
++# ---------------------------------------------------------------------------
++echo -e "${CYAN}Python runtime${NC}"
++
++python_dir="${MANAGED_RESOURCES}/runtimes/python"
++python_path=""
++
++if [[ -d "${python_dir}" ]]; then
++  for candidate in "${python_dir}/python3" "${python_dir}/python" \
++                   "${python_dir}/bin/python3" "${python_dir}/bin/python" \
++                   "${python_dir}/install/bin/python3" "${python_dir}/install/bin/python"; do
++    if [[ -f "${candidate}" ]]; then
++      python_path="${candidate}"
++      break
++    fi
++  done
++
++  # Fallback: broad search
++  if [[ -z "${python_path}" ]]; then
++    python_path="$(find "${python_dir}" -maxdepth 4 \( -name 'python3' -o -name 'python' \) -type f 2>/dev/null | head -1)"
++  fi
++
++  if [[ -n "${python_path}" ]]; then
++    version_output=""
++    if [[ -x "${python_path}" ]]; then
++      version_output="$("${python_path}" --version 2>/dev/null || true)"
++    fi
++    if [[ -n "${version_output}" ]]; then
++      report_status "python" "found" "${python_path#${MANAGED_RESOURCES}/} (${version_output})"
++    else
++      report_status "python" "found" "${python_path#${MANAGED_RESOURCES}/} (not executable or failed --version)"
++    fi
++  else
++    report_status "python" "missing" "no python binary found in ${python_dir}"
++  fi
++else
++  report_status "python" "missing" "directory ${python_dir} does not exist"
++fi
++
++echo ""
++
++# ---------------------------------------------------------------------------
++# 3. UV runtime
++# ---------------------------------------------------------------------------
++echo -e "${CYAN}UV runtime${NC}"
++
++uv_dir="${MANAGED_RESOURCES}/runtimes/uv"
++uv_path=""
++
++if [[ -d "${uv_dir}" ]]; then
++  for candidate in "${uv_dir}/uv" "${uv_dir}/uv.exe" \
++                   "${uv_dir}/bin/uv" "${uv_dir}/bin/uv.exe"; do
++    if [[ -f "${candidate}" ]]; then
++      uv_path="${candidate}"
++      break
++    fi
++  done
++
++  # Fallback: broad search
++  if [[ -z "${uv_path}" ]]; then
++    uv_path="$(find "${uv_dir}" -maxdepth 3 -name 'uv' -type f 2>/dev/null | head -1)"
++  fi
++
++  if [[ -n "${uv_path}" ]]; then
++    version_output=""
++    if [[ -x "${uv_path}" ]]; then
++      version_output="$("${uv_path}" --version 2>/dev/null || true)"
++    fi
++    if [[ -n "${version_output}" ]]; then
++      report_status "uv" "found" "${uv_path#${MANAGED_RESOURCES}/} (${version_output})"
++    else
++      report_status "uv" "found" "${uv_path#${MANAGED_RESOURCES}/} (not executable or failed --version)"
++    fi
++  else
++    report_status "uv" "missing" "no uv binary found in ${uv_dir}"
++  fi
++else
++  report_status "uv" "missing" "directory ${uv_dir} does not exist"
++fi
++
++echo ""
++
++# ---------------------------------------------------------------------------
++# 4. CLI entrypoints (bonus: verify each CLI bundle's entrypoint is reachable)
++# ---------------------------------------------------------------------------
++echo -e "${CYAN}CLI entrypoints${NC}"
++
++cli_base="${MANAGED_RESOURCES}/cli"
++cli_found=0
++cli_missing=0
++
++if [[ -d "${cli_base}" ]]; then
++  for cli_name in claude codex opencode openclaw; do
++    cli_dir="${cli_base}/${cli_name}"
++    if [[ ! -d "${cli_dir}" ]]; then
++      echo -e "  ${RED}[MISSING]${NC}  ${cli_name}: directory does not exist"
++      cli_missing=$((cli_missing + 1))
++      continue
++    fi
++
++    # Find first manifest.json to check entrypoint
++    manifest="$(find "${cli_dir}" -name 'manifest.json' -type f 2>/dev/null | head -1)"
++    if [[ -z "${manifest}" ]]; then
++      echo -e "  ${RED}[MISSING]${NC}  ${cli_name}: no manifest.json found"
++      cli_missing=$((cli_missing + 1))
++      continue
++    fi
++
++    manifest_dir="$(dirname "${manifest}")"
++
++    # Extract entrypoint using available JSON parser
++    entrypoint=""
++    if command -v jq >/dev/null 2>&1; then
++      entrypoint="$(jq -r '.entrypoint // empty' "${manifest}" 2>/dev/null)"
++    elif command -v python3 >/dev/null 2>&1; then
++      entrypoint="$(python3 -c "
++import json
++with open('${manifest}') as f: print(json.load(f).get('entrypoint',''))
++" 2>/dev/null | tr -d '[:space:]')"
++    elif command -v node >/dev/null 2>&1; then
++      entrypoint="$(node -e "console.log(JSON.parse(require('fs').readFileSync('${manifest}','utf8')).entrypoint||'')" 2>/dev/null)"
++    fi
++
++    if [[ -n "${entrypoint}" && -f "${manifest_dir}/${entrypoint}" ]]; then
++      echo -e "  ${GREEN}[FOUND]${NC}    ${cli_name}: entrypoint ${entrypoint}"
++      cli_found=$((cli_found + 1))
++    elif [[ -n "${entrypoint}" ]]; then
++      echo -e "  ${RED}[MISSING]${NC}  ${cli_name}: entrypoint '${entrypoint}' file not found"
++      cli_missing=$((cli_missing + 1))
++    else
++      echo -e "  ${RED}[MISSING]${NC}  ${cli_name}: entrypoint not specified in manifest"
++      cli_missing=$((cli_missing + 1))
++    fi
++  done
++else
++  echo -e "  ${YELLOW}[SKIP]${NC}     cli/ directory does not exist"
++fi
++
++echo ""
++
++# ---------------------------------------------------------------------------
++# 5. System PATH comparison
++# ---------------------------------------------------------------------------
++echo -e "${CYAN}System PATH comparison${NC}"
++
++for tool_name in node python3 uv; do
++  sys_path="$(command -v "${tool_name}" 2>/dev/null || true)"
++  if [[ -n "${sys_path}" ]]; then
++    echo -e "  ${tool_name}: system PATH resolves to ${sys_path}"
++  else
++    echo -e "  ${tool_name}: not found in system PATH"
++  fi
++done
++
++echo ""
++
++# ---------------------------------------------------------------------------
++# Summary
++# ---------------------------------------------------------------------------
++TOTAL=$((FOUND + MISSING))
++echo "======================"
++echo "Portable runtimes: ${FOUND}/${TOTAL} found, ${MISSING} missing"
++if [[ ${cli_found} -gt 0 || ${cli_missing} -gt 0 ]]; then
++  CLI_TOTAL=$((cli_found + cli_missing))
++  echo "CLI entrypoints:   ${cli_found}/${CLI_TOTAL} verified"
++fi
++
++if [[ ${MISSING} -gt 0 ]]; then
++  echo ""
++  echo -e "${YELLOW}Diagnosis:${NC} Missing bundled runtimes may cause the application to"
++  echo "fall back to system PATH, which can result in version mismatches or"
++  echo "'command not found' errors when the system tooling is absent."
++  exit 1
++fi
++
++echo ""
++echo -e "${GREEN}All portable runtimes present.${NC}"
++exit 0
+diff --git a/scripts/pack-usb-zip.sh b/scripts/pack-usb-zip.sh
+new file mode 100755
+index 000000000..8670854c7
+--- /dev/null
++++ b/scripts/pack-usb-zip.sh
+@@ -0,0 +1,46 @@
++#!/usr/bin/env bash
++# scripts/pack-usb-zip.sh
++#
++# Inject PORTABLE + dealer-config.json into an existing platform zip.
++# The platform zip is produced by electron-builder (zip target in electron-builder.yml).
++#
++# Usage:
++#   bash scripts/pack-usb-zip.sh <PLATFORM_ZIP> <AFF_CODE>
++#
++# Example:
++#   bash scripts/pack-usb-zip.sh out/POUNDING-2.1.5-win-x64.zip MY_AFF_CODE
++#
++# If AFF_CODE is "YOUR_AFF_CODE" (the template placeholder), the script
++# still writes it — dealers can replace the file in the zip manually.
++
++set -euo pipefail
++
++PLATFORM_ZIP="$1"
++AFF_CODE="${2:-}"
++
++if [ ! -f "$PLATFORM_ZIP" ]; then
++  echo "ERROR: Platform zip not found: $PLATFORM_ZIP" >&2
++  echo "Usage: bash scripts/pack-usb-zip.sh <PLATFORM_ZIP> [AFF_CODE]" >&2
++  exit 1
++fi
++
++ZIP_DIR="$(dirname "$PLATFORM_ZIP")"
++ZIP_NAME="$(basename "$PLATFORM_ZIP")"
++TEMP_DIR="$(mktemp -d)"
++trap 'rm -rf "$TEMP_DIR"' EXIT
++
++# Create dealer files in temp dir
++echo '{"aff": "'"${AFF_CODE}"'"}' > "$TEMP_DIR/dealer-config.json"
++touch "$TEMP_DIR/PORTABLE"
++
++echo "==> Injecting PORTABLE + dealer-config.json (aff=${AFF_CODE}) into ${ZIP_NAME}"
++
++# Add files to the existing zip (modifies in-place)
++if command -v 7z &>/dev/null; then
++  (cd "$TEMP_DIR" && 7z a "$PLATFORM_ZIP" PORTABLE dealer-config.json -tzip -mx=5 -bso0 -bsp0 > /dev/null)
++else
++  (cd "$TEMP_DIR" && zip -qr "$PLATFORM_ZIP" PORTABLE dealer-config.json)
++fi
++
++echo "==> Done: ${ZIP_NAME}"
++ls -lh "$PLATFORM_ZIP"
+diff --git a/scripts/upload-binaries-to-cos.sh b/scripts/upload-binaries-to-cos.sh
+new file mode 100755
+index 000000000..735de474d
+--- /dev/null
++++ b/scripts/upload-binaries-to-cos.sh
+@@ -0,0 +1,16 @@
++#!/usr/bin/env bash
++set -euo pipefail
++VERSION="${1:?Usage: $0 <version>}"
++BUNDLED_DIR="resources/bundled-poundingcore"
++COS_PATH="cos://yss-1256275613/pounding/binaries/${VERSION}"
++
++echo "Uploading ${BUNDLED_DIR} to ${COS_PATH} ..."
++for dir in "${BUNDLED_DIR}"/*/; do
++  platform_arch=$(basename "$dir")
++  coscli cp -r "${BUNDLED_DIR}/${platform_arch}" "${COS_PATH}/${platform_arch}/" || {
++    echo "Failed to upload ${platform_arch}"
++    exit 1
++  }
++  echo "  ${platform_arch} done"
++done
++echo "Upload complete: ${COS_PATH}"

@@ -85,7 +85,7 @@
     "officialSkillsEmpty": "暫無官方技能。",
     "noSearchResults": "沒有符合的技能。",
     "customHint": "支援技能目錄、父目錄或 zip 匯入；單檔上限 {{maxFileSize}}、單技能上限 {{maxTotalSize}}；同名匯入會覆蓋現有技能。",
-    "officialHint": "AionUi 官方內建的技能，開箱即用、唯讀，隨版本更新維護。"
+    "officialHint": "POUNDING 官方內建的技能，開箱即用、唯讀，隨版本更新維護。"
   },
   "authMethod": "驗證",
   "geminiApiKey": "Gemini API 金鑰",
@@ -144,9 +144,9 @@
   "myAssistantsHintShort": "由本機 CLI 自動生成、你自己建立或從官方複製的助手。拖曳可調整它們的顯示順序。",
   "assistantGroupCli": "CLI 助手",
   "assistantGroupCreated": "自訂助手",
-  "myAssistantsEmpty": "你的助理清單還是空的。去「官方助理」啟用一個專家，或讓 AionUi 辨識你本機的 CLI 工具。",
-  "officialAssistantsHint": "官方助理由 AionUi 持續維護、隨版本更新能力。啟用後即可在你的對話、開團和定時任務裡使用；若想調整成專屬於你的版本，可將它複製為我的助理。",
-  "officialAssistantsHintShort": "AionUi 內建的官方助手，由官方持續維護、隨版本更新；可複製為「我的助手」後自由修改。",
+  "myAssistantsEmpty": "你的助理清單還是空的。去「官方助理」啟用一個專家，或讓 POUNDING 辨識你本機的 CLI 工具。",
+  "officialAssistantsHint": "官方助理由 POUNDING 持續維護、隨版本更新能力。啟用後即可在你的對話、開團和定時任務裡使用；若想調整成專屬於你的版本，可將它複製為我的助理。",
+  "officialAssistantsHintShort": "POUNDING 內建的官方助手，由官方持續維護、隨版本更新；可複製為「我的助手」後自由修改。",
   "customEmptyTitle": "還沒有自訂助手",
   "customEmptyBody": "可以透過對話來建立一個，或從官方助手複製一個。",
   "customEmptyCreate": "透過對話建立",
@@ -561,7 +561,7 @@
   "channels.comingSoonDesc": "Support for {{channel}} is coming soon",
   "channels.notConfigured": "Not configured",
   "channels.configured": "Configured",
-  "channels.guide": "連接 Telegram、飛書、釘釘等訊息應用，讓你的 AionUi 助手在任意聊天應用中隨時可用。",
+  "channels.guide": "連接 Telegram、飛書、釘釘等訊息應用，讓你的 POUNDING 助手在任意聊天應用中隨時可用。",
   "channels.selectFirst": "選擇一個渠道並完成憑證配置。",
   "channels.enableAfterConfig": "啟用該渠道後，即可開始與 AI 助手對話。",
   "channels.extension.requiredField": "請填寫必填項：{{field}}",
@@ -1236,15 +1236,15 @@
     "addViaChat": "透過對話新增",
     "addManually": "手動新增",
     "solveViaChat": "透過對話排查",
-    "enabledToast": "已為你啟用 AionUi 管家",
+    "enabledToast": "已為你啟用 POUNDING 管家",
     "prompt": {
       "createAssistant": "幫我建立一個新助手，並引導我完成設定。",
       "addCustomAgent": "幫我新增一個自訂 Agent。",
       "addModel": "幫我新增一個新的 LLM 模型和 API Key，並設為預設模型。",
       "addMcp": "幫我設定一個 MCP 伺服器。",
       "addSkill": "幫我匯入一個技能，並綁定到助手上。",
-      "setupRemote": "幫我設定遠端存取，讓我在手機或外網也能開啟 AionUi。",
-      "diagnose": "我在使用 AionUi 時遇到問題，幫我排查一下。\n\n【模組】{{module}}\n【問題描述】{{description}}\n【附件】見輸入框中的截圖。\n\n請幫我診斷原因並給出解決辦法。"
+      "setupRemote": "幫我設定遠端存取，讓我在手機或外網也能開啟 POUNDING。",
+      "diagnose": "我在使用 POUNDING 時遇到問題，幫我排查一下。\n\n【模組】{{module}}\n【問題描述】{{description}}\n【附件】見輸入框中的截圖。\n\n請幫我診斷原因並給出解決辦法。"
     }
   },
   "providerIdConflict": "Provider ID 已存在，請重試。",

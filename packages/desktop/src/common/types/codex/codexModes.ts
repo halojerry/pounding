@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -8,7 +8,7 @@ export const CODEX_MODE_READ_ONLY = 'read-only';
 export const CODEX_MODE_NATIVE_DEFAULT = 'auto';
 export const CODEX_MODE_NATIVE_FULL_ACCESS = 'full-access';
 
-// Legacy AionUi values kept for backward compatibility with persisted config.
+// Legacy POUNDING values kept for backward compatibility with persisted config.
 // Only consumed internally by normalizeCodexMode, no external callers.
 const CODEX_MODE_AUTO_EDIT = 'autoEdit';
 const CODEX_MODE_FULL_AUTO = 'yolo';

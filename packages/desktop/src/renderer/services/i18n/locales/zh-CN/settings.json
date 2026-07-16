@@ -85,7 +85,7 @@
     "officialSkillsEmpty": "暂无官方技能。",
     "noSearchResults": "没有匹配的技能。",
     "customHint": "支持技能目录、父目录或 zip 导入；单文件上限 {{maxFileSize}}、单技能上限 {{maxTotalSize}}；同名导入会覆盖现有技能。",
-    "officialHint": "AionUi 官方内置的技能，开箱即用、只读，随版本更新维护。"
+    "officialHint": "POUNDING 官方内置的技能，开箱即用、只读，随版本更新维护。"
   },
   "authMethod": "认证",
   "geminiApiKey": "Gemini API 密钥",
@@ -144,13 +144,13 @@
   "assistantReorderHint": "拖拽可调整顺序，它决定你挑选助手时（首页、开团、定时任务等）列表里的展示先后。",
   "assistantGroupCli": "CLI 助手",
   "assistantGroupCreated": "自定义助手",
-  "myAssistantsEmpty": "你的助手列表还是空的。去「官方助手」启用一个专家，或让 AionUi 识别你本机的 CLI 工具。",
+  "myAssistantsEmpty": "你的助手列表还是空的。去「官方助手」启用一个专家，或让 POUNDING 识别你本机的 CLI 工具。",
   "customEmptyTitle": "还没有自定义助手",
   "customEmptyBody": "可以通过对话来创建一个，或从官方助手复制一个。",
   "customEmptyCreate": "通过对话创建",
   "customEmptyBrowseOfficial": "逛逛官方助手",
-  "officialAssistantsHint": "官方助手由 AionUi 持续维护、随版本更新能力。启用后即可在你的对话、开团和定时任务里使用；若想调整成专属于你的版本，可将它复制为我的助手。",
-  "officialAssistantsHintShort": "AionUi 内置的官方助手，由官方持续维护、随版本更新；可复制为「我的助手」后自由修改。",
+  "officialAssistantsHint": "官方助手由 POUNDING 持续维护、随版本更新能力。启用后即可在你的对话、开团和定时任务里使用；若想调整成专属于你的版本，可将它复制为我的助手。",
+  "officialAssistantsHintShort": "POUNDING 内置的官方助手，由官方持续维护、随版本更新；可复制为「我的助手」后自由修改。",
   "reorderCoachTitle": "拖拽调整顺序",
   "reorderCoachBody": "把你常用的助手拖到前面——这个顺序决定你挑选助手时（首页、开团、定时任务等）列表里的展示先后。",
   "assistantFilter": {
@@ -561,7 +561,7 @@
   "channels.comingSoonDesc": "即将支持通过 {{channel}} 与助手直接对话",
   "channels.notConfigured": "未配置",
   "channels.configured": "已配置",
-  "channels.guide": "连接 Telegram、飞书、钉钉等消息应用，让你的 AionUi 助手在任意聊天应用中随时可用。",
+  "channels.guide": "连接 Telegram、飞书、钉钉等消息应用，让你的 POUNDING 助手在任意聊天应用中随时可用。",
   "channels.selectFirst": "选择一个渠道并完成凭据配置。",
   "channels.enableAfterConfig": "启用该渠道后，即可开始与 AI 助手对话。",
   "channels.extension.requiredField": "请填写必填项：{{field}}",
@@ -1235,15 +1235,15 @@
     "addViaChat": "通过对话添加",
     "addManually": "手动添加",
     "solveViaChat": "通过对话排查",
-    "enabledToast": "已为你启用 AionUi 管家",
+    "enabledToast": "已为你启用 POUNDING 管家",
     "prompt": {
       "createAssistant": "帮我创建一个新助手，并引导我完成设置。",
       "addCustomAgent": "帮我添加一个自定义 Agent。",
       "addModel": "帮我添加一个新的 LLM 模型和 API Key，并设为默认模型。",
       "addMcp": "帮我配置一个 MCP 服务器。",
       "addSkill": "帮我导入一个技能，并绑定到助手上。",
-      "setupRemote": "帮我配置远程访问，让我在手机或外网也能打开 AionUi。",
-      "diagnose": "我在使用 AionUi 时遇到问题，帮我排查一下。\n\n【模块】{{module}}\n【问题描述】{{description}}\n【附件】见输入框中的截图。\n\n请帮我诊断原因并给出解决办法。"
+      "setupRemote": "帮我配置远程访问，让我在手机或外网也能打开 POUNDING。",
+      "diagnose": "我在使用 POUNDING 时遇到问题，帮我排查一下。\n\n【模块】{{module}}\n【问题描述】{{description}}\n【附件】见输入框中的截图。\n\n请帮我诊断原因并给出解决办法。"
     }
   },
   "providerIdConflict": "Provider ID 已存在，请重试。",

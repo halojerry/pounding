@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -232,8 +232,8 @@ describe('updateBridge allowlist includes CDN host', () => {
 
       const result = await handler({
         downloadId: 'manual-download-1',
-        url: 'https://static.aionui.com/releases/1.9.22/AionUi-1.9.22-mac-arm64.dmg',
-        file_name: 'AionUi-1.9.22-mac-arm64.dmg',
+        url: 'https://static.aionui.com/releases/1.9.22/POUNDING-1.9.22-mac-arm64.dmg',
+        file_name: 'POUNDING-1.9.22-mac-arm64.dmg',
       });
 
       expect(result.success).toBe(true);

@@ -85,7 +85,7 @@
     "officialSkillsEmpty": "Nenhuma habilidade oficial disponível.",
     "noSearchResults": "Nenhuma habilidade correspondente.",
     "customHint": "Importe uma pasta de habilidade, pasta principal ou zip; até {{maxFileSize}} por arquivo e {{maxTotalSize}} por habilidade; importar o mesmo nome substitui a habilidade existente.",
-    "officialHint": "Habilidades oficiais incluídas no AionUi — prontas para uso, somente leitura e atualizadas a cada versão."
+    "officialHint": "Habilidades oficiais incluídas no POUNDING — prontas para uso, somente leitura e atualizadas a cada versão."
   },
   "authMethod": "Autenticação",
   "geminiApiKey": "Chave de API Gemini",
@@ -145,8 +145,8 @@
   "assistantGroupCli": "Assistentes de CLI",
   "assistantGroupCreated": "Assistentes personalizados",
   "myAssistantsEmpty": "Ainda não há assistentes aqui. Ative um assistente oficial ou conecte uma ferramenta CLI local.",
-  "officialAssistantsHint": "Os assistentes oficiais são mantidos pela AionUi e atualizados a cada versão. Ative um para usá-lo em suas listas; para personalizar sua própria versão, duplique-o como seu assistente.",
-  "officialAssistantsHintShort": "Assistentes oficiais integrados ao AionUi, mantidos oficialmente e atualizados a cada versão; duplique como \"Meu assistente\" para personalizar livremente.",
+  "officialAssistantsHint": "Os assistentes oficiais são mantidos pela POUNDING e atualizados a cada versão. Ative um para usá-lo em suas listas; para personalizar sua própria versão, duplique-o como seu assistente.",
+  "officialAssistantsHintShort": "Assistentes oficiais integrados ao POUNDING, mantidos oficialmente e atualizados a cada versão; duplique como \"Meu assistente\" para personalizar livremente.",
   "customEmptyTitle": "Ainda não há assistentes personalizados",
   "customEmptyBody": "Crie um por meio do chat ou duplique um assistente oficial.",
   "customEmptyCreate": "Criar via chat",
@@ -639,7 +639,7 @@
   "mcpAuthenticated": "Autenticado",
   "mcpDisconnected": "Desconectado",
   "mcpError": "Erro",
-  "mcpErrorNodeCommandNotFound": "Não foi possível preparar o comando {{command}}. O AionCore normalmente provisiona automaticamente o runtime Node gerenciado. Tente novamente o teste de conexão, verifique os logs do backend se ainda falhar ou configure este servidor MCP para usar um caminho de comando absoluto.",
+  "mcpErrorNodeCommandNotFound": "Não foi possível preparar o comando {{command}}. O poundingcore normalmente provisiona automaticamente o runtime Node gerenciado. Tente novamente o teste de conexão, verifique os logs do backend se ainda falhar ou configure este servidor MCP para usar um caminho de comando absoluto.",
   "mcpErrorBunCommandNotFound": "O comando {{command}} não foi encontrado. Instale o Bun (que inclui bun/bunx), reinicie o POUNDING ou configure este servidor MCP para usar um caminho de comando absoluto.",
   "mcpErrorUvCommandNotFound": "O comando {{command}} não foi encontrado. Instale o uv, reinicie o POUNDING ou configure este servidor MCP para usar um caminho de comando absoluto.",
   "mcpErrorPythonCommandNotFound": "O comando {{command}} não foi encontrado. Instale o Python, reinicie o POUNDING ou configure este servidor MCP para usar um caminho de comando absoluto.",
@@ -1237,15 +1237,15 @@
     "addViaChat": "Adicionar via chat",
     "addManually": "Adicionar manualmente",
     "solveViaChat": "Resolver via chat",
-    "enabledToast": "Mordomo do AionUi ativado para você",
+    "enabledToast": "Mordomo do POUNDING ativado para você",
     "prompt": {
       "createAssistant": "Ajude-me a criar um novo assistente e me oriente na configuração.",
       "addCustomAgent": "Ajude-me a adicionar um Agent personalizado.",
       "addModel": "Ajude-me a adicionar um novo provedor de LLM e chave de API e defina-o como modelo padrão.",
       "addMcp": "Ajude-me a configurar um servidor MCP.",
       "addSkill": "Ajude-me a importar uma skill e vinculá-la a um assistente.",
-      "setupRemote": "Ajude-me a configurar o acesso remoto para abrir o AionUi do celular ou pela internet.",
-      "diagnose": "Tive um problema com o AionUi, ajude-me a diagnosticá-lo.\n\n[Módulo] {{module}}\n[Descrição] {{description}}\n[Anexos] veja as capturas de tela na entrada.\n\nDiagnostique a causa e me diga como corrigir."
+      "setupRemote": "Ajude-me a configurar o acesso remoto para abrir o POUNDING do celular ou pela internet.",
+      "diagnose": "Tive um problema com o POUNDING, ajude-me a diagnosticá-lo.\n\n[Módulo] {{module}}\n[Descrição] {{description}}\n[Anexos] veja as capturas de tela na entrada.\n\nDiagnostique a causa e me diga como corrigir."
     }
   },
   "providerIdConflict": "O Provider ID já existe. Tente novamente.",

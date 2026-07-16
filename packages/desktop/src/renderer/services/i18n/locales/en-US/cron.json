@@ -53,7 +53,7 @@
     "newTask": "New task",
     "createViaChat": "Create via chat",
     "createManually": "Create manually",
-    "description": "Run tasks on a schedule. You can also ask AionUi in any conversation to create one for you.",
+    "description": "Run tasks on a schedule. You can also ask POUNDING in any conversation to create one for you.",
     "awakeBanner": "Scheduled tasks only run while your computer is awake.",
     "keepAwake": "Keep awake",
     "keepAwakeTooltip": "When enabled, POUNDING will prevent your computer from going to sleep",

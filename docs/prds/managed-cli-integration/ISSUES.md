@@ -14,7 +14,7 @@
 | 8   | OpenCode config fell back to `~/.config/opencode/`                | Fixed — managed-only path in `resolveOpencodeConfigPath()`                         |
 | 9   | Claude ACP agent exited code 1 due to model env vars              | Fixed — removed `ANTHROPIC_*_MODEL` from env injection                             |
 | 10  | Brand asset `pounding-heart-solid.png` 404                        | Fixed — added to AionCore assets + rebuild                                         |
-| 11  | Update feed repo path mismatch                                    | Fixed — `electron-builder.yml` repo → `halojerry/AionUi`                           |
+| 11  | Update feed repo path mismatch                                    | Fixed — `electron-builder.yml` repo → `halojerry/POUNDING`                           |
 | 12  | macOS app resolver scanned entire `Contents/MacOS/`               | Fixed — `Info.plist` `CFBundleExecutable` preferred                                |
 
 ## Open (backend ACP agent scope — AionCore)

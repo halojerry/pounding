@@ -34,14 +34,14 @@ done < <(find "$ARTIFACTS_DIR" -type f \( \
   -name "*.zip" \
 \) | sort)
 
-DUPLICATE_BASENAMES=$(for file in "${DISTRIBUTABLES[@]}"; do basename "$file"; done | sort | uniq -d || true)
+DUPLICATE_BASENAMES=$(for file in ${DISTRIBUTABLES[@]+"${DISTRIBUTABLES[@]}"}; do basename "$file"; done | sort | uniq -d || true)
 if [ -n "$DUPLICATE_BASENAMES" ]; then
   echo "::error::Found duplicate distributable basenames that would be overwritten in flat output:"
   echo "$DUPLICATE_BASENAMES"
   exit 1
 fi
 
-for file in "${DISTRIBUTABLES[@]}"; do
+for file in ${DISTRIBUTABLES[@]+"${DISTRIBUTABLES[@]}"}; do
   cp -f "$file" "$OUTPUT_DIR/"
 done
 
@@ -53,18 +53,18 @@ WEB_CLI_FILES=()
 while IFS= read -r file; do
   WEB_CLI_FILES+=("$file")
 done < <(find "$ARTIFACTS_DIR" -type f \( \
-  -name "aionui-web-*.tar.gz" -o \
-  -name "aionui-web-*.tar.gz.sha256" \
+  -name "pounding-web-*.tar.gz" -o \
+  -name "pounding-web-*.tar.gz.sha256" \
 \) | sort)
 
-WEB_CLI_DUPS=$(for file in "${WEB_CLI_FILES[@]}"; do basename "$file"; done | sort | uniq -d || true)
+WEB_CLI_DUPS=$(for file in ${WEB_CLI_FILES[@]+"${WEB_CLI_FILES[@]}"}; do basename "$file"; done | sort | uniq -d || true)
 if [ -n "$WEB_CLI_DUPS" ]; then
   echo "::error::Duplicate web-cli artifact basenames:"
   echo "$WEB_CLI_DUPS"
   exit 1
 fi
 
-for file in "${WEB_CLI_FILES[@]}"; do
+for file in ${WEB_CLI_FILES[@]+"${WEB_CLI_FILES[@]}"}; do
   cp -f "$file" "$OUTPUT_DIR/"
 done
 
@@ -133,7 +133,7 @@ echo "==> Validating desktop release assets ..."
 
 for arch in x64 arm64; do
   for ext in dmg zip; do
-    asset="AionUi-${VERSION}-mac-${arch}.${ext}"
+    asset="POUNDING-${VERSION}-mac-${arch}.${ext}"
     if [ ! -f "$OUTPUT_DIR/$asset" ]; then
       if [ "$ext" = "zip" ]; then
         echo "::error::Missing macOS zip artifact: $asset"
@@ -144,6 +144,11 @@ for arch in x64 arm64; do
     fi
   done
 done
+
+if [ "$MISSING" -ne 0 ]; then
+  echo "::error::Release asset validation failed; aborting."
+  exit 1
+fi
 
 # ---------------------------------------------------------------------------
 # 5c) Hard validation for web-cli release assets

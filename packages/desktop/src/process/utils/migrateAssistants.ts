@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -354,20 +354,20 @@ async function applyBuiltinAgentIdOverrides(overrides: BuiltinAgentIdOverride[])
       if (isBackendHttpError(reason) && reason.status === 404) {
         skipped += 1;
         console.warn(
-          `[AionUi] Skipped agent_id override for retired built-in '${overrides[i].id}' (no longer in backend manifest)`
+          `[POUNDING] Skipped agent_id override for retired built-in '${overrides[i].id}' (no longer in backend manifest)`
         );
         return;
       }
       failed += 1;
-      console.error(`[AionUi] Failed to apply agent_id override for ${overrides[i].id}:`, reason);
+      console.error(`[POUNDING] Failed to apply agent_id override for ${overrides[i].id}:`, reason);
     }
   });
   const applied = overrides.length - failed - skipped;
   if (failed === 0) {
-    console.log(`[AionUi] Applied ${applied} builtin agent_id override(s) (skipped ${skipped} retired id(s))`);
+    console.log(`[POUNDING] Applied ${applied} builtin agent_id override(s) (skipped ${skipped} retired id(s))`);
   } else {
     console.error(
-      `[AionUi] Builtin agent_id override partial: ${failed}/${overrides.length} failed, ${skipped} skipped, ${applied} applied`
+      `[POUNDING] Builtin agent_id override partial: ${failed}/${overrides.length} failed, ${skipped} skipped, ${applied} applied`
     );
   }
   return failed;
@@ -390,7 +390,7 @@ async function fetchCurrentBuiltinAgentIds(): Promise<Map<string, string>> {
     }
     return map;
   } catch (error) {
-    console.error('[AionUi] Failed to fetch current builtin agent_id map:', error);
+    console.error('[POUNDING] Failed to fetch current builtin agent_id map:', error);
     return new Map();
   }
 }
@@ -414,7 +414,7 @@ async function fetchAgentIdByRuntimeKey(): Promise<Map<string, string>> {
     }
     return map;
   } catch (error) {
-    console.error('[AionUi] Failed to fetch agent runtime identity map:', error);
+    console.error('[POUNDING] Failed to fetch agent runtime identity map:', error);
     return new Map();
   }
 }

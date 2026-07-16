@@ -59,6 +59,15 @@ function patchElectronBuilderNsisInstaller() {
   const original = fs.readFileSync(installUtilPath, 'utf8');
   let patched = original;
 
+  // Normalize artifacts left by older (pre-POUNDING-branding) patch runs so
+  // the checks below recognize the file as already patched instead of
+  // inserting duplicate override blocks or failing the template check.
+  patched = patched
+    .split('AionUi-fixed-uninstaller.exe')
+    .join('POUNDING-fixed-uninstaller.exe')
+    .split('AionUi-bundled-uninstaller override source.')
+    .join('POUNDING-bundled-uninstaller override source.');
+
   const retryPrompt = [
     '    ${if} $R5 > 5',
     '      MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "$(appCannotBeClosed)" /SD IDCANCEL IDRETRY OneMoreAttempt',
@@ -109,9 +118,9 @@ function patchElectronBuilderNsisInstaller() {
     '  !insertmacro copyFile "$uninstallerFileName" "$uninstallerFileNameTemp"',
   ].join('\n');
   const bundledUninstallerOverride = [
-    '  ${if} ${FileExists} "$PLUGINSDIR\\AionUi-fixed-uninstaller.exe"',
-    '    DetailPrint `AionUi-bundled-uninstaller override source.`',
-    '    StrCpy $uninstallerFileName "$PLUGINSDIR\\AionUi-fixed-uninstaller.exe"',
+    '  ${if} ${FileExists} "$PLUGINSDIR\\POUNDING-fixed-uninstaller.exe"',
+    '    DetailPrint `POUNDING-bundled-uninstaller override source.`',
+    '    StrCpy $uninstallerFileName "$PLUGINSDIR\\POUNDING-fixed-uninstaller.exe"',
     '  ${endIf}',
   ].join('\n');
   const bundledUninstallerCopySource = [
@@ -767,15 +776,15 @@ try {
   }
 
   // 5. Prepare aioncore binary (for packaged runtime usage)
-  const { prepareAioncore } = require('../packages/shared-scripts/src/prepare-aioncore.js');
-  const { resolveAioncoreVersion } = require('./resolveAioncoreVersion.js');
+  const { preparePoundingcore } = require('../packages/shared-scripts/src/prepare-poundingcore.js');
+  const { resolvePoundingcoreVersion } = require('./resolvePoundingcoreVersion.js');
   const projectRoot = path.resolve(__dirname, '..');
   writeGeneratedSentryDsnInclude(projectRoot);
-  prepareAioncore({
+  preparePoundingcore({
     projectRoot,
     platform: process.platform,
     arch: targetArch,
-    version: resolveAioncoreVersion(projectRoot),
+    version: resolvePoundingcoreVersion(projectRoot),
   });
 
   // 6. Prepare hub resources (index.json + extension zips for offline fallback)

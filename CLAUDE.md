@@ -62,6 +62,13 @@ scripts/patches/
 | `webuiConfig.ts` | 003 | MEDIUM |
 | `backend-launcher.ts` | 003 | MEDIUM |
 
+### 高危 drift：main.tsx 的 NewApiAccountProvider（已丢过两次！）
+
+`-X theirs` merge 会覆盖 `main.tsx` 的 AppProviders 链，剥掉 `NewApiAccountProvider`。
+症状：**app 白屏 + console 报 `useNewApiAccount must be used within a NewApiAccountProvider`**（Layout.tsx 调用处崩溃）。
+单元测试**不能**发现这个问题（测试 mock 了 context）——必须真机冒烟。
+修复：在 `AppProviders` 里 `AuthProvider` 之下插入 `NewApiAccountProvider`（见 `003-pound-login.patch` 的 main.tsx 部分）。
+
 ## 追上游流程
 
 ### 标准流程（小版本更新，如 v2.1.34 → v2.1.35）

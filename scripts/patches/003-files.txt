@@ -31,6 +31,7 @@ packages/desktop/src/index.ts
 packages/desktop/src/preload/main.ts
 
 # Renderer - Login + Account
+packages/desktop/src/renderer/main.tsx
 packages/desktop/src/renderer/hooks/context/NewApiAccountContext.tsx
 packages/desktop/src/renderer/components/layout/DesktopLoginGate.tsx
 

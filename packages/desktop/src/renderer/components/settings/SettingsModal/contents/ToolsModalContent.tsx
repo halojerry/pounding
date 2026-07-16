@@ -545,6 +545,13 @@ const ToolsModalContent: React.FC = () => {
       } else {
         const resolution = resolveImageGenerationMcpEnv(model, data || [], existingEnv);
         if (resolution.ok === false) {
+          if (resolution.reason === 'model-not-found') {
+            // Expected while the provider has no model list yet (e.g. NewApi
+            // account not logged in). Keep the existing env untouched — this
+            // effect re-runs when provider data refreshes after login.
+            console.info('[ImageGen] Skipping MCP env sync (provider models not ready):', resolution.message);
+            return;
+          }
           console.error('[ImageGen] Failed to resolve image MCP provider', {
             reason: resolution.reason,
             message: resolution.message,

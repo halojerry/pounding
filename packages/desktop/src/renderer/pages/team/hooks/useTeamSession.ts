@@ -52,10 +52,7 @@ export function useTeamSession(team: TTeam, warmupPhase?: TeamWarmupPhase) {
   }, [team.id, warmupPhase]);
 
   useEffect(() => {
-    console.log('[useTeamSession] mounting team session listeners', { team_id: team.id, agents: team.agents.length });
-
     const unsubStatus = ipcBridge.team.agentStatusChanged.on((event: ITeamAgentStatusEvent) => {
-      console.log('[useTeamSession] team.agent.status event:', { slot_id: event.slot_id, status: event.status });
       if (event.team_id !== team.id) return;
       setStatusMap((prev) => {
         const next = new Map(prev);
@@ -69,14 +66,7 @@ export function useTeamSession(team: TTeam, warmupPhase?: TeamWarmupPhase) {
     });
 
     const unsubSpawned = ipcBridge.team.agentSpawned.on((event: ITeamAgentSpawnedEvent) => {
-      console.log('[useTeamSession] team.agent.spawned event:', { team_id: event.team_id, agent: event.agent });
-      if (event.team_id !== team.id) {
-        console.log('[useTeamSession] spawned event team_id mismatch — ignoring', {
-          expected: team.id,
-          got: event.team_id,
-        });
-        return;
-      }
+      if (event.team_id !== team.id) return;
       void mutateTeam();
     });
 
@@ -90,7 +80,7 @@ export function useTeamSession(team: TTeam, warmupPhase?: TeamWarmupPhase) {
       void mutateTeam();
     });
 
-    const unsubRuntimeStatus = ipcBridge.team.agentRuntimeStatusChanged.on((event: ITeamAgentRuntimeStatusEvent) => {
+    const unsubRuntimeStatus = ipcBridge.team.agentStatusChanged.on((event: ITeamAgentRuntimeStatusEvent) => {
       if (event.team_id !== team.id) return;
       setMembershipMutationState((prev) =>
         applyTeamRuntimeStatusToMembershipMutationState(prev, event.slot_id, event.status)
@@ -99,7 +89,7 @@ export function useTeamSession(team: TTeam, warmupPhase?: TeamWarmupPhase) {
       void revalidateAcpConfigOptions(event.conversation_id);
     });
 
-    const unsubSessionStatus = ipcBridge.team.sessionStatusChanged.on((event: ITeamSessionStatusChangedEvent) => {
+    const unsubSessionStatus = ipcBridge.team.sessionChanged.on((event: ITeamSessionStatusChangedEvent) => {
       if (event.team_id !== team.id) return;
       setMembershipMutationState((prev) => applyTeamSessionStatusToMembershipMutationState(prev, event.status));
     });

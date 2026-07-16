@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -8,19 +8,17 @@ import { ipcBridge } from '@/common';
 import type { TFunction } from 'i18next';
 
 /**
+ * SWR key for detected agents — used by POUNDING's CC-Switch and model
+ * selector surfaces that consume the ACP handshake model info.
+ */
+export const DETECTED_AGENTS_SWR_KEY = 'agents.detected';
+
+/**
  * SWR key for the Agent settings management view (`/api/agents/management`).
  *
  * Phase 2 removed the renderer-side detected-agent candidate cache; business
  * surfaces now consume assistants only. The management view keeps its own
  * diagnostics cache so disabled/missing rows remain visible for troubleshooting.
- */
-export const MANAGED_AGENTS_SWR_KEY = 'agents.managed';
-
-/**
- * SWR key for the Agent settings management view
- * (`/api/agents?include_disabled=true`). Kept separate from
- * {@link DETECTED_AGENTS_SWR_KEY} so user-disabled agents never leak into
- * the pickers that consume the shared detected key.
  */
 export const MANAGED_AGENTS_SWR_KEY = 'agents.managed';
 
@@ -166,6 +164,19 @@ export type ManagedAgent = Omit<AgentMetadata, 'available' | 'handshake'> & {
   handshake?: AgentHandshake;
 };
 
+/** Shared fetcher for DETECTED_AGENTS_SWR_KEY — used by CC-Switch model selection surfaces. */
+export async function fetchDetectedAgents(): Promise<AgentMetadata[]> {
+  try {
+    const agents = await ipcBridge.acpConversation.getAvailableAgents.invoke();
+    if (Array.isArray(agents)) {
+      return agents as AgentMetadata[];
+    }
+  } catch {
+    // fallback to empty
+  }
+  return [];
+}
+
 /**
  * Fetcher for MANAGED_AGENTS_SWR_KEY — the Agent settings management view.
  * Hits `/api/agents/management` so user-disabled and missing rows remain
@@ -227,24 +238,6 @@ export function formatManagedAgentDiagnosticMessage(t: TFunction, agent: Managed
     default:
       return fallback;
   }
-}
-
-/**
- * Fetcher for MANAGED_AGENTS_SWR_KEY — the Agent settings management view.
- * Hits `/api/agents?include_disabled=true` so user-disabled-but-installed
- * agents stay listed (greyed, with a working re-enable toggle). Must only
- * be used by the settings surface; pickers use {@link fetchDetectedAgents}.
- */
-export async function fetchManagedAgents(): Promise<AgentMetadata[]> {
-  try {
-    const agents = await ipcBridge.acpConversation.getManagedAgents.invoke();
-    if (Array.isArray(agents)) {
-      return agents as AgentMetadata[];
-    }
-  } catch {
-    // fallback to empty
-  }
-  return [];
 }
 
 /**

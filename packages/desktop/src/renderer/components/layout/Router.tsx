@@ -10,6 +10,8 @@ const CliPrep = React.lazy(() => import('@renderer/pages/cli-prep'));
 const AgentSettings = React.lazy(() => import('@renderer/pages/settings/AgentSettings'));
 const AgentRepairPage = React.lazy(() => import('@renderer/pages/settings/AgentSettings/AgentRepairPage'));
 const AssistantSettings = React.lazy(() => import('@renderer/pages/settings/AssistantSettings'));
+const DisplaySettings = React.lazy(() => import('@renderer/pages/settings/AppearanceSettings'));
+const AionrsSettings = React.lazy(() => import('@renderer/pages/settings/AionrsSettings'));
 const SkillsSettings = React.lazy(() => import('@renderer/pages/settings/SkillsHubSettings'));
 const ToolsSettings = React.lazy(() => import('@renderer/pages/settings/ToolsSettings'));
 const AppearanceSettings = React.lazy(() => import('@renderer/pages/settings/AppearanceSettings'));

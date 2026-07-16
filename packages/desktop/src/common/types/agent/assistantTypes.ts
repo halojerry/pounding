@@ -35,6 +35,13 @@ export interface Assistant {
   avatar?: string;
   enabled: boolean;
   sort_order: number;
+  /**
+   * POUNDING preset agent backend (claude/codex/…) for builtin/preset
+   * assistants. Optional: upstream assistants describe their engine via
+   * {@link AssistantAgent} (`agent_id`/`agent`), while POUNDING presets carry
+   * this hint from `assistants.json`. Consumed by `buildPresetAssistantParams`.
+   */
+  preset_agent_type?: string;
   agent_id: string;
   agent?: AssistantAgent;
   enabled_skills: string[];

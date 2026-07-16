@@ -34,11 +34,11 @@ import GoogleModelSelector from '../platforms/gemini/GoogleModelSelector';
 import AionrsChat from '../platforms/aionrs/AionrsChat';
 import AionrsModelSelector from '../platforms/aionrs/AionrsModelSelector';
 import { useAionrsModelSelection } from '../platforms/aionrs/useAionrsModelSelection';
-import { useConversationRuntimeView } from '../runtime/useConversationRuntimeView';
-import { isLegacyReadOnlyConversationType } from '../utils/conversationRuntime';
+import { usePreviewContext } from '../Preview';
+import StarOfficeMonitorCard from '../platforms/openclaw/StarOfficeMonitorCard.tsx';
 import { resolveConversationBackend } from '../utils/conversationAssistantIdentity';
-import LegacyReadOnlyConversation from '../platforms/legacy/LegacyReadOnlyConversation';
 import { useActiveLease } from '../hooks/useActiveLease';
+import { saveAionrsDefaultModel } from '@/renderer/pages/guid/hooks/agentSelectionUtils';
 // import SkillRuleGenerator from './components/SkillRuleGenerator'; // Temporarily hidden
 
 const configErrorMessageKey = (error: unknown) => {
@@ -148,15 +148,15 @@ const AionrsConversationPanel: React.FC<{ conversation: AionrsConversation; slid
   conversation,
   sliderTitle,
 }) => {
-  const runtimeView = useConversationRuntimeView(conversation.id);
   const onSelectModel = useCallback(
     async (_provider: IProvider, modelName: string) => {
       const selected = { ..._provider, use_model: modelName } as TProviderWithModel;
       // Model switch applies on next message — no need to cancel current turn
       const ok = await ipcBridge.conversation.update.invoke({ id: conversation.id, updates: { model: selected } });
+      if (ok) void saveAionrsDefaultModel(_provider.id, modelName);
       return Boolean(ok);
     },
-    [conversation.id, runtimeView]
+    [conversation.id]
   );
 
   const modelSelection = useAionrsModelSelection({
@@ -239,6 +239,7 @@ const ChatConversation: React.FC<{
   hideSendBox?: boolean;
 }> = ({ conversation, hideSendBox }) => {
   const { t } = useTranslation();
+  const { openPreview } = usePreviewContext();
   useActiveLease({ type: 'conversation', id: conversation?.id });
   const workspaceEnabled = Boolean(conversation?.extra?.workspace);
   const cronJobId = resolveCronJobId(conversation?.extra);
@@ -247,7 +248,6 @@ const ChatConversation: React.FC<{
 
   const isAionrsConversation = conversation?.type === 'aionrs';
 
-  // 使用统一的 Hook 获取预设助手信息（ACP/Codex 会话）
   // Use unified hook for preset assistant info (ACP/Codex conversations)
   const acpConversation = isAionrsConversation ? undefined : conversation;
   const { info: presetAssistantInfo, isLoading: isLoadingPreset } = usePresetAssistantInfo(acpConversation);
@@ -267,10 +267,11 @@ const ChatConversation: React.FC<{
             conversation_id={conversation.id}
             workspace={conversation.extra?.workspace}
             backend={resolvedConversationBackend || 'claude'}
+            assistantId={acpAssistantId}
             session_mode={conversation.extra?.session_mode}
             agent_name={assistantDisplayName}
-            cron_job_id={cronJobId}
-            hideSendBox={resolvedHideSendBox}
+            cron_job_id={(conversation.extra as { cron_job_id?: string })?.cron_job_id}
+            hideSendBox={hideSendBox}
             loadedSkills={(conversation.extra as { skills?: string[] } | undefined)?.skills}
             loadedMcpServers={(conversation.extra as { mcp_servers?: string[] } | undefined)?.mcp_servers}
             loadedMcpStatuses={
@@ -281,10 +282,7 @@ const ChatConversation: React.FC<{
       case 'gemini':
         // Legacy Gemini conversation: the dedicated Gemini runtime has been
         // removed. The message history is still served by the shared messages
-        // table, so AcpChat renders it fine. The composer is left enabled —
-        // any send attempt will get a BadRequest from the factory branch in
-        // aionui-common/src/enums.rs → factory.rs, surfacing a clear error
-        // to the user.
+        // table, so AcpChat renders it fine.
         return (
           <AcpChat
             key={conversation.id}
@@ -353,11 +351,9 @@ const ChatConversation: React.FC<{
   }, [
     conversation,
     isAionrsConversation,
-    isLegacyReadOnlyConversation,
-    resolvedConversationBackend,
     assistantDisplayName,
-    cronJobId,
-    resolvedHideSendBox,
+    hideSendBox,
+    resolvedConversationBackend,
     acpAssistantId,
   ]);
 
@@ -376,26 +372,24 @@ const ChatConversation: React.FC<{
   const modelSelector = useMemo(() => {
     if (!conversation || isAionrsConversation) return undefined;
     if (isMobile) return undefined;
-    if (isLegacyReadOnlyConversation) return undefined;
-    if (conversation.type === 'acp') {
-      const extra = conversation.extra as { current_model_id?: string };
+    if (conversation.type === 'acp' || conversation.type === 'openclaw-gateway') {
+      const extra = conversation.extra as { backend?: string; current_model_id?: string };
       return (
         <AcpModelSelector
           conversation_id={conversation.id}
           backend={resolvedConversationBackend}
           initialModelId={extra.current_model_id}
-          waitForWarmup
+          waitForWarmup={conversation.type === 'acp'}
         />
       );
     }
     return <GoogleModelSelector disabled={true} />;
-  }, [conversation, isAionrsConversation, isMobile, isLegacyReadOnlyConversation, resolvedConversationBackend]);
+  }, [conversation, isAionrsConversation, isMobile, resolvedConversationBackend]);
 
   if (conversation && conversation.type === 'aionrs') {
     return <AionrsConversationPanel key={conversation.id} conversation={conversation} sliderTitle={sliderTitle} />;
   }
 
-  // 如果有预设助手信息，使用预设助手的 logo 和名称；加载中时不进入 fallback；否则使用 backend 的 logo
   // If preset assistant info exists, use preset logo/name; while loading, avoid fallback; otherwise use backend logo
   const chatLayoutProps = presetAssistantInfo
     ? {

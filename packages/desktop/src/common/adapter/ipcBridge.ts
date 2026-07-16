@@ -42,6 +42,17 @@ import type {
   SetConfigOptionResponse,
 } from '../types/platform/acpTypes';
 import type {
+  ManagedRuntimeCliTarget,
+  NewApiAccountStatus,
+  NewApiLoginParams,
+  NewApiLoginResponse,
+} from '../types/newApiAccount';
+import type {
+  ManagedCliInstallOptions,
+  ManagedCliInstallResult,
+  ManagedCliInstallTarget,
+} from '../types/agent/managedCliInstaller';
+import type {
   CreateProviderRequest,
   FetchModelsAnonymousRequest,
   FetchModelsResponse,
@@ -52,7 +63,6 @@ import type {
 import type {
   ITeamAgentRemovedEvent,
   ITeamAgentRenamedEvent,
-  ITeamAgentRuntimeStatusEvent,
   ITeamAgentSpawnedEvent,
   ITeamAgentStatusEvent,
   ITeamChildTurnEvent,
@@ -64,7 +74,6 @@ import type {
   ITeamRunEvent,
   ITeamRunStateResponse,
   ITeamSessionChangedEvent,
-  ITeamSessionStatusChangedEvent,
   ITeamTaskChangedEvent,
   ICancelTeamChildTurnParams,
   ICancelTeamRunParams,
@@ -837,6 +846,12 @@ export const mode = {
 export const acpConversation = {
   sendMessage: conversation.sendMessage,
   responseStream: conversation.responseStream,
+  /**
+   * Default picker-safe detected agents view (`/api/agents`). Excludes
+   * user-disabled agents. Pickers and CC-Switch model surfaces read this via
+   * {@link useAgents} / `fetchDetectedAgents`.
+   */
+  getAvailableAgents: httpGet<import('@/renderer/utils/model/agentTypes').AgentMetadata[], void>('/api/agents'),
   /** Management view used by Agent settings. */
   getManagedAgents: httpGet<import('@/renderer/utils/model/agentTypes').ManagedAgent[], void>('/api/agents/management'),
   getAgentOverrides: httpGet<
@@ -906,9 +921,25 @@ export const acpConversation = {
   checkProviderHealth: httpPost<ProviderHealthCheckResponse, ProviderHealthCheckRequest>(
     '/api/agents/provider-health-check'
   ),
+  getConfigOptions: httpGet<GetConfigOptionsResponse, { conversation_id: string }>(
+    (p) => `/api/conversations/${p.conversation_id}/config-options`,
+    { silentStatuses: [404] }
+  ),
   setConfigOption: httpPut<SetConfigOptionResponse, { conversation_id: string; option_id: string; value: string }>(
     (p) => `/api/conversations/${p.conversation_id}/config-options/${encodeURIComponent(p.option_id)}`,
-    (p): SetConfigOptionRequest => ({ value: p.value })
+    (p): SetConfigOptionRequest => ({ value: p.value }),
+    { silentStatuses: [404] }
+  ),
+  getModel: httpGet<
+    { model_info: import('../types/platform/acpTypes').AcpModelInfo | null },
+    { conversation_id: string }
+  >((p) => `/api/conversations/${p.conversation_id}/model`, { silentStatuses: [404] }),
+  setModel: httpPut<
+    { model_info: import('../types/platform/acpTypes').AcpModelInfo | null },
+    { conversation_id: string; model_id: string }
+  >(
+    (p) => `/api/conversations/${p.conversation_id}/model`,
+    (p) => ({ model_id: p.model_id })
   ),
 };
 
@@ -1553,6 +1584,18 @@ export interface ICreateConversationParams {
     custom_workspace?: boolean;
     default_files?: string[];
     cli_path?: string;
+    /** ACP backend id (claude/codex/…) for the new conversation. */
+    backend?: string;
+    /** Display / routing name of the agent for ACP conversations. */
+    agent_name?: string;
+    /** Agent id selected from the agent catalog. */
+    agent_id?: string;
+    /** UUID identifying a specific user-authored custom agent. */
+    custom_agent_id?: string;
+    /** Preset assistant ID for displaying name/avatar in the conversation panel. */
+    preset_assistant_id?: string;
+    /** Initial session mode persisted for resume support. */
+    session_mode?: string;
     gateway?: {
       host?: string;
       port?: number;
@@ -1573,6 +1616,7 @@ export interface ICreateConversationParams {
     selected_mcp_server_ids?: string[];
     selected_session_mcp_servers?: ISessionMcpServer[];
     codex_model?: string;
+    current_model_id?: string;
     thought_level?: string;
     cached_config_options?: import('../types/platform/acpTypes').AcpSessionConfigOption[];
     pending_config_options?: Record<string, string>;
@@ -1969,7 +2013,7 @@ export const team = {
   create: withResponseMap(
     httpPost<TTeam, ICreateTeamParams>('/api/teams', (p) => ({
       name: p.name,
-      agents: p.agents.map(toBackendAssistant),
+      assistants: p.agents.map(toBackendAssistant),
       ...(p.workspace ? { workspace: p.workspace } : {}),
     })),
     fromBackendTeam
@@ -2052,13 +2096,11 @@ export const team = {
   agentSpawned: wsEmitter<ITeamAgentSpawnedEvent>('team.agentSpawned'),
   agentRemoved: wsEmitter<ITeamAgentRemovedEvent>('team.agentRemoved'),
   agentRenamed: wsEmitter<ITeamAgentRenamedEvent>('team.agentRenamed'),
-  agentRuntimeStatusChanged: wsEmitter<ITeamAgentRuntimeStatusEvent>('team.agentRuntimeStatusChanged'),
   listChanged: wsEmitter<ITeamListChangedEvent>('team.listChanged'),
   created: wsEmitter<ITeamCreatedEvent>('team.created'),
   removed: wsEmitter<ITeamRemovedEvent>('team.removed'),
   renamed: wsEmitter<ITeamRenamedEvent>('team.renamed'),
   teammateMessage: wsEmitter<ITeamTeammateMessageEvent>('team.teammateMessage'),
-  sessionStatusChanged: wsEmitter<ITeamSessionStatusChangedEvent>('team.sessionStatusChanged'),
   taskChanged: wsEmitter<ITeamTaskChangedEvent>('team.taskChanged'),
   sessionChanged: wsEmitter<ITeamSessionChangedEvent>('team.sessionChanged'),
   runAccepted: wsEmitter<ITeamRunEvent>('team.runAccepted'),

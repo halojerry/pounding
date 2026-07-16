@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -13,12 +13,18 @@ type ErrorWithDetails = Error & {
     causeMessage?: unknown;
     stderrTail?: unknown;
     stdoutTail?: unknown;
+    backendBoundaryCode?: unknown;
+    backendBoundaryStage?: unknown;
     runtimeKey?: unknown;
     binaryName?: unknown;
     bundledDirExists?: unknown;
     runtimeDirExists?: unknown;
     resourcesDirEntries?: unknown;
     runtimeDirEntries?: unknown;
+    packageArch?: unknown;
+    deviceArch?: unknown;
+    expectedDownloadArch?: unknown;
+    isRosettaTranslated?: unknown;
   };
 };
 
@@ -78,6 +84,30 @@ function getStringArray(value: unknown): string[] | undefined {
   return strings.length === value.length ? strings : undefined;
 }
 
+function getString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+function classifyPackageArchitectureMismatch(
+  details: ErrorWithDetails['details']
+): BackendStartupFailureInfo | undefined {
+  if (!details) return undefined;
+  if (details.stage !== 'startup_architecture_check') return undefined;
+
+  return {
+    reason: 'backend_package_architecture_mismatch',
+    packageArch: getString(details.packageArch),
+    deviceArch: getString(details.deviceArch),
+    expectedDownloadArch: getString(details.expectedDownloadArch),
+    isRosettaTranslated: typeof details.isRosettaTranslated === 'boolean' ? details.isRosettaTranslated : undefined,
+  };
+}
+
+function getMissingDirectoryFlag(entries: string[], directoryName: string): boolean | undefined {
+  if (entries.includes(directoryName)) return false;
+  return entries.length < MAX_REPORTED_DIR_ENTRIES ? true : undefined;
+}
+
 function classifyIncompleteInstallation(details: ErrorWithDetails['details']): BackendStartupFailureInfo | undefined {
   if (!details) return undefined;
   if (details.stage !== 'resolve_binary' || details.isPackaged !== true) return undefined;
@@ -88,26 +118,47 @@ function classifyIncompleteInstallation(details: ErrorWithDetails['details']): B
   const hasPackagedApp = resourcesDirEntries.some((entry) => PACKAGED_APP_MARKER_ENTRIES.has(entry));
   if (!hasPackagedApp) return undefined;
 
-  const missingResources = resourcesDirEntries.includes('bundled-poundingcore/') ? [] : ['bundled-poundingcore/'];
+  const missingBundledAioncoreDir = !resourcesDirEntries.includes('bundled-poundingcore/');
+  const missingRuntimeDir = details.runtimeDirExists === false && typeof details.runtimeKey === 'string';
+  const missingResources = missingBundledAioncoreDir ? ['bundled-poundingcore/'] : [];
   if (details.runtimeDirExists === false && typeof details.runtimeKey === 'string') {
     missingResources.push(`bundled-poundingcore/${details.runtimeKey}/`);
   }
   const runtimeDirEntries = getStringArray(details.runtimeDirEntries);
-  if (
+  const missingManagedResourcesDir =
+    details.runtimeDirExists === true &&
+    typeof details.runtimeKey === 'string' &&
+    runtimeDirEntries !== undefined &&
+    !runtimeDirEntries.includes('managed-resources/');
+  if (missingManagedResourcesDir && typeof details.runtimeKey === 'string') {
+    missingResources.push(`bundled-poundingcore/${details.runtimeKey}/managed-resources/`);
+  }
+  const missingRuntimeBinary =
     details.runtimeDirExists === true &&
     typeof details.runtimeKey === 'string' &&
     typeof details.binaryName === 'string' &&
-    runtimeDirEntries &&
-    !runtimeDirEntries.includes(details.binaryName)
-  ) {
+    runtimeDirEntries !== undefined &&
+    !runtimeDirEntries.includes(details.binaryName);
+  if (missingRuntimeBinary && typeof details.runtimeKey === 'string' && typeof details.binaryName === 'string') {
     missingResources.push(`bundled-poundingcore/${details.runtimeKey}/${details.binaryName}`);
   }
 
   if (missingResources.length === 0) return undefined;
 
   return {
+    incompleteInstallationKind:
+      missingBundledAioncoreDir || missingRuntimeDir || missingManagedResourcesDir
+        ? 'missing_directory_resources'
+        : 'missing_backend_binary',
+    missingBackendBinary:
+      missingBundledAioncoreDir || missingRuntimeDir || missingManagedResourcesDir || missingRuntimeBinary,
+    missingBundledAioncoreDir,
+    missingHubDir: getMissingDirectoryFlag(resourcesDirEntries, 'hub/'),
+    missingPetStatesDir: getMissingDirectoryFlag(resourcesDirEntries, 'pet-states/'),
+    missingPwaDir: getMissingDirectoryFlag(resourcesDirEntries, 'pwa/'),
     reason: 'backend_incomplete_installation',
     missingResources,
+    missingRuntimeDir,
   };
 }
 
@@ -156,7 +207,11 @@ function classifyStartupDirectoryFailure(
 }
 
 export function classifyBackendStartupFailure(error: unknown): BackendStartupFailureInfo {
-  const incompleteInstallation = classifyIncompleteInstallation(getBackendStartupDetails(error));
+  const details = getBackendStartupDetails(error);
+  const packageArchitectureMismatch = classifyPackageArchitectureMismatch(details);
+  if (packageArchitectureMismatch) return packageArchitectureMismatch;
+
+  const incompleteInstallation = classifyIncompleteInstallation(details);
   if (incompleteInstallation) return incompleteInstallation;
 
   const text = collectBackendStartupText(error);

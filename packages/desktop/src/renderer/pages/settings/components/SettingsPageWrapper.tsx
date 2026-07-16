@@ -31,7 +31,6 @@ interface SettingsPageWrapperProps {
   children: React.ReactNode;
   className?: string;
   contentClassName?: string;
-  title?: string;
 }
 
 type NavItem = { label: string; icon: React.ReactElement; path: string; id: string };
@@ -65,11 +64,11 @@ export function getBuiltinSettingsNavItems(isDesktop: boolean, t: TranslateFn): 
       icon: <Toolkit theme='outline' size='16' />,
       path: 'tools',
     },
-    display: {
-      id: 'display',
-      label: t('settings.display'),
-      icon: <Theme />,
-      path: 'display',
+    appearance: {
+      id: 'appearance',
+      label: t('settings.appearancePanel'),
+      icon: <Computer theme='outline' size='16' />,
+      path: 'appearance',
     },
     webui: {
       id: 'webui',

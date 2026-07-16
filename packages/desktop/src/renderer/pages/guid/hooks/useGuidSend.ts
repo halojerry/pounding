@@ -44,7 +44,6 @@ export type GuidSendDeps = {
   assistantDefaultMcpIds: string[] | undefined;
   availableMcpServers: IMcpServer[];
   selectedMcpServerIds: string[] | undefined;
-  assistantDefaultMcpIds?: string[];
   isGoogleAuth: boolean;
 
   // Mention state reset
@@ -57,6 +56,7 @@ export type GuidSendDeps = {
   navigate: NavigateFunction;
   t: TFunction;
   localeKey: string;
+  is_preset?: boolean; // POUNDING: whether selected assistant is a preset/builtin
 };
 
 export type GuidSendResult = {
@@ -90,12 +90,16 @@ export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
     availableMcpServers,
     selectedMcpServerIds,
     assistantDefaultMcpIds,
+    assistantDefaultSkillIds,
+    assistantDefaultDisabledBuiltinSkillIds,
     setMentionOpen,
     setMentionQuery,
     setMentionSelectorOpen,
     setMentionActiveIndex,
     navigate,
     t,
+    localeKey,
+    is_preset = false,
   } = deps;
   const sendingRef = useRef(false);
 
@@ -122,6 +126,9 @@ export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
     const selectedSessionMcpServers = availableMcpServers
       .filter((server) => selectedMcpServerIdSet.has(server.id) && server.builtin === true)
       .map((server) => toSessionMcpServer(server));
+    const assistantOverrideMcpIds = selectedAllMcpServerIds;
+    const selectedUserMcpServerIdsToSend = selectedUserMcpServerIds;
+    const selectedSessionMcpServersToSend = selectedSessionMcpServers;
 
     const assistantOverrideModel =
       selectedAcpModel || currentAcpCachedModelInfo?.current_model_id || current_model?.use_model || undefined;
@@ -256,6 +263,8 @@ export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
     selectedMcpServerIds,
     navigate,
     t,
+    localeKey,
+    is_preset,
   ]);
 
   const sendMessageHandler = useCallback(() => {

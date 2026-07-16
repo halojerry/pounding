@@ -25,7 +25,7 @@ export function useDealerConfig(): {
     console.log('[useDealerConfig] Fetching dealer config...');
     ipcBridge.application.getDealerConfig
       .invoke()
-      .then((result) => {
+      .then((result: any) => {
         console.log('[useDealerConfig] IPC result:', result);
         if (result.success && result.data) {
           console.log('[useDealerConfig] Setting dealer config:', result.data);
@@ -34,7 +34,7 @@ export function useDealerConfig(): {
           console.log('[useDealerConfig] No dealer config data');
         }
       })
-      .catch((err) => {
+      .catch((err: any) => {
         console.error('[useDealerConfig] IPC error:', err);
       })
       .finally(() => setLoading(false));

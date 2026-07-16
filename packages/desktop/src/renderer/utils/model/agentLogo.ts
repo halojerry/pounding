@@ -77,6 +77,38 @@ export function useAgentLogos(): AgentLogoMap {
   return data ?? {};
 }
 
+const AGENT_LOGO_PATH_MAP = {
+  aionrs: 'brand/pounding-heart-solid.png',
+  claude: 'ai-major/claude.svg',
+  gemini: 'ai-major/gemini.svg',
+  qwen: 'ai-china/qwen.svg',
+  codex: 'tools/coding/codex.svg',
+  codebuddy: 'tools/coding/codebuddy.svg',
+  droid: 'brand/droid.svg',
+  goose: 'tools/goose.svg',
+  hermes: 'brand/hermes.svg',
+  snow: 'tools/coding/snow.png',
+  auggie: 'brand/auggie.svg',
+  kimi: 'ai-china/kimi.svg',
+  opencode: 'tools/coding/opencode-light.svg',
+  'opencode-dark': 'tools/coding/opencode-dark.svg',
+  copilot: 'tools/github.svg',
+  openclaw: 'tools/openclaw.svg',
+  'openclaw-gateway': 'tools/openclaw.svg',
+  vibe: 'ai-major/mistral.svg',
+  nanobot: 'tools/nanobot.svg',
+  remote: 'tools/openclaw.svg',
+  qoder: 'tools/coding/qoder.png',
+  cursor: 'tools/coding/cursor.png',
+} as const satisfies Record<string, string>;
+
+const OPEN_CODE_LIGHT_FILE_NAME = 'opencode-light.svg';
+const OPEN_CODE_DARK_FILE_NAME = 'opencode-dark.svg';
+
+function buildAssetUrl(path: string): string {
+  return resolveBackendAssetUrl(`/api/assets/logos/${path}`) ?? `/api/assets/logos/${path}`;
+}
+
 function normalizeLogoUrl(logo: string): string | null {
   const value = logo.trim();
   if (!value || isLikelyLocalFilePath(value)) return null;

@@ -15,26 +15,43 @@ export const ConfigStorage = storage.buildStorage<IConfigStorageRefer>('agent.co
 export const EnvStorage = storage.buildStorage<IEnvStorageRefer>('agent.env');
 
 export interface IConfigStorageRefer {
-  language: string;
-  theme: string;
-  colorScheme: string;
-  /** Persisted app-wide UI zoom factor for Display settings */
-  'ui.zoomFactor'?: number;
-  /** Last-known main window size and position, restored on next launch */
-  'window.bounds'?: { x?: number; y?: number; width: number; height: number };
-  /** 桌面模式下是否自动启用 WebUI / Auto-enable WebUI in desktop mode */
-  'webui.desktop.enabled'?: boolean;
-  /** 桌面模式下是否允许远程访问 / Allow remote access in desktop mode */
-  'webui.desktop.allowRemote'?: boolean;
-  /** 桌面模式下 WebUI 端口 / WebUI port in desktop mode */
-  'webui.desktop.port'?: number;
-  customCss: string; // 自定义 CSS 样式 // @deprecated migrated to theme.activeId/theme.userThemes
-  'css.themes': ICssTheme[]; // 自定义 CSS 主题列表 / Custom CSS themes list // @deprecated migrated to theme.activeId/theme.userThemes
-  'css.activeThemeId': string; // 当前激活的主题 ID / Currently active theme ID // @deprecated migrated to theme.activeId/theme.userThemes
-  /** Active unified theme ID */
-  'theme.activeId': string;
-  /** User-created themes */
-  'theme.userThemes': Theme[];
+  'google.config'?: {
+    /** Proxy URL for Google OAuth endpoint reachability / Google OAuth 端点代理 */
+    proxy?: string;
+  };
+  'codex.config'?: {
+    cli_path?: string;
+    yoloMode?: boolean;
+    sandboxMode?: 'read-only' | 'workspace-write' | 'danger-full-access';
+  };
+  'acp.config': {
+    [backend: string]: {
+      auth_methodId?: string;
+      authToken?: string;
+      lastAuthTime?: number;
+      cli_path?: string;
+      yoloMode?: boolean;
+      /** Preferred session mode for new conversations / 新会话的默认模式 */
+      preferredMode?: string;
+      /** Preferred model ID for new conversations / 新会话的默认模型 */
+      preferredModelId?: string;
+      /** Preferred thought level for new conversations / 新会话的默认思考深度 */
+      preferredThoughtLevel?: string;
+      /** LLM prompt timeout in seconds (default: 300) / LLM 请求超时时间（秒，默认 300） */
+      promptTimeout?: number;
+    };
+  };
+  /** Global LLM prompt timeout in seconds (default: 300). Per-backend promptTimeout overrides this. */
+  'acp.promptTimeout'?: number;
+  /** Idle timeout in minutes before an ACP agent process is killed to reclaim memory (default: 5). */
+  'acp.agentIdleTimeout'?: number;
+  // Cached initialize results per ACP backend (persisted across sessions)
+  'acp.cachedInitializeResult'?: Record<string, import('@/common/types/platform/acpTypes').AcpInitializeResult>;
+  // Cached config options per ACP backend for Guid page pre-selection
+  'acp.cached_config_options'?: Record<string, import('@/common/types/platform/acpTypes').AcpSessionConfigOption[]>;
+  // Cached modes per ACP backend for Guid page / AgentModeSelector
+  'acp.cachedModes'?: Record<string, import('@/common/types/platform/acpTypes').AcpSessionModes>;
+  'mcp.config'?: IMcpServer[];
   // 是否在粘贴文件到工作区时询问确认（true = 不再询问）
   'workspace.pasteConfirm'?: boolean;
   // 上传的文件是否保存到工作区目录（true = 保存到工作区，false = 保存到缓存目录）
@@ -95,6 +112,18 @@ export interface ILegacyConfigStorageRefer extends IConfigStorageRefer {
     /** Proxy URL for Google OAuth endpoint reachability / Google OAuth 端点代理 */
     proxy?: string;
   };
+  /**
+   * UI preference keys persisted in the on-disk local config file and read by
+   * the Electron main process (`ProcessConfig`). The backend `ConfigService`
+   * (see {@link ConfigKeyMap}) is now the source of truth for these, but the
+   * main process still reads them locally at startup — before the renderer /
+   * backend are ready — to restore language, zoom and window geometry.
+   */
+  language?: string;
+  /** Persisted app-wide UI zoom factor for Display settings */
+  'ui.zoomFactor'?: number;
+  /** Last-known main window size and position, restored on next launch */
+  'window.bounds'?: { x?: number; y?: number; width: number; height: number };
   /** Global LLM prompt timeout in seconds (default: 300). Per-backend promptTimeout overrides this. */
   'acp.promptTimeout'?: number;
   /** Idle timeout in minutes before an ACP agent process is killed to reclaim memory (default: 5). */

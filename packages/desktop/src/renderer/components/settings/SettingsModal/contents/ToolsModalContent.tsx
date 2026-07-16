@@ -8,10 +8,13 @@ import type { ImageGenerationModelSetting } from '@/common/config/clientSettings
 import { removeImageGenerationEnvKeys, resolveImageGenerationMcpEnv } from '@/common/config/imageGenerationMcpEnv';
 import { mcpService } from '@/common/adapter/ipcBridge';
 import { type IMcpServer, BUILTIN_IMAGE_GEN_ID, BUILTIN_IMAGE_GEN_NAME } from '@/common/config/storage';
+import type { ConfigKeyMap } from '@/common/config/configKeys';
+import { configService } from '@/common/config/configService';
 import { isImageGenSupported } from '@/common/utils/imageModelAllowlist';
-import { Divider, Form, Tooltip, Message, Modal, Switch } from '@arco-design/web-react';
+import type { SpeechToTextConfig, SpeechToTextProvider } from '@/common/types/provider/speech';
+import { Divider, Form, Tooltip, Message, Modal, Switch, Input } from '@arco-design/web-react';
 import { Help } from '@icon-park/react';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import useConfigModelListWithImage from '@/renderer/hooks/agent/useConfigModelListWithImage';
 import AionScrollArea from '@/renderer/components/base/AionScrollArea';
@@ -27,11 +30,7 @@ import {
   useMcpOAuth,
   useMountedMessage,
 } from '@/renderer/hooks/mcp';
-import {
-  getClientBusinessSetting,
-  removeClientBusinessSetting,
-  setClientBusinessSetting,
-} from '@/renderer/services/clientBusinessSettings';
+import { removeClientBusinessSetting, setClientBusinessSetting } from '@/renderer/services/clientBusinessSettings';
 import classNames from 'classnames';
 import { useSettingsTabNavigate, useSettingsViewMode } from '../settingsViewContext';
 
@@ -455,11 +454,11 @@ const ModalMcpManagementSection: React.FC<{
 
 const ToolsModalContent: React.FC = () => {
   const { t } = useTranslation();
-  const [rawMcpMessage, mcpMessageContext] = Message.useMessage({ maxCount: 10 });
-  // ELECTRON-1A1: guard message calls so async MCP callbacks that resolve after this
-  // component unmounts don't hit a null Arco context holder (null.addInstance crash).
-  const mcpMessage = useMountedMessage(rawMcpMessage);
-  const [imageGenerationModel, setImageGenerationModel] = useState<ImageGenerationModelSetting | undefined>();
+  const [mcpMessage, mcpMessageContext] = Message.useMessage({ maxCount: 10 });
+  const [imageGenerationModel, setImageGenerationModel] = useState<
+    ConfigKeyMap['tools.imageGenerationModel'] | undefined
+  >();
+  const [speechToTextConfig, setSpeechToTextConfig] = useState<SpeechToTextConfig>(DEFAULT_SPEECH_TO_TEXT_CONFIG);
   const [isUpdatingImageGeneration, setIsUpdatingImageGeneration] = useState(false);
   const { modelListWithImage: data } = useConfigModelListWithImage();
   const { mcpServers, extensionMcpServers, saveMcpServers, setMcpServers, isMcpServersLoading } = useMcpServers();
@@ -479,7 +478,8 @@ const ToolsModalContent: React.FC = () => {
   useEffect(() => {
     const loadConfigs = async () => {
       try {
-        const storedModel = await getClientBusinessSetting('tools.imageGenerationModel');
+        const storedModel = configService.get('tools.imageGenerationModel');
+        const storedSpeechToTextConfig = configService.get('tools.speechToText');
         if (storedModel) {
           setImageGenerationModel(storedModel);
         }

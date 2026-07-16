@@ -1,7 +1,34 @@
-import type { ICssTheme } from '@/common/config/storage';
-import type { Theme } from '@/common/theme/types';
+import type { AcpInitializeResult, AcpSessionConfigOption, AcpSessionModes } from '@/common/types/platform/acpTypes';
+import type { SpeechToTextConfig } from '@/common/types/provider/speech';
+import type { ICssTheme, IMcpServer, TProviderWithModel } from '@/common/config/storage';
+import type { ManagedRuntimeCliTarget, NewApiAccountStatus } from '@/common/types/newApiAccount';
 
 export type ConfigKeyMap = {
+  'google.config': {
+    proxy?: string;
+  };
+  'codex.config':
+    | { cli_path?: string; yoloMode?: boolean; sandboxMode?: 'read-only' | 'workspace-write' | 'danger-full-access' }
+    | undefined;
+  'acp.config': {
+    [backend: string]: {
+      auth_methodId?: string;
+      authToken?: string;
+      lastAuthTime?: number;
+      cli_path?: string;
+      yoloMode?: boolean;
+      preferredMode?: string;
+      preferredModelId?: string;
+      preferredThoughtLevel?: string;
+      promptTimeout?: number;
+    };
+  };
+  'acp.promptTimeout': number | undefined;
+  'acp.agentIdleTimeout': number | undefined;
+  'acp.cachedInitializeResult': Record<string, AcpInitializeResult> | undefined;
+  'acp.cached_config_options': Record<string, AcpSessionConfigOption[]> | undefined;
+  'acp.cachedModes': Record<string, AcpSessionModes> | undefined;
+  'mcp.config': IMcpServer[];
   language: string;
   theme: string;
   colorScheme: string;
@@ -13,8 +40,10 @@ export type ConfigKeyMap = {
   customCss: string;
   'css.themes': ICssTheme[];
   'css.activeThemeId': string;
-  'theme.activeId': string;
-  'theme.userThemes': Theme[];
+  'aionrs.config': { preferredMode?: string } | undefined;
+  'aionrs.defaultModel': { id: string; use_model: string } | undefined;
+  'tools.imageGenerationModel': TProviderWithModel & { switch?: boolean };
+  'tools.speechToText': SpeechToTextConfig | undefined;
   'workspace.pasteConfirm': boolean | undefined;
   'guid.lastAssistantId': string | undefined;
   'upload.saveToWorkspace': boolean | undefined;

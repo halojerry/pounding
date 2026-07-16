@@ -184,7 +184,7 @@ linux:
     entry:
       Name: POUNDING
       Comment: ${description}
-      Icon: AionUi
+      Icon: POUNDING
       Categories: Office;Utility;
       MimeType: x-scheme-handler/pounding;
 

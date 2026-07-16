@@ -53,7 +53,20 @@ export const parseError = (error: unknown): string => {
  */
 export const resolveLocaleKey = (
   language: string
-): 'zh-CN' | 'en-US' | 'ja-JP' | 'zh-TW' | 'ko-KR' | 'tr-TR' | 'ru-RU' | 'uk-UA' | 'pt-BR' => {
+):
+  | 'zh-CN'
+  | 'en-US'
+  | 'ja-JP'
+  | 'zh-TW'
+  | 'ko-KR'
+  | 'tr-TR'
+  | 'ru-RU'
+  | 'uk-UA'
+  | 'pt-BR'
+  | 'de-DE'
+  | 'es-ES'
+  | 'fr-FR'
+  | 'fa-IR' => {
   const normalized = language.replace(/_/g, '-').toLowerCase();
 
   if (normalized.startsWith('zh-tw')) return 'zh-TW';
@@ -64,5 +77,9 @@ export const resolveLocaleKey = (
   if (normalized.startsWith('ru')) return 'ru-RU';
   if (normalized.startsWith('uk')) return 'uk-UA';
   if (normalized.startsWith('pt')) return 'pt-BR';
+  if (normalized.startsWith('de')) return 'de-DE';
+  if (normalized.startsWith('es')) return 'es-ES';
+  if (normalized.startsWith('fr')) return 'fr-FR';
+  if (normalized.startsWith('fa')) return 'fa-IR';
   return 'en-US';
 };

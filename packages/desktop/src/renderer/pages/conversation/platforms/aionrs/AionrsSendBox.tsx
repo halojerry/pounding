@@ -28,7 +28,6 @@ import { createSetUploadFile, useSendBoxFiles } from '@/renderer/hooks/chat/useS
 import { useSlashCommands } from '@/renderer/hooks/chat/useSlashCommands';
 import { useOpenFileSelector } from '@/renderer/hooks/file/useOpenFileSelector';
 import { useLatestRef } from '@/renderer/hooks/ui/useLatestRef';
-import { savePreferredMode } from '@/renderer/pages/guid/hooks/agentSelectionUtils';
 import {
   shouldEnqueueConversationCommand,
   useConversationCommandQueue,
@@ -37,7 +36,8 @@ import {
 import { useConversationRuntimeView } from '@/renderer/pages/conversation/runtime/useConversationRuntimeView';
 import { getConversationOrNull } from '@/renderer/pages/conversation/utils/conversationCache';
 import { getConversationRuntimeWorkspaceErrorMessage } from '@/renderer/pages/conversation/utils/conversationCreateError';
-import { warmupConversation } from '@/renderer/pages/conversation/utils/warmupConversation';
+import { getChatSurfaceWidthClass } from '@/renderer/pages/conversation/utils/chatSurfaceWidth';
+import { ensureConversationRuntime } from '@/renderer/pages/conversation/utils/ensureConversationRuntime';
 import { usePreviewContext } from '@/renderer/pages/conversation/Preview';
 import { useTeamPermission } from '@/renderer/pages/team/hooks/TeamPermissionContext';
 import type { TeamSendBoxRuntime } from '@/renderer/pages/team/components/teamSendRuntime';
@@ -46,7 +46,7 @@ import { iconColors } from '@/renderer/styles/colors';
 import { emitter, useAddEventListener } from '@/renderer/utils/emitter';
 import { mergeFileSelectionItems } from '@/renderer/utils/file/fileSelection';
 import { buildDisplayMessage, collectSelectedFiles } from '@/renderer/utils/file/messageFiles';
-import { mergeWithCapabilities, type AgentModeOption } from '@/renderer/utils/model/agentModes';
+import type { AgentModeOption } from '@/renderer/utils/model/agentTypes';
 import { Message, Tag } from '@arco-design/web-react';
 import { Brain, MagicHat, Shield } from '@icon-park/react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
@@ -61,6 +61,15 @@ const configErrorMessageKey = (error: unknown) => {
   if (errorKind === 'config_update_in_progress') return 'agent.config.busy';
   return 'agent.config.failed';
 };
+
+const toModeLabel = (value: string): string =>
+  value
+    .split('_')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+
+const modeOptionsFromCapabilities = (modes: string[]): AgentModeOption[] =>
+  modes.map((value) => ({ value, label: toModeLabel(value) }));
 
 const useAionrsSendBoxDraft = getSendBoxDraftHook('aionrs', {
   _type: 'aionrs',
@@ -121,7 +130,6 @@ const AionrsSendBox: React.FC<{
   const isMobile = Boolean(layout?.isMobile);
   const conversationContext = useConversationContextSafe();
   const loadedSkills = conversationContext?.loadedSkills ?? [];
-  const assistantId = conversationContext?.assistantId;
   const loadedMcpStatuses =
     conversationContext?.loadedMcpStatuses ??
     (conversationContext?.loadedMcpServers ?? []).map<IConversationMcpStatus>((name) => ({
@@ -139,7 +147,7 @@ const AionrsSendBox: React.FC<{
     onConfigChanged: (capabilities) => {
       const modes = (capabilities as { modes?: string[] })?.modes;
       if (modes && modes.length > 0) {
-        setDynamicModes(mergeWithCapabilities('aionrs', modes));
+        setDynamicModes(modeOptionsFromCapabilities(modes));
       }
     },
   });
@@ -149,22 +157,27 @@ const AionrsSendBox: React.FC<{
 
   const handleContentChange = useCallback(
     (val: string) => {
-      if (val && teamPermission) teamPermission.warmupSession();
       setContent(val);
     },
-    [teamPermission, setContent]
+    [setContent]
   );
 
   const [agentWarmed, setAgentWarmed] = useState(false);
+  const prepareRuntimeConfig = useCallback(async () => {
+    if (teamPermission) return;
+  }, [teamPermission]);
   const prepareRuntimeSync = useCallback(async () => {
     if (teamPermission) {
       await teamPermission.warmupSession();
+      return;
     }
-    await warmupConversation(conversation_id);
+    await ensureConversationRuntime(conversation_id);
   }, [conversation_id, teamPermission]);
   const runtimeConfig = useAcpConfigOptions({
     conversation_id,
-    prepareRuntime: prepareRuntimeSync,
+    prepareRuntime: prepareRuntimeConfig,
+    prepareSetRuntime: teamPermission?.warmupSession,
+    loadConfigOptions: teamPermission?.loadConfigOptions,
     enabled: Boolean(conversation_id),
   });
   const runtimeMode = runtimeConfig.mode;
@@ -197,6 +210,7 @@ const AionrsSendBox: React.FC<{
   const slash_commands = useSlashCommands(conversation_id, {
     conversation_type: 'aionrs',
     agentStatus: agentWarmed ? 'active' : null,
+    prepareRuntime: teamPermission ? prepareRuntimeSync : undefined,
   });
 
   const { setSendBoxHandler } = usePreviewContext();
@@ -297,15 +311,16 @@ const AionrsSendBox: React.FC<{
 
   const {
     items: queuedCommands,
-    isPaused: isQueuePaused,
+    mode: queueMode,
     isInteractionLocked: isQueueInteractionLocked,
     hasPendingCommands,
     enqueue,
     remove,
+    prioritize,
+    sendNow,
     clear,
     reorder,
-    pause,
-    resume,
+    toggleMode,
     lockInteraction,
     unlockInteraction,
     resetActiveExecution,
@@ -396,9 +411,6 @@ const AionrsSendBox: React.FC<{
       try {
         await runtimeConfig.setConfigOption(runtimeMode.id, mode);
         setCurrentMode(mode);
-        if (!assistantId) {
-          void savePreferredMode('aionrs', mode);
-        }
         propagateMode?.(mode);
         Message.success(t('agentMode.switchSuccess'));
       } catch (error) {
@@ -406,7 +418,7 @@ const AionrsSendBox: React.FC<{
         Message.error(t(configErrorMessageKey(error)));
       }
     },
-    [assistantId, propagateMode, runtimeConfig, runtimeMode, t]
+    [propagateMode, runtimeConfig, runtimeMode, t]
   );
 
   const handleSheetModelSelect = useCallback(
@@ -519,10 +531,10 @@ const AionrsSendBox: React.FC<{
       entries.push({
         key: 'skills',
         icon: <MagicHat theme='outline' size='16' />,
-        label: t('common.skills', { defaultValue: 'Skills' }),
+        label: t('common.selectedSkills', { defaultValue: 'Selected skills' }),
         variant: 'muted',
         submenu: {
-          title: t('common.skills', { defaultValue: 'Skills' }),
+          title: t('common.selectedSkills', { defaultValue: 'Selected skills' }),
           selectable: false,
           options: skillOptions,
           onSelect: (name) => {
@@ -546,10 +558,10 @@ const AionrsSendBox: React.FC<{
       entries.push({
         key: 'mcp',
         icon: <Shield theme='outline' size='16' />,
-        label: t('conversation.mcp.loaded', { defaultValue: 'Loaded MCP' }),
+        label: t('conversation.mcp.selected', { defaultValue: 'Selected MCP' }),
         variant: 'muted',
         submenu: {
-          title: t('conversation.mcp.loaded', { defaultValue: 'Loaded MCP' }),
+          title: t('conversation.mcp.selected', { defaultValue: 'Selected MCP' }),
           selectable: false,
           options: mcpOptions,
           onSelect: () => undefined,
@@ -606,23 +618,42 @@ const AionrsSendBox: React.FC<{
     }
   };
   const effectiveHandleStop = teamRuntime?.onStop ?? handleStop;
+  const handleSendNowQueued = useCallback(
+    async (item: ConversationCommandQueueItem) => {
+      // Stop the current reply (best-effort), then promote the chosen command
+      // to the front of the queue in auto mode.  The drain effect will fire it
+      // once the execution gate shows canExecute — avoiding the 409 race that
+      // occurs when sendNow() calls onExecute() directly before the backend
+      // has finished processing the stop.
+      await effectiveHandleStop();
+      prioritize(item.id);
+    },
+    [effectiveHandleStop, prioritize]
+  );
+  const sendBoxWidthClass = getChatSurfaceWidthClass(Boolean(teamPermission));
 
   return (
-    <div className='max-w-800px w-full mx-auto flex flex-col mt-auto mb-16px'>
+    <div className={`${sendBoxWidthClass} flex flex-col mt-auto mb-16px`}>
       <CommandQueuePanel
         items={queuedCommands}
-        paused={isQueuePaused}
+        mode={queueMode}
+        isMobile={isMobile}
         interactionLocked={isQueueInteractionLocked}
-        onPause={pause}
-        onResume={resume}
         onInteractionLock={lockInteraction}
         onInteractionUnlock={unlockInteraction}
         onEdit={handleEditQueuedCommand}
+        onSendNow={handleSendNowQueued}
+        onToggleMode={toggleMode}
         onReorder={reorder}
         onRemove={remove}
         onClear={clear}
       />
-      <ThoughtDisplay thought={thought} running={teamRuntime?.loading ?? running} onStop={effectiveHandleStop} />
+      <ThoughtDisplay
+        thought={thought}
+        running={teamRuntime?.loading ?? running}
+        statusText={teamRuntime?.statusText}
+        onStop={effectiveHandleStop}
+      />
 
       <SendBox
         data-testid='aionrs-sendbox'
@@ -660,14 +691,6 @@ const AionrsSendBox: React.FC<{
         }
         rightTools={
           <div className='flex items-center gap-8px min-w-0'>
-            {!isMobile && (
-              <AcpThoughtLevelSelector
-                thoughtLevel={runtimeThoughtLevel}
-                setStatus={runtimeConfig.setStatus}
-                onSetOption={runtimeConfig.setConfigOption}
-                iconOnly={Boolean(teamPermission)}
-              />
-            )}
             <AgentModeSelector
               backend='aionrs'
               conversation_id={conversation_id}
@@ -679,8 +702,9 @@ const AionrsSendBox: React.FC<{
               compactLabelPrefix={t('agentMode.permission')}
               hideCompactLabelPrefixOnMobile
               onModeChanged={propagateMode}
-              beforeRuntimeSync={prepareRuntimeSync}
-              persistGlobalPreference={!assistantId}
+              beforeRuntimeSync={prepareRuntimeConfig}
+              beforeRuntimeSet={teamPermission?.warmupSession}
+              loadConfigOptions={teamPermission?.loadConfigOptions}
             />
           </div>
         }

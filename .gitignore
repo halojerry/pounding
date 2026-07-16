@@ -134,6 +134,7 @@ Thumbs.db
 dist/
 build/
 out/
+out-fast-builds/
 
 # Keep extension example dist (pre-built distributable assets)
 !examples/**/dist/
@@ -207,6 +208,7 @@ resources/bundled-aionui-backend/
 data/runtime/
 vendor/
 resources/hub
+/resources/windows/support/_sentry-dsn.generated.nsh
 
 # Server build output
 dist-server/
@@ -218,3 +220,6 @@ graphify-out/
 .graphify_python
 
 .snow/
+
+# Local scratch/analysis (wireframes, candidate mockups)
+.analysis/

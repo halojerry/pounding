@@ -8,18 +8,18 @@ import { ipcBridge } from '@/common';
 import { TEAM_MODE_ENABLED } from '@/common/config/constants';
 import PwaPullToRefresh from '@/renderer/components/layout/PwaPullToRefresh';
 import Titlebar from '@/renderer/components/layout/Titlebar';
-import DesktopLoginGate from '@renderer/components/layout/DesktopLoginGate';
-import EnvConflictBanner from '@renderer/components/settings/EnvConflictBanner';
-import { Layout as ArcoLayout } from '@arco-design/web-react';
-import { MenuFold, MenuUnfold } from '@icon-park/react';
+import { Layout as ArcoLayout, Tooltip } from '@arco-design/web-react';
 import classNames from 'classnames';
 import React, { Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { setGlobalNavigate } from '@/renderer/utils/navigation';
 import { LayoutContext } from '@renderer/hooks/context/LayoutContext';
 import { useNewApiAccount } from '@renderer/hooks/context/NewApiAccountContext';
 import { NavigationHistoryProvider } from '@renderer/hooks/context/NavigationHistoryContext';
 import { useDeepLink } from '@renderer/hooks/system/useDeepLink';
-import { useNotificationClick } from '@renderer/hooks/system/useNotificationClick';
+import { useNotificationClick } from '@renderer/hooks/system/notification/useNotificationClick';
+import { useBrowserNotification } from '@renderer/hooks/system/notification/useBrowserNotification';
 import { useDirectorySelection } from '@renderer/hooks/file/useDirectorySelection';
 import { cleanupSiderTooltips } from '@renderer/utils/ui/siderTooltip';
 import { useConversationShortcuts } from '@renderer/hooks/ui/useConversationShortcuts';
@@ -89,15 +89,42 @@ const Layout: React.FC<{
   const [viewportWidth, setViewportWidth] = useState<number>(() =>
     typeof window === 'undefined' ? 390 : window.innerWidth
   );
-  const [shouldMountUpdateModal, setShouldMountUpdateModal] = useState(false);
   const { onClick } = useDebug();
   const { contextHolder: directorySelectionContextHolder } = useDirectorySelection();
   const { ready: newApiReady, isLoggedIn: isNewApiLoggedIn, status: newApiStatus } = useNewApiAccount();
   useDeepLink();
   useNotificationClick();
+  useBrowserNotification();
   const navigate = useNavigate();
   useConversationShortcuts({ navigate });
+  // Expose navigate to code running outside the Router tree (e.g. the globally
+  // mounted FeedbackReportModal's "via chat" action).
+  useEffect(() => {
+    setGlobalNavigate(navigate);
+    return () => setGlobalNavigate(null);
+  }, [navigate]);
   const location = useLocation();
+  const { t } = useTranslation();
+  // The "AionUi" wordmark acts as Home / Back-to-Chat, but only from settings routes.
+  // In non-settings routes the user is already "home", so it is a no-op (and not actionable).
+  const isSettingsRoute = location.pathname.startsWith('/settings');
+  // Only wired to the wordmark in the isSettingsRoute branch below, so the
+  // "no-op outside settings" contract is enforced structurally — no internal
+  // route guard needed (the chat-route wordmark is a plain, inert div).
+  const handleBrandHome = useCallback(() => {
+    // Mirror Titlebar's handleBackToChat convention: return to the last non-settings path.
+    let target: string | null = null;
+    try {
+      target = sessionStorage.getItem('aion:last-non-settings-path');
+    } catch {
+      // ignore
+    }
+    if (target && !target.startsWith('/settings')) {
+      void navigate(target);
+      return;
+    }
+    void navigate('/guid');
+  }, [navigate]);
   const workspaceAvailable =
     location.pathname.startsWith('/conversation/') || (TEAM_MODE_ENABLED && location.pathname.startsWith('/team/'));
   const collapsedRef = useRef(collapsed);
@@ -174,7 +201,6 @@ const Layout: React.FC<{
 
     // Handle pause all tasks request from tray
     const handlePauseAllTasks = async () => {
-      const { ipcBridge } = await import('@/common');
       const result = await ipcBridge.task.stopAll.invoke();
       if (result?.success) {
         // Navigate to settings page to show task status
@@ -182,13 +208,9 @@ const Layout: React.FC<{
       }
     };
 
-    // Handle check update request from tray
+    // Handle check update request from tray / 托盘请求检查更新
     const handleCheckUpdate = () => {
-      void navigate('/settings/about');
-      // Trigger update modal after a short delay to ensure page is loaded
-      setTimeout(() => {
-        window.dispatchEvent(new CustomEvent('aionui-open-update-modal', { detail: { source: 'tray' } }));
-      }, 100);
+      window.dispatchEvent(new CustomEvent('aionui-open-update-modal', { detail: { source: 'tray' } }));
     };
 
     // Listen for tray events
@@ -311,7 +333,56 @@ const Layout: React.FC<{
                   }
                 )}
               >
-                <div className='text-20px text-t-primary collapsed-hidden font-semibold text-center'>POUNDING</div>
+                <div
+                  className={classNames('bg-black shrink-0 size-32px relative rd-0.5rem', {
+                    '!size-24px': collapsed,
+                  })}
+                  onClick={onClick}
+                >
+                  <svg
+                    className={classNames('w-5.5 h-5.5 absolute inset-0 m-auto', {
+                      'scale-140': !collapsed,
+                    })}
+                    viewBox='0 0 80 80'
+                    fill='none'
+                  >
+                    <path
+                      key='logo-path-1'
+                      d='M40 20 Q38 22 25 40 Q23 42 26 42 L30 42 Q32 40 40 30 Q48 40 50 42 L54 42 Q57 42 55 40 Q42 22 40 20'
+                      fill='white'
+                    ></path>
+                    <circle key='logo-circle' cx='40' cy='46' r='3' fill='white'></circle>
+                    <path
+                      key='logo-path-2'
+                      d='M18 50 Q40 70 62 50'
+                      stroke='white'
+                      strokeWidth='3.5'
+                      fill='none'
+                      strokeLinecap='round'
+                    ></path>
+                  </svg>
+                </div>
+                {isSettingsRoute ? (
+                  <Tooltip content={t('common.back', { defaultValue: 'Back to Chat' })} position='bottom'>
+                    <div
+                      className='text-16px text-t-primary collapsed-hidden font-semibold cursor-pointer'
+                      role='button'
+                      tabIndex={0}
+                      aria-label={t('common.back', { defaultValue: 'Back to Chat' })}
+                      onClick={handleBrandHome}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          handleBrandHome();
+                        }
+                      }}
+                    >
+                      AionUi
+                    </div>
+                  </Tooltip>
+                ) : (
+                  <div className='text-16px text-t-primary collapsed-hidden font-semibold'>AionUi</div>
+                )}
                 {isMobile && !collapsed && (
                   <button
                     type='button'

@@ -26,10 +26,9 @@ vi.mock('@/common', () => ({
     fs: {
       readAssistantRule: { invoke: vi.fn() },
       listAvailableSkills: { invoke: vi.fn() },
-      listBuiltinAutoSkills: { invoke: vi.fn() },
       writeAssistantRule: { invoke: vi.fn() },
       deleteAssistantRule: { invoke: vi.fn() },
-      importSkillWithSymlink: { invoke: vi.fn() },
+      importSkills: { invoke: vi.fn() },
     },
   },
 }));
@@ -75,7 +74,8 @@ describe('useAssistantEditor', () => {
       sort_order: 1,
     },
     engine: {
-      agent_backend: 'claude',
+      agent_id: 'agent-claude',
+      agent: { type: 'acp', source: 'builtin', acp_backend: 'claude' },
     },
     rules: {
       content: 'Rule content',
@@ -88,6 +88,7 @@ describe('useAssistantEditor', () => {
     defaults: {
       model: { mode: 'fixed', value: 'gemini-2.5-pro' },
       permission: { mode: 'fixed', value: 'acceptEdits' },
+      thought_level: { mode: 'fixed', value: 'high' },
       skills: { mode: 'auto', value: ['skill-one'] },
       mcps: { mode: 'fixed', value: ['mcp-a'] },
     },
@@ -99,6 +100,7 @@ describe('useAssistantEditor', () => {
     preferences: {
       last_model_id: undefined,
       last_permission_value: undefined,
+      last_thought_level_value: undefined,
       last_skill_ids: [],
       last_disabled_builtin_skill_ids: [],
       last_mcp_ids: [],
@@ -117,7 +119,6 @@ describe('useAssistantEditor', () => {
     activeAssistant: null,
     setActiveAssistantId: vi.fn(),
     loadAssistants: vi.fn(),
-    refreshAgentDetection: vi.fn(),
     message: mockMessage,
   };
 
@@ -125,13 +126,12 @@ describe('useAssistantEditor', () => {
     vi.clearAllMocks();
     (ipcBridge.assistants.get.invoke as any).mockResolvedValue(mockAssistantDetail);
     (ipcBridge.fs.listAvailableSkills.invoke as any).mockResolvedValue([]);
-    (ipcBridge.fs.listBuiltinAutoSkills.invoke as any).mockResolvedValue([]);
     (ipcBridge.mcpService.listServers.invoke as any).mockResolvedValue([
       { id: 'mcp-a', name: 'Server A', enabled: true },
     ]);
     (ipcBridge.fs.writeAssistantRule.invoke as any).mockResolvedValue(true);
     (ipcBridge.fs.deleteAssistantRule.invoke as any).mockResolvedValue(true);
-    (ipcBridge.fs.importSkillWithSymlink.invoke as any).mockResolvedValue(true);
+    (ipcBridge.fs.importSkills.invoke as any).mockResolvedValue(true);
   });
 
   it('initializes with default state (no active assistant)', () => {
@@ -142,6 +142,7 @@ describe('useAssistantEditor', () => {
     expect(result.current.isCreating).toBe(false);
     expect(result.current.defaultModelMode).toBe('auto');
     expect(result.current.defaultPermissionMode).toBe('auto');
+    expect((result.current as any).defaultThoughtLevelMode).toBe('auto');
     expect(result.current.defaultMcpMode).toBe('auto');
   });
 
@@ -151,7 +152,8 @@ describe('useAssistantEditor', () => {
       name: 'TestAssistant',
       description: 'Test desc',
       avatar: '🤖',
-      preset_agent_type: 'claude',
+      agent_id: 'agent-claude',
+      agent: { type: 'acp', source: 'builtin', acp_backend: 'claude' },
       sort_order: 1,
       source: 'user',
       enabled: true,
@@ -168,12 +170,14 @@ describe('useAssistantEditor', () => {
     expect(result.current.editName).toBe('TestAssistant');
     expect(result.current.editDescription).toBe('Test desc');
     expect(result.current.editAvatar).toBe('🤖');
-    expect(result.current.editAgent).toBe('claude');
+    expect(result.current.editAgent).toBe('agent-claude');
     expect(result.current.editRecommendedPromptsText).toBe('Prompt one\nPrompt two');
     expect(result.current.defaultModelMode).toBe('fixed');
     expect(result.current.defaultModelValue).toBe('gemini-2.5-pro');
     expect(result.current.defaultPermissionMode).toBe('fixed');
     expect(result.current.defaultPermissionValue).toBe('acceptEdits');
+    expect((result.current as any).defaultThoughtLevelMode).toBe('fixed');
+    expect((result.current as any).defaultThoughtLevelValue).toBe('high');
     expect(result.current.defaultSkillsMode).toBe('auto');
     expect(result.current.defaultMcpMode).toBe('fixed');
     expect(result.current.selectedMcpIds).toEqual(['mcp-a']);
@@ -188,7 +192,8 @@ describe('useAssistantEditor', () => {
       description: 'English description',
       description_i18n: { 'en-US': 'English description', 'zh-CN': '中文描述' },
       avatar: '📚',
-      preset_agent_type: 'claude',
+      agent_id: 'agent-claude',
+      agent: { type: 'acp', source: 'builtin', acp_backend: 'claude' },
       sort_order: 1,
       source: 'builtin',
       enabled: true,
@@ -266,7 +271,8 @@ describe('useAssistantEditor', () => {
       description: 'English description',
       description_i18n: { 'en-US': 'English description', 'zh-CN': '中文描述' },
       avatar: '📊',
-      preset_agent_type: 'claude',
+      agent_id: 'agent-claude',
+      agent: { type: 'acp', source: 'builtin', acp_backend: 'claude' },
       sort_order: 1,
       source: 'builtin',
       enabled: true,
@@ -313,6 +319,7 @@ describe('useAssistantEditor', () => {
     expect(result.current.editDescription).toBe('');
     expect(result.current.defaultModelMode).toBe('auto');
     expect(result.current.defaultPermissionMode).toBe('auto');
+    expect((result.current as any).defaultThoughtLevelMode).toBe('auto');
     expect(result.current.defaultMcpMode).toBe('auto');
   });
 
@@ -338,6 +345,8 @@ describe('useAssistantEditor', () => {
       result.current.setDefaultModelValue('gpt-4.1');
       result.current.setDefaultPermissionMode('fixed');
       result.current.setDefaultPermissionValue('plan');
+      (result.current as any).setDefaultThoughtLevelMode('fixed');
+      (result.current as any).setDefaultThoughtLevelValue('high');
       result.current.setDefaultSkillsMode('auto');
       result.current.setSelectedSkills(['skill-one']);
       result.current.setDefaultMcpMode('fixed');
@@ -355,6 +364,7 @@ describe('useAssistantEditor', () => {
         defaults: {
           model: { mode: 'fixed', value: 'gpt-4.1' },
           permission: { mode: 'fixed', value: 'plan' },
+          thought_level: { mode: 'fixed', value: 'high' },
           skills: { mode: 'auto', value: ['skill-one'] },
           mcps: { mode: 'fixed', value: ['mcp-a'] },
         },
@@ -415,7 +425,8 @@ describe('useAssistantEditor', () => {
       name: 'TestAssistant',
       description: 'Test desc',
       avatar: '🤖',
-      preset_agent_type: 'claude',
+      agent_id: 'agent-claude',
+      agent: { type: 'acp', source: 'builtin', acp_backend: 'claude' },
       sort_order: 1,
       source: 'user',
       enabled: true,
@@ -431,16 +442,20 @@ describe('useAssistantEditor', () => {
     expect(result.current.defaultModelValue).toBe('gemini-2.5-pro');
     expect(result.current.defaultPermissionMode).toBe('fixed');
     expect(result.current.defaultPermissionValue).toBe('acceptEdits');
+    expect((result.current as any).defaultThoughtLevelMode).toBe('fixed');
+    expect((result.current as any).defaultThoughtLevelValue).toBe('high');
 
     act(() => {
-      result.current.setEditAgent('gemini');
+      result.current.setEditAgent('agent-gemini');
     });
 
-    expect(result.current.editAgent).toBe('gemini');
+    expect(result.current.editAgent).toBe('agent-gemini');
     expect(result.current.defaultModelMode).toBe('auto');
     expect(result.current.defaultModelValue).toBe('');
     expect(result.current.defaultPermissionMode).toBe('auto');
     expect(result.current.defaultPermissionValue).toBe('');
+    expect((result.current as any).defaultThoughtLevelMode).toBe('auto');
+    expect((result.current as any).defaultThoughtLevelValue).toBe('');
   });
 
   it('allows builtin assistants to persist main agent plus default model and permission', async () => {
@@ -454,6 +469,7 @@ describe('useAssistantEditor', () => {
       defaults: {
         model: { mode: 'auto' as const, value: undefined },
         permission: { mode: 'auto' as const, value: undefined },
+        thought_level: { mode: 'auto' as const, value: undefined },
         skills: { mode: 'fixed' as const, value: ['skill-one'] },
         mcps: { mode: 'auto' as const, value: [] },
       },
@@ -467,7 +483,8 @@ describe('useAssistantEditor', () => {
       sort_order: 1,
       source: 'builtin',
       enabled: true,
-      preset_agent_type: 'claude',
+      agent_id: 'agent-claude',
+      agent: { type: 'acp', source: 'builtin', acp_backend: 'claude' },
     };
 
     const { result } = renderHook(() =>
@@ -482,11 +499,13 @@ describe('useAssistantEditor', () => {
     });
 
     act(() => {
-      result.current.setEditAgent('gemini');
+      result.current.setEditAgent('agent-gemini');
       result.current.setDefaultModelMode('fixed');
       result.current.setDefaultModelValue('gemini-2.5-pro');
       result.current.setDefaultPermissionMode('fixed');
       result.current.setDefaultPermissionValue('default');
+      (result.current as any).setDefaultThoughtLevelMode('fixed');
+      (result.current as any).setDefaultThoughtLevelValue('high');
       result.current.setEditRecommendedPromptsText('Should not be sent');
       result.current.setSelectedSkills(['skill-two']);
       result.current.setSelectedMcpIds(['mcp-b']);
@@ -498,10 +517,11 @@ describe('useAssistantEditor', () => {
 
     expect(ipcBridge.assistants.update.invoke).toHaveBeenCalledWith({
       id: 'builtin-1',
-      preset_agent_type: 'gemini',
+      agent_id: 'agent-gemini',
       defaults: {
         model: { mode: 'fixed', value: 'gemini-2.5-pro' },
         permission: { mode: 'fixed', value: 'default' },
+        thought_level: { mode: 'fixed', value: 'high' },
       },
     });
   });
@@ -513,6 +533,7 @@ describe('useAssistantEditor', () => {
       defaults: {
         model: { mode: 'auto' as const, value: undefined },
         permission: { mode: 'auto' as const, value: undefined },
+        thought_level: { mode: 'auto' as const, value: undefined },
         skills: { mode: 'fixed' as const, value: ['skill-one'] },
         mcps: { mode: 'auto' as const, value: [] },
       },
@@ -525,7 +546,8 @@ describe('useAssistantEditor', () => {
       sort_order: 1,
       source: 'builtin',
       enabled: true,
-      preset_agent_type: 'claude',
+      agent_id: 'agent-claude',
+      agent: { type: 'acp', source: 'builtin', acp_backend: 'claude' },
     };
 
     const { result } = renderHook(() =>
@@ -543,6 +565,8 @@ describe('useAssistantEditor', () => {
     expect(result.current.defaultModelValue).toBe('');
     expect(result.current.defaultPermissionMode).toBe('auto');
     expect(result.current.defaultPermissionValue).toBe('');
+    expect((result.current as any).defaultThoughtLevelMode).toBe('auto');
+    expect((result.current as any).defaultThoughtLevelValue).toBe('');
     expect(result.current.defaultMcpMode).toBe('auto');
     expect(result.current.selectedMcpIds).toEqual([]);
   });
@@ -558,13 +582,10 @@ describe('useAssistantEditor', () => {
     (ipcBridge.assistants.setState.invoke as any).mockResolvedValue(undefined);
 
     const loadAssistantsMock = vi.fn();
-    const refreshAgentDetectionMock = vi.fn();
-
     const { result } = renderHook(() =>
       useAssistantEditor({
         ...defaultParams,
         loadAssistants: loadAssistantsMock,
-        refreshAgentDetection: refreshAgentDetectionMock,
       })
     );
 
@@ -575,7 +596,6 @@ describe('useAssistantEditor', () => {
     expect(swrMutate).toHaveBeenNthCalledWith(1, 'assistants.list', expect.any(Function), { revalidate: false });
     expect(ipcBridge.assistants.setState.invoke).toHaveBeenCalledWith({ id: 'builtin-1', enabled: false });
     expect(loadAssistantsMock).toHaveBeenCalled();
-    expect(refreshAgentDetectionMock).toHaveBeenCalled();
     expect(swrMutate).toHaveBeenCalledWith('assistants');
     expect(swrMutate).toHaveBeenCalledWith('guid.assistant.detail.builtin-1.en');
   });
@@ -622,6 +642,34 @@ describe('useAssistantEditor', () => {
 
     await waitFor(() => expect(consoleErrorSpy).toHaveBeenCalled());
     expect(mockMessage.error).toHaveBeenCalled();
+
+    consoleErrorSpy.mockRestore();
+  });
+
+  it('shows backend skill import failure detail while saving pending skills', async () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    (ipcBridge.fs.importSkills.invoke as any).mockRejectedValue(
+      Object.assign(new Error('wrapped import failure'), {
+        name: 'BackendHttpError',
+        status: 400,
+        code: 'SKILL_IMPORT_FILE_TOO_LARGE',
+      })
+    );
+
+    const { result } = renderHook(() => useAssistantEditor(defaultParams));
+
+    act(() => {
+      result.current.handleCreate();
+      result.current.setEditName('NewAssistant');
+      result.current.setPendingSkills([{ name: 'huge-skill', path: '/tmp/huge-skill' }]);
+    });
+
+    await act(async () => {
+      await result.current.handleSave();
+    });
+
+    expect(mockMessage.error).toHaveBeenCalledWith('settings.skillsHub.importErrors.SKILL_IMPORT_FILE_TOO_LARGE');
+    expect(ipcBridge.assistants.create.invoke).not.toHaveBeenCalled();
 
     consoleErrorSpy.mockRestore();
   });

@@ -16,7 +16,7 @@ import { ADAPTER_BRIDGE_EVENT_KEY } from '../common/adapter/constant';
  * @description 注入到renderer进程中, 用于与main进程通信
  * */
 contextBridge.exposeInMainWorld('electronAPI', {
-  emit: (name: string, data: any) => {
+  emit: (name: string, data: unknown) => {
     return ipcRenderer
       .invoke(
         ADAPTER_BRIDGE_EVENT_KEY,
@@ -30,8 +30,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
         throw error;
       });
   },
-  on: (callback: any) => {
-    const handler = (event: any, value: any) => {
+  on: (callback: (payload: { event: unknown; value: unknown }) => void) => {
+    const handler = (event: unknown, value: unknown) => {
       callback({ event, value });
     };
     ipcRenderer.on(ADAPTER_BRIDGE_EVENT_KEY, handler);
@@ -45,14 +45,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   collectFeedbackLogs: () => ipcRenderer.invoke('feedback:collect-logs'),
   // Feedback: capture a screenshot of the current window
   captureFeedbackScreenshot: () => ipcRenderer.invoke('feedback:capture-screenshot'),
-  // Feedback: submit to Sentry via the main process (has real DSN + proper error handling)
-  submitFeedback: (payload: {
-    module: string;
-    summary: string;
-    description: string;
-    logs?: { filename: string; data: number[] } | null;
-    screenshots?: Array<{ filename: string; data: number[]; contentType: string }>;
-  }) => ipcRenderer.invoke('feedback:submit', payload),
+  // Feedback: forward diagnostics logs to the main process console
+  logFeedbackEvent: (payload: { details?: unknown; level: 'info' | 'warn' | 'error'; message: string }) =>
+    ipcRenderer.send('feedback:renderer-log', payload),
+  recoverCorruptedDatabase: () => ipcRenderer.invoke('backend:recover-corrupted-database'),
 });
 
 // Synchronously fetch the poundingcore port and expose it to the renderer
@@ -64,6 +60,7 @@ const backendStartupFailure = ipcRenderer.sendSync('get-backend-startup-failure'
 console.log('[preload] IPC results:', { backendPort, backendStartupFailed, backendStartupFailure });
 contextBridge.exposeInMainWorld('__backendPort', backendPort > 0 ? backendPort : 0);
 contextBridge.exposeInMainWorld('__initialLanguage', initialLanguage ?? null);
+contextBridge.exposeInMainWorld('__aionuiE2ETest', process.env.AIONUI_E2E_TEST === '1');
 contextBridge.exposeInMainWorld('__backendStartupFailed', backendStartupFailed === true);
 contextBridge.exposeInMainWorld('__backendStartupFailure', backendStartupFailure ?? null);
 

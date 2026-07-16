@@ -43,6 +43,42 @@ const getRecentLogPaths = (logsDir: string, days: number): string[] => {
 const LOG_DAYS = 3;
 const FEEDBACK_FLUSH_TIMEOUT_MS = 8000;
 
+type RendererFeedbackLogPayload = {
+  details?: unknown;
+  level?: unknown;
+  message?: unknown;
+};
+
+function normalizeRendererFeedbackLogPayload(payload: RendererFeedbackLogPayload): {
+  details?: unknown;
+  level: 'info' | 'warn' | 'error';
+  message: string;
+} {
+  const level = payload.level === 'warn' || payload.level === 'error' ? payload.level : 'info';
+  const message = typeof payload.message === 'string' && payload.message.trim() ? payload.message : 'feedback log';
+  return {
+    level,
+    message,
+    details: payload.details,
+  };
+}
+
+ipcMain.on('feedback:renderer-log', (_event, payload: RendererFeedbackLogPayload) => {
+  const log = normalizeRendererFeedbackLogPayload(payload ?? {});
+  const args = [`[FeedbackReport:renderer] ${log.message}`];
+  if (log.details !== undefined) {
+    args.push(log.details as string);
+  }
+
+  if (log.level === 'error') {
+    console.error(...args);
+  } else if (log.level === 'warn') {
+    console.warn(...args);
+  } else {
+    console.info(...args);
+  }
+});
+
 ipcMain.handle('feedback:collect-logs', async () => {
   try {
     let logsDir: string;
@@ -52,25 +88,9 @@ ipcMain.handle('feedback:collect-logs', async () => {
       logsDir = path.join(app.getPath('userData'), 'logs');
     }
 
-    if (!fs.existsSync(logsDir)) {
-      return null;
-    }
-
-    const logPaths = getRecentLogPaths(logsDir, LOG_DAYS);
-    if (logPaths.length === 0) {
-      return null;
-    }
-
-    // Read and concatenate all log files with date headers
-    const parts: string[] = [];
-    for (const logPath of logPaths) {
-      const basename = path.basename(logPath);
-      const content = fs.readFileSync(logPath, 'utf-8');
-      parts.push(`=== ${basename} ===\n${content}\n`);
-    }
-
-    const combined = parts.join('\n');
-    const compressed = zlib.gzipSync(Buffer.from(combined, 'utf-8'));
+    const logDirs = [logsDir, path.join(logsDir, 'logs')];
+    const attachment = collectFeedbackLogAttachment(logDirs);
+    if (!attachment) return null;
 
     // Return as number array for IPC serialization (Buffer is not serializable)
     return {

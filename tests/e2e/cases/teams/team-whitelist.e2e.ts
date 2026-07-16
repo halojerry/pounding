@@ -1,24 +1,48 @@
 /**
- * E2E Scenario 6: Agent whitelist enforcement.
+ * E2E Scenario 6: Team assistant-only leader options.
  *
- * Verifies: UI create modal dropdown only shows whitelisted agent types.
- *
- * Whitelist locations:
- * - agentSelectUtils.tsx (TEAM_SUPPORTED_BACKENDS)
- * - TeamMcpServer.ts (spawn whitelist)
+ * Verifies: UI create modal renders unified assistant rows and does not expose
+ * the removed mixed CLI-agent / preset-assistant option groups.
  */
 import { test, expect } from '../../fixtures';
-import { TEAM_SUPPORTED_BACKENDS } from '../../helpers';
+import { httpDelete, httpGet, httpPost, navigateTo } from '../../helpers';
+import type { Assistant } from '@/common/types/agent/assistantTypes';
 
-test.describe('Team Agent Whitelist', () => {
-  test('UI only shows whitelisted agents in create modal dropdown', async ({ page }) => {
-    // Navigate to home to access the create modal
-    await page.goto(page.url().split('#')[0] + '#/guid');
+type AgentMetadata = {
+  id: string;
+  name: string;
+};
+
+async function waitForAssistant(page: import('@playwright/test').Page, assistantId: string): Promise<Assistant> {
+  await expect
+    .poll(
+      async () => {
+        const assistants = await httpGet<Assistant[]>(page, '/api/assistants');
+        return assistants.some((assistant) => assistant.id === assistantId);
+      },
+      {
+        timeout: 15_000,
+        message: `Waiting for generated assistant ${assistantId}`,
+      }
+    )
+    .toBe(true);
+
+  const assistants = await httpGet<Assistant[]>(page, '/api/assistants');
+  const found = assistants.find((assistant) => assistant.id === assistantId);
+  if (!found) {
+    throw new Error(`Generated assistant ${assistantId} disappeared after materialization`);
+  }
+  return found;
+}
+
+test.describe('Team Assistant Leader Options', () => {
+  test('UI shows assistant-only rows in create modal', async ({ page }) => {
+    await navigateTo(page, '#/team');
 
     // Close any leftover modal from previous tests before interacting with the page
-    const existingModal = page.locator('.arco-modal .arco-btn-text');
+    const existingModal = page.locator('.arco-modal button[aria-label="Close"]');
     if (await existingModal.isVisible({ timeout: 1000 }).catch(() => false)) {
-      await existingModal.click({ force: true });
+      await existingModal.first().click({ force: true });
       await expect(page.locator('.arco-modal')).toBeHidden({ timeout: 5000 });
     }
 
@@ -28,90 +52,106 @@ test.describe('Team Agent Whitelist', () => {
     const createBtn = page.locator('[data-testid="team-create-btn"]').first();
     await createBtn.click();
 
-    // Open the leader AionSelect dropdown (options portal to document.body)
-    const modal = page.locator('.arco-modal');
-    const leaderSelect = modal.locator('[data-testid="team-create-leader-select"]');
-    await expect(leaderSelect).toBeVisible({ timeout: 5000 });
-    await leaderSelect.click();
+    const modal = page.locator('.team-create-modal');
+    await expect(modal).toBeVisible({ timeout: 5000 });
+    const allOptions = modal.locator('[data-testid^="team-create-agent-option-"]');
+    const emptyState = modal.getByText(/No supported assistants available|未检测到可用的助手|没有支持的助手/i);
+    const noSearchResults = modal.getByText(/No results found|未找到结果/i);
+    await expect
+      .poll(
+        async () => {
+          const optionCount = await allOptions.count();
+          if (optionCount > 0) return 'options';
+          if (await emptyState.isVisible().catch(() => false)) return 'empty';
+          if (await noSearchResults.isVisible().catch(() => false)) return 'empty';
+          return 'loading';
+        },
+        {
+          timeout: 5000,
+          message: 'Waiting for team assistant options or empty state to render',
+        }
+      )
+      .not.toBe('loading');
 
-    // Wait for at least one option to render at page scope (not inside .arco-modal)
-    const firstOption = page.locator('[data-testid^="team-create-agent-option-"]').first();
-    await expect(firstOption).toBeVisible({ timeout: 5000 });
+    await page.screenshot({ path: 'tests/e2e/results/team-assistant-options-01-list.png' });
 
-    // Screenshot: dropdown options
-    await page.screenshot({ path: 'tests/e2e/results/team-whitelist-01-dropdown.png' });
+    const totalCount = await allOptions.count();
+    const assistants = await httpGet<Assistant[]>(page, '/api/assistants');
 
-    // Agent options fall into two optgroups (agentSelectUtils.tsx: agentKey()):
-    //   - CLI Agents:          data-testid="team-create-agent-option-cli::<backend>"
-    //   - Preset Assistants:   data-testid="team-create-agent-option-preset::<id>"
-    // The whitelist (TEAM_SUPPORTED_BACKENDS) applies to CLI Agents only. Preset assistants
-    // are allowed to appear regardless of which CLIs are installed.
-    const cliOptions = page.locator('[data-testid^="team-create-agent-option-cli::"]');
-    const cliCount = await cliOptions.count();
-    const cliTexts: string[] = [];
-    const cliBackends: string[] = [];
-    for (let i = 0; i < cliCount; i++) {
-      const option = cliOptions.nth(i);
-      const text = await option.textContent();
-      const testId = await option.getAttribute('data-testid');
-      if (text) cliTexts.push(text.trim());
-      if (testId) {
-        const m = testId.match(/^team-create-agent-option-cli::(.+)$/);
-        if (m?.[1]) cliBackends.push(m[1]);
+    if (totalCount === 0) {
+      await expect(emptyState.or(noSearchResults).first()).toBeVisible();
+      expect(assistants.some((assistant) => assistant.team_selectable)).toBe(false);
+      return;
+    }
+
+    await expect(allOptions.first()).toBeVisible({ timeout: 5000 });
+
+    const testIds = (
+      await Promise.all(
+        Array.from({ length: totalCount }, (_, index) => allOptions.nth(index).getAttribute('data-testid'))
+      )
+    ).filter((testId): testId is string => Boolean(testId));
+
+    const assistantIds = new Set(assistants.map((assistant) => assistant.id));
+    const optionAssistantIds = testIds.map((id) => id.replace('team-create-agent-option-', ''));
+
+    expect(testIds.every((id) => !id.includes('cli::') && !id.includes('preset::'))).toBeTruthy();
+    expect(optionAssistantIds.every((id) => assistantIds.has(id))).toBeTruthy();
+
+    await page.locator('.arco-modal button[aria-label="Close"]').first().click();
+    await expect(page.locator('.arco-modal')).toBeHidden({ timeout: 5000 });
+  });
+
+  test('UI keeps backend team_selectable assistants selectable', async ({ page }) => {
+    test.skip(
+      process.env.AIONUI_BYPASS_PROBE !== '1',
+      'This deterministic custom-agent e2e requires AIONUI_BYPASS_PROBE=1.'
+    );
+    test.setTimeout(90_000);
+
+    const suffix = `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+    let customAgentId: string | undefined;
+
+    try {
+      const agent = await httpPost<AgentMetadata>(page, '/api/agents/custom', {
+        name: `E2E Team Selectable Agent ${suffix}`,
+        command: process.execPath,
+        args: [],
+        env: [],
+        advanced: {
+          behavior_policy: {
+            supports_team: true,
+          },
+          description: 'E2E custom agent used to verify team_selectable projection.',
+        },
+      });
+      customAgentId = agent.id;
+
+      const assistantId = `bare:${customAgentId}`;
+      const assistant = await waitForAssistant(page, assistantId);
+      expect(assistant.team_selectable, JSON.stringify(assistant)).toBe(true);
+
+      await navigateTo(page, '#/team');
+      const createBtn = page.locator('[data-testid="team-create-btn"]').first();
+      await expect(createBtn).toBeVisible({ timeout: 10_000 });
+      await createBtn.click();
+
+      const modal = page.locator('.team-create-modal');
+      await expect(modal).toBeVisible({ timeout: 10_000 });
+
+      const option = modal.locator(`[data-testid="team-create-agent-option-${assistantId}"]`);
+      await expect(option).toBeVisible({ timeout: 10_000 });
+      await expect(option).not.toHaveClass(/cursor-not-allowed/);
+
+      await option.click();
+      await modal.locator('[data-testid="team-create-name-input"]').fill(`E2E Team Selectable ${suffix}`);
+
+      const confirmBtn = modal.getByRole('button', { name: /create team|创建团队/i });
+      await expect(confirmBtn).toBeEnabled({ timeout: 5_000 });
+    } finally {
+      if (customAgentId) {
+        await httpDelete(page, `/api/agents/custom/${customAgentId}`).catch(() => {});
       }
     }
-
-    const allOptions = page.locator('[data-testid^="team-create-agent-option-"]');
-    const totalCount = await allOptions.count();
-    console.log(
-      `[E2E] Dropdown options: total=${totalCount}, CLI=${cliCount}, CLI backends=[${cliBackends.join(', ')}], CLI texts=[${cliTexts.join(', ')}]`
-    );
-
-    // [WHITELIST RULE] TEAM_SUPPORTED_BACKENDS (tests/e2e/helpers/teamConfig.ts) is the set
-    // of backends this test infrastructure knows how to validate. The **actual** runtime
-    // whitelist lives in isTeamCapableBackend() (src/common/types/team/teamTypes.ts) and can
-    // dynamically include extra backends (e.g. codebuddy) when their cached ACP
-    // initializeResult advertises mcpCapabilities.stdio=true. We therefore do NOT assert
-    // "no un-whitelisted backends appear" here — the runtime whitelist is authoritative.
-    //
-    // What this test DOES verify: at least one whitelisted backend shows up when its CLI
-    // is installed, so the dropdown genuinely renders CLI agents (regression against the
-    // empty-dropdown / wrong-selector bug in mnemo #108). If no whitelisted CLI is
-    // installed, we skip gracefully — matching the pattern used by team-create.e2e.ts.
-    const whitelistArr = Array.from(TEAM_SUPPORTED_BACKENDS);
-    const present = whitelistArr.filter((backend) => cliBackends.includes(backend));
-    const missing = whitelistArr.filter((backend) => !cliBackends.includes(backend));
-    if (missing.length > 0) {
-      console.log(`[E2E] Whitelisted backends not present in dropdown (CLI not installed?): ${missing.join(', ')}`);
-    }
-
-    if (cliBackends.length === 0) {
-      // No CLI agents surfaced at all — could be environment or a real regression.
-      // Skip gracefully; team-create.e2e.ts will catch full-dropdown regressions.
-      console.log('[E2E] No CLI backends surfaced in dropdown — skipping');
-      await page.keyboard.press('Escape').catch(() => {});
-      await page.locator('.arco-modal .arco-btn-text').first().click();
-      await expect(page.locator('.arco-modal')).toBeHidden({ timeout: 5000 });
-      test.skip();
-      return;
-    }
-
-    if (present.length === 0) {
-      // CLI agents surfaced but none match TEAM_SUPPORTED_BACKENDS — test-infra backends
-      // not installed in this env. Skip gracefully.
-      console.log(`[E2E] No TEAM_SUPPORTED_BACKENDS present in dropdown — found [${cliBackends.join(', ')}], skipping`);
-      await page.keyboard.press('Escape').catch(() => {});
-      await page.locator('.arco-modal .arco-btn-text').first().click();
-      await expect(page.locator('.arco-modal')).toBeHidden({ timeout: 5000 });
-      test.skip();
-      return;
-    }
-
-    expect(present.length, `Expected at least one TEAM_SUPPORTED_BACKENDS entry in dropdown`).toBeGreaterThan(0);
-
-    // Close the dropdown first, then close the modal via Cancel button
-    await page.keyboard.press('Escape').catch(() => {});
-    await page.locator('.arco-modal .arco-btn-text').first().click();
-    await expect(page.locator('.arco-modal')).toBeHidden({ timeout: 5000 });
   });
 });

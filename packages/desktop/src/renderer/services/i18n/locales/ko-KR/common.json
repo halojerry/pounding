@@ -14,6 +14,7 @@
   "system": "시스템",
   "about": "소개",
   "back": "채팅으로 돌아가기",
+  "goBack": "뒤로",
   "add": "추가",
   "edit": "편집",
   "website": "웹사이트",
@@ -80,7 +81,50 @@
       "title": "POUNDING 설치가 불완전합니다",
       "description": "현재 설치에 필요한 로컬 리소스가 없어 AionCore를 시작할 수 없습니다. 최신 POUNDING를 다운로드하여 다시 설치하세요.",
       "downloadLatest": "최신 버전 다운로드",
-      "sendDiagnostics": "진단 보고서 보내기"
+      "sendDiagnostics": "진단 보고서 보내기",
+      "diagnosticsSent": "진단 보고서를 보냈습니다",
+      "diagnosticsReportSuccess": "진단 보고서를 보냈습니다",
+      "diagnosticsReportFailed": "진단 보고서를 보내지 못했습니다",
+      "runtimeComponentDescription": "현재 설치에 필요한 내장 런타임 구성 요소가 없어 {{resource}}을(를) 시작할 수 없습니다. 최신 AionUi 패키지를 다시 설치하세요. 다시 설치한 후에도 문제가 계속되면 보안 또는 백신 소프트웨어가 AionUi 구성 요소를 격리했는지 확인하세요."
+    },
+    "packageArchitectureMismatch": {
+      "title": "AionUi package architecture mismatch",
+      "description": "This AionUi package is for {{packageArch}}, but this Mac is {{deviceArch}}. You may have downloaded the wrong package. Please download and install the {{expectedArch}} package."
+    },
+    "dataMigration": {
+      "title": "Local data migration failed",
+      "description": "AionUi opened, but AionCore stopped while initializing local data. Reinstalling AionUi may not fix this. Send a diagnostics report or contact support so the local database migration can be inspected.",
+      "sendDiagnostics": "Send diagnostics",
+      "diagnosticsSent": "Diagnostics sent",
+      "diagnosticsReportSuccess": "Diagnostics report sent",
+      "diagnosticsReportFailed": "Failed to send diagnostics report"
+    },
+    "localDataRepair": {
+      "title": "Local data repair failed",
+      "description": "AionUi opened, but AionCore stopped while repairing local agent cache data. Reinstalling AionUi may not fix this. Send a diagnostics report or contact support so the local database can be inspected.",
+      "sendDiagnostics": "Send diagnostics",
+      "diagnosticsSent": "Diagnostics sent",
+      "diagnosticsReportSuccess": "Diagnostics report sent",
+      "diagnosticsReportFailed": "Failed to send diagnostics report"
+    },
+    "startupDirectory": {
+      "title": "Startup directory is unavailable",
+      "description": "AionUi opened, but AionCore could not start because the configured work or log directory is missing, unavailable, or blocked by permissions. Check that the configured directories exist and are writable, then restart AionUi.",
+      "sendDiagnostics": "Send diagnostics",
+      "diagnosticsSent": "Diagnostics sent",
+      "diagnosticsReportSuccess": "Diagnostics report sent",
+      "diagnosticsReportFailed": "Failed to send diagnostics report"
+    },
+    "recoverableDatabaseCorruption": {
+      "title": "로컬 데이터가 손상되었습니다",
+      "description": "로컬 데이터베이스 손상이 감지되어 AionUi가 시작을 계속할 수 없습니다. 확인하면 이전 데이터베이스를 백업하고 새 로컬 데이터베이스를 만들어 시작을 계속합니다. 기존 로컬 데이터는 당분간 표시되지 않으며 이전 데이터베이스는 백업으로 보관됩니다.",
+      "confirmRebuild": "이전 DB 백업 후 새 DB 재생성",
+      "sendDiagnostics": "진단 보고서 보내기",
+      "diagnosticsHint": "진단 보고서를 보내도 로컬 데이터베이스는 수정되지 않습니다.",
+      "diagnosticsSent": "진단 보고서가 전송되었습니다",
+      "diagnosticsReportSuccess": "진단 보고서가 전송되었습니다",
+      "diagnosticsReportFailed": "진단 보고서 전송 실패",
+      "rebuildFailed": "이전 DB 백업 및 새 DB 재생성 실패"
     }
   },
   "fileAttach.addFiles": "파일 추가",
@@ -99,5 +143,10 @@
   "processing": "처리 중...",
   "optional": "(선택 사항)",
   "clear": "지우기",
-  "cli.prepOffice": "POUNDING이 사무실을 준비하고 있습니다"
+  "unit": {
+    "minute_short": "분",
+    "second_short": "초"
+  },
+  "selectedCount": "선택됨 {{count}}",
+  "selectedSkills": "선택된 스킬"
 }

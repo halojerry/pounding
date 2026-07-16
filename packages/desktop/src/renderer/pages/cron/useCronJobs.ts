@@ -5,14 +5,42 @@
  */
 
 import { ipcBridge } from '@/common';
-import type { ICronJob } from '@/common/adapter/ipcBridge';
+import type { ICronJob, ICronJobUpdateParams } from '@/common/adapter/ipcBridge';
 import type { TChatConversation } from '@/common/config/storage';
 import { emitter } from '@/renderer/utils/emitter';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { repairCronJobTimeZones } from '@renderer/pages/cron/repairCronJobTimeZone';
+import { formatCronRunConversationTitle } from '@renderer/pages/cron/cronUtils';
+import { getActivityTime } from '@/renderer/utils/chat/timeline';
 
 const isJobErrorLike = (job: ICronJob): boolean => {
   return job.state.last_status === 'error' || job.state.last_status === 'missed';
+};
+
+const renameLatestNewConversationRun = async (job: ICronJob): Promise<void> => {
+  if (job.target?.execution_mode !== 'new_conversation' || !job.state.last_run_at_ms) {
+    return;
+  }
+
+  try {
+    const conversations = await ipcBridge.conversation.listByCronJob.invoke({ cron_job_id: job.id });
+    const latestConversation = (conversations ?? []).toSorted((a, b) => getActivityTime(b) - getActivityTime(a))[0];
+    if (!latestConversation) return;
+
+    const nextName = formatCronRunConversationTitle(
+      job.name,
+      latestConversation.created_at || job.state.last_run_at_ms
+    );
+    if (latestConversation.name === nextName) return;
+
+    await ipcBridge.conversation.update.invoke({
+      id: latestConversation.id,
+      updates: { name: nextName },
+    });
+    emitter.emit('chat.history.refresh');
+  } catch (error) {
+    console.error('[useCronJobsMap] Failed to rename cron run conversation:', error);
+  }
 };
 
 /**
@@ -22,7 +50,7 @@ interface CronJobActionsResult {
   pauseJob: (job_id: string) => Promise<void>;
   resumeJob: (job_id: string) => Promise<void>;
   deleteJob: (job_id: string) => Promise<void>;
-  updateJob: (job_id: string, updates: Partial<ICronJob>) => Promise<ICronJob>;
+  updateJob: (job_id: string, updates: ICronJobUpdateParams) => Promise<ICronJob>;
 }
 
 /**
@@ -57,7 +85,7 @@ function useCronJobActions(
   );
 
   const updateJob = useCallback(
-    async (job_id: string, updates: Partial<ICronJob>) => {
+    async (job_id: string, updates: ICronJobUpdateParams) => {
       const updated = await ipcBridge.cron.updateJob.invoke({ job_id, updates });
       onJobUpdated?.(job_id, updated);
       return updated;
@@ -331,6 +359,7 @@ export function useCronJobsMap() {
         const newLastRunAt = job.state.last_run_at_ms;
         if (newLastRunAt && newLastRunAt !== prevLastRunAt) {
           lastRunAtMapRef.current.set(job.id, newLastRunAt);
+          void renameLatestNewConversationRun(job);
 
           // Mark as unread only if user is not currently viewing this conversation
           // Use ref to access the latest activeConversationId value
@@ -476,69 +505,77 @@ export function useCronJobsMap() {
   );
 }
 
-/**
- * Hook for fetching conversations spawned by a specific cron job
- * @param job_id - The cron job ID to fetch conversations for
- */
 export function useCronJobConversations(job_id: string | undefined) {
   const [conversations, setConversations] = useState<TChatConversation[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(Boolean(job_id));
+  const requestSeqRef = useRef(0);
 
   const fetchConversations = useCallback(async () => {
+    const requestSeq = requestSeqRef.current + 1;
+    requestSeqRef.current = requestSeq;
+
     if (!job_id) {
       setConversations([]);
+      setLoading(false);
       return;
     }
 
     setLoading(true);
     try {
       const result = await ipcBridge.conversation.listByCronJob.invoke({ cron_job_id: job_id });
-      setConversations(result || []);
+      if (requestSeqRef.current === requestSeq) {
+        setConversations(result ?? []);
+      }
     } catch (err) {
-      console.error('[useCronJobConversations] Failed to fetch:', err);
-      setConversations([]);
+      console.error('[useCronJobConversations] Failed to fetch conversations:', err);
+      if (requestSeqRef.current === requestSeq) {
+        setConversations([]);
+      }
     } finally {
-      setLoading(false);
+      if (requestSeqRef.current === requestSeq) {
+        setLoading(false);
+      }
     }
   }, [job_id]);
 
-  // Initial fetch
   useEffect(() => {
     void fetchConversations();
   }, [fetchConversations]);
 
-  // Refetch when job executes or a new conversation is created
   useEffect(() => {
     if (!job_id) return;
-    const unsubExecuted = ipcBridge.cron.onJobExecuted.on((data) => {
-      if (data.job_id === job_id) {
+
+    const refreshIfCurrentJob = (job: ICronJob) => {
+      if (job.id === job_id) {
+        void fetchConversations();
+      }
+    };
+    const unsubCreated = ipcBridge.cron.onJobCreated.on(refreshIfCurrentJob);
+    const unsubUpdated = ipcBridge.cron.onJobUpdated.on(refreshIfCurrentJob);
+    const unsubRemoved = ipcBridge.cron.onJobRemoved.on(({ job_id: removedJobId }) => {
+      if (removedJobId === job_id) {
+        setConversations([]);
+      }
+    });
+    const unsubExecuted = ipcBridge.cron.onJobExecuted.on(({ job_id: executedJobId }) => {
+      if (executedJobId === job_id) {
         void fetchConversations();
       }
     });
-    const unsubListChanged = ipcBridge.conversation.listChanged.on((data) => {
-      if (data.action === 'created' || data.action === 'deleted') {
-        void fetchConversations();
-      }
+    const unsubListChanged = ipcBridge.conversation.listChanged.on(() => {
+      void fetchConversations();
     });
+
     return () => {
+      unsubCreated();
+      unsubUpdated();
+      unsubRemoved();
       unsubExecuted();
       unsubListChanged();
     };
-  }, [job_id, fetchConversations]);
+  }, [fetchConversations, job_id]);
 
-  // Listen to chat.history.refresh to handle conversation renames
-  useEffect(() => {
-    if (!job_id) return;
-    const handleRefresh = () => {
-      void fetchConversations();
-    };
-    emitter.on('chat.history.refresh', handleRefresh);
-    return () => {
-      emitter.off('chat.history.refresh', handleRefresh);
-    };
-  }, [job_id, fetchConversations]);
-
-  return { conversations, loading };
+  return { conversations, loading, refetch: fetchConversations };
 }
 
 export default useCronJobs;

@@ -166,6 +166,8 @@ export function initApplicationBridge(): void {
       console.error(...args);
     } else if (level === 'warn') {
       console.warn(...args);
+    } else if (level === 'debug') {
+      console.debug(...args);
     } else {
       console.info(...args);
     }

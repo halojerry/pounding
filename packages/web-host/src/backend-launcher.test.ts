@@ -14,6 +14,10 @@ vi.mock('node:child_process', () => ({
   spawn: vi.fn(),
 }));
 
+vi.mock('node:fs', () => ({
+  mkdirSync: vi.fn(),
+}));
+
 vi.mock('node:net', () => ({
   createServer: vi.fn(),
   connect: vi.fn(),
@@ -24,6 +28,7 @@ vi.mock('./agent-process-registry.js', () => ({
 }));
 
 import { spawn } from 'node:child_process';
+import { mkdirSync } from 'node:fs';
 import { connect, createServer } from 'node:net';
 import { cleanupRegisteredAgentProcesses } from './agent-process-registry.js';
 import { buildSpawnArgs, buildSpawnEnv, findAvailablePort, BackendLifecycleManager } from './backend-launcher.js';
@@ -136,13 +141,68 @@ describe('buildSpawnArgs', () => {
       isPackaged: false,
     });
     expect(args).toContain('debug');
+    expect(args).not.toContain('--dump-prompts');
+    expect(args).not.toContain('--managed-resources-mode');
     expect(args).not.toContain('--log-dir');
     expect(args).not.toContain('--local');
   });
 
-  it('respects POUNDING_LOG_LEVEL override', () => {
-    const prev = process.env.POUNDING_LOG_LEVEL;
-    process.env.POUNDING_LOG_LEVEL = 'trace';
+  it('passes prompt dump flag in development only when AIONUI_DUMP_PROMPTS is enabled', () => {
+    const prev = process.env.AIONUI_DUMP_PROMPTS;
+    process.env.AIONUI_DUMP_PROMPTS = '1';
+    try {
+      const args = buildSpawnArgs({
+        port: 1,
+        dbPath: '/d',
+        local: false,
+        appVersion: '0.0.1',
+        isPackaged: false,
+      });
+
+      expect(args).toContain('--dump-prompts');
+    } finally {
+      if (prev === undefined) delete process.env.AIONUI_DUMP_PROMPTS;
+      else process.env.AIONUI_DUMP_PROMPTS = prev;
+    }
+  });
+
+  it('passes bundled managed resources mode when packaged', () => {
+    const prev = process.env.AIONUI_DUMP_PROMPTS;
+    process.env.AIONUI_DUMP_PROMPTS = '1';
+    try {
+      const args = buildSpawnArgs({
+        port: 1,
+        dbPath: '/d',
+        local: false,
+        appVersion: '0.0.1',
+        isPackaged: true,
+      });
+
+      expect(args).toContain('--managed-resources-mode');
+      expect(args).toContain('bundled');
+      expect(args).not.toContain('--dump-prompts');
+    } finally {
+      if (prev === undefined) delete process.env.AIONUI_DUMP_PROMPTS;
+      else process.env.AIONUI_DUMP_PROMPTS = prev;
+    }
+  });
+
+  it('passes corrupted database recovery authorization only when requested', () => {
+    const args = buildSpawnArgs({
+      port: 1,
+      dbPath: '/d',
+      local: true,
+      appVersion: '0.0.1',
+      isPackaged: true,
+      recoverCorruptedDatabase: true,
+    });
+
+    expect(args).toContain('--recover-corrupted-database');
+  });
+
+  it('respects AIONUI_LOG_LEVEL override', () => {
+    const prev = process.env.AIONUI_LOG_LEVEL;
+    process.env.AIONUI_LOG_LEVEL = 'trace';
     try {
       const args = buildSpawnArgs({
         port: 1,
@@ -336,11 +396,16 @@ describe('BackendLifecycleManager.start (success path)', () => {
         '/w',
         '--local',
       ]);
-      const opts = spawnCall[2] as { env: NodeJS.ProcessEnv };
+      const opts = spawnCall[2] as { cwd?: string; env: NodeJS.ProcessEnv };
+      expect(opts.cwd).toBe('/w');
       expect(opts.env.AIONUI_CACHE_DIR).toBe('/c');
       expect(opts.env.AIONUI_WORK_DIR).toBe('/w');
       expect(opts.env.AIONUI_LOG_DIR).toBe('/l');
       expect((spawnCall[2] as { detached?: boolean }).detached).toBe(process.platform !== 'win32');
+      expect(mkdirSync).toHaveBeenCalledWith('/db/path', { recursive: true });
+      expect(mkdirSync).toHaveBeenCalledWith('/log/dir', { recursive: true });
+      expect(mkdirSync).toHaveBeenCalledWith('/w', { recursive: true });
+      expect(mkdirSync).toHaveBeenCalledWith('/l', { recursive: true });
 
       expect(fetchSpy).toHaveBeenCalled();
       expect(infoSpy).toHaveBeenCalledWith(
@@ -354,6 +419,31 @@ describe('BackendLifecycleManager.start (success path)', () => {
 });
 
 describe('BackendLifecycleManager.start (health timeout)', () => {
+  it('fails before spawn when startup directory preparation fails', async () => {
+    vi.mocked(mkdirSync).mockImplementationOnce(() => {
+      throw new Error('EPERM: operation not permitted, mkdir /db/path');
+    });
+
+    const mgr = new BackendLifecycleManager(APP_META_PACKAGED, () => '/abs/path/aioncore');
+
+    await expect(
+      mgr.start('/db/path', '/log/dir', {
+        cacheDir: '/cache',
+        workDir: '/work',
+        logDir: '/log',
+      })
+    ).rejects.toMatchObject({
+      name: 'BackendStartupError',
+      details: expect.objectContaining({
+        causeMessage: 'EPERM: operation not permitted, mkdir /db/path',
+        stage: 'spawn',
+      }),
+    });
+
+    expect(spawn).not.toHaveBeenCalled();
+    expect(mgr.status).toBe('error');
+  });
+
   it('captures backend boundary code and stage from early-exit stderr', async () => {
     vi.useFakeTimers();
     vi.mocked(createServer).mockImplementation(
@@ -424,6 +514,7 @@ describe('BackendLifecycleManager.start (health timeout)', () => {
 
   it('kills child and reports listen_timeout when poundingcore never reports a port', async () => {
     vi.useFakeTimers();
+    const platformSpy = vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin');
     const child = makeFakeChild();
     vi.mocked(spawn).mockReturnValue(child as unknown as ChildProcess);
     const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => true);
@@ -445,10 +536,12 @@ describe('BackendLifecycleManager.start (health timeout)', () => {
     expect(killSpy).toHaveBeenCalled();
 
     killSpy.mockRestore();
+    platformSpy.mockRestore();
   }, 15_000);
 
   it('kills child and throws when /health never responds OK within timeout', async () => {
     vi.useFakeTimers();
+    const platformSpy = vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin');
     vi.mocked(createServer).mockImplementation(
       () => makeFakeServer(33333) as unknown as ReturnType<typeof createServer>
     );
@@ -475,6 +568,7 @@ describe('BackendLifecycleManager.start (health timeout)', () => {
 
     fetchSpy.mockRestore();
     killSpy.mockRestore();
+    platformSpy.mockRestore();
     vi.useRealTimers();
   }, 15_000);
 
@@ -806,6 +900,7 @@ describe('BackendLifecycleManager.stop', () => {
   });
 
   it('sends SIGTERM then resolves when child emits exit', async () => {
+    const platformSpy = vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin');
     vi.mocked(createServer).mockImplementation(
       () => makeFakeServer(22222) as unknown as ReturnType<typeof createServer>
     );
@@ -834,9 +929,11 @@ describe('BackendLifecycleManager.stop', () => {
 
     fetchSpy.mockRestore();
     killSpy.mockRestore();
+    platformSpy.mockRestore();
   });
 
   it('escalates to SIGKILL when SIGTERM times out', async () => {
+    const platformSpy = vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin');
     vi.mocked(createServer).mockImplementation(
       () => makeFakeServer(22223) as unknown as ReturnType<typeof createServer>
     );
@@ -865,6 +962,7 @@ describe('BackendLifecycleManager.stop', () => {
 
     fetchSpy.mockRestore();
     killSpy.mockRestore();
+    platformSpy.mockRestore();
   }, 7_000);
 
   it('waits for Windows taskkill to finish before cleaning registered agent processes', async () => {
@@ -1020,6 +1118,36 @@ describe('BackendLifecycleManager crash restart', () => {
     });
 
     warnSpy.mockRestore();
+    fetchSpy.mockRestore();
+  }, 5_000);
+
+  it('does not reuse corrupted database recovery authorization during crash restart', async () => {
+    const child1 = makeFakeChild();
+    const child2 = makeFakeChild();
+    vi.mocked(spawn)
+      .mockReturnValueOnce(child1 as unknown as ChildProcess)
+      .mockReturnValueOnce(child2 as unknown as ChildProcess);
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('ok', { status: 200 }) as unknown as Response);
+
+    const mgr = new BackendLifecycleManager(APP_META_PACKAGED, () => '/x');
+    const startPromise = mgr.start('/db', undefined, undefined, undefined, undefined, {
+      recoverCorruptedDatabase: true,
+    });
+    await Promise.resolve();
+    emitListening(child1, 65303);
+    await startPromise;
+
+    (child1 as unknown as EventEmitter).emit('exit', 1, 'SIGABRT');
+    await new Promise((r) => setTimeout(r, 1_200));
+
+    const firstSpawnArgs = vi.mocked(spawn).mock.calls[0]?.[1] as string[];
+    const restartSpawnArgs = vi.mocked(spawn).mock.calls[1]?.[1] as string[];
+    expect(firstSpawnArgs).toContain('--recover-corrupted-database');
+    expect(restartSpawnArgs).not.toContain('--recover-corrupted-database');
+
     fetchSpy.mockRestore();
   }, 5_000);
 

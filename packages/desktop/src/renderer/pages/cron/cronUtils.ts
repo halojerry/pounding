@@ -5,6 +5,7 @@
  */
 
 import type { ICronJob } from '@/common/adapter/ipcBridge';
+import type { TChatConversation } from '@/common/config/storage';
 import type { TFunction } from 'i18next';
 
 const WEEKDAY_LABEL_KEY_BY_VALUE: Record<string, string> = {
@@ -103,6 +104,18 @@ export function formatNextRun(next_run_at_ms?: number): string {
   return date.toLocaleString();
 }
 
+function formatTwoDigit(value: number): string {
+  return String(value).padStart(2, '0');
+}
+
+export function formatCronRunConversationTitle(jobName: string, runAtMs: number): string {
+  const date = new Date(runAtMs);
+  const day = formatTwoDigit(date.getDate());
+  const month = formatTwoDigit(date.getMonth() + 1);
+  const year = formatTwoDigit(date.getFullYear() % 100);
+  return `${jobName.trim()} ${day}-${month}-${year}`;
+}
+
 /**
  * Get job status flags
  */
@@ -111,4 +124,13 @@ export function getJobStatusFlags(job: ICronJob): { hasError: boolean; isPaused:
     hasError: job.state.last_status === 'error' || job.state.last_status === 'missed',
     isPaused: !job.enabled,
   };
+}
+
+export function resolveCronJobId(extra: TChatConversation['extra'] | undefined): string | undefined {
+  const maybeExtra = extra as { cron_job_id?: unknown; cronJobId?: unknown } | undefined;
+  const snakeCase = maybeExtra?.cron_job_id;
+  if (typeof snakeCase === 'string' && snakeCase.trim()) return snakeCase;
+  const camelCase = maybeExtra?.cronJobId;
+  if (typeof camelCase === 'string' && camelCase.trim()) return camelCase;
+  return undefined;
 }

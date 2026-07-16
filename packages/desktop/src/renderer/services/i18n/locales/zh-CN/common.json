@@ -14,6 +14,7 @@
   "system": "系统",
   "about": "关于我们",
   "back": "返回聊天",
+  "goBack": "返回",
   "add": "添加",
   "edit": "编辑",
   "website": "官网",
@@ -80,7 +81,50 @@
       "title": "POUNDING 安装不完整",
       "description": "当前安装缺少必要的本地资源，AionCore 无法启动。请下载并重新安装最新版 POUNDING。",
       "downloadLatest": "下载最新版",
-      "sendDiagnostics": "发送诊断报告"
+      "sendDiagnostics": "发送诊断报告",
+      "diagnosticsSent": "诊断报告已发送",
+      "diagnosticsReportSuccess": "诊断报告已发送",
+      "diagnosticsReportFailed": "诊断报告发送失败",
+      "runtimeComponentDescription": "当前安装缺少必要的内置运行组件，{{resource}} 无法启动。请重新安装最新版 AionUi；如果重新安装后仍然出现，请检查系统安全软件或杀毒软件是否隔离了 AionUi 组件。"
+    },
+    "packageArchitectureMismatch": {
+      "title": "AionUi 安装包架构不匹配",
+      "description": "当前 AionUi 安装包是 {{packageArch}}，但这台 Mac 是 {{deviceArch}}。你可能下载了错误的安装包，请重新下载并安装 {{expectedArch}} 版本。"
+    },
+    "dataMigration": {
+      "title": "本地数据迁移失败",
+      "description": "AionUi 已打开，但 AionCore 在初始化本地数据时停止。重复安装 AionUi 未必能解决此问题。请发送诊断报告或联系支持，以便检查本地数据库迁移状态。",
+      "sendDiagnostics": "发送诊断报告",
+      "diagnosticsSent": "诊断报告已发送",
+      "diagnosticsReportSuccess": "诊断报告已发送",
+      "diagnosticsReportFailed": "诊断报告发送失败"
+    },
+    "localDataRepair": {
+      "title": "本地数据修复失败",
+      "description": "AionUi 已打开，但 AionCore 在修复本地智能体缓存数据时停止。重新安装 AionUi 可能无法解决此问题。请发送诊断报告或联系支持，以便检查本地数据库。",
+      "sendDiagnostics": "发送诊断",
+      "diagnosticsSent": "诊断已发送",
+      "diagnosticsReportSuccess": "诊断报告已发送",
+      "diagnosticsReportFailed": "诊断报告发送失败"
+    },
+    "startupDirectory": {
+      "title": "启动目录不可用",
+      "description": "AionUi 已打开，但由于配置的工作目录或日志目录不存在、不可访问或权限受限，AionCore 无法启动。请确认这些目录存在且可写，然后重启 AionUi。",
+      "sendDiagnostics": "发送诊断报告",
+      "diagnosticsSent": "诊断报告已发送",
+      "diagnosticsReportSuccess": "诊断报告已发送",
+      "diagnosticsReportFailed": "诊断报告发送失败"
+    },
+    "recoverableDatabaseCorruption": {
+      "title": "本地数据已损坏",
+      "description": "检测到本地数据库损坏，AionUi 无法继续启动。确认后将备份旧数据库，并创建新的本地数据库继续启动。历史本地数据暂时不会显示，旧数据库会保留为备份。",
+      "confirmRebuild": "备份旧库并重建新库",
+      "sendDiagnostics": "发送诊断报告",
+      "diagnosticsHint": "发送诊断报告不会修改本地数据库。",
+      "diagnosticsSent": "诊断报告已发送",
+      "diagnosticsReportSuccess": "诊断报告已发送",
+      "diagnosticsReportFailed": "诊断报告发送失败",
+      "rebuildFailed": "备份旧库并重建新库失败"
     }
   },
   "fileAttach.addFiles": "添加文件",
@@ -103,5 +147,7 @@
   "unit": {
     "minute_short": "分",
     "second_short": "秒"
-  }
+  },
+  "selectedCount": "已选 {{count}}",
+  "selectedSkills": "已选技能"
 }

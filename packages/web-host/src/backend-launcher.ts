@@ -9,6 +9,7 @@
  */
 
 import { type ChildProcess, spawn } from 'node:child_process';
+import { mkdirSync } from 'node:fs';
 import { connect, createServer, type Socket } from 'node:net';
 import { cleanupRegisteredAgentProcesses } from './agent-process-registry.js';
 import type { AppMetadata, BackendBinaryResolver } from './types.js';
@@ -63,8 +64,11 @@ type SpawnConfig = {
   workDir?: string;
   appVersion: string;
   isPackaged: boolean;
-  /** PID of the parent process. The backend exits when this process dies. */
-  parentPid?: number;
+  recoverCorruptedDatabase?: boolean;
+};
+
+export type BackendLaunchFlags = {
+  recoverCorruptedDatabase?: boolean;
 };
 
 export type BackendDirConfig = {
@@ -186,10 +190,11 @@ export function buildSpawnArgs(config: SpawnConfig): string[] {
     config.appVersion,
   ];
   if (config.isPackaged) args.push('--managed-resources-mode', 'bundled');
+  if (!config.isPackaged && process.env.AIONUI_DUMP_PROMPTS === '1') args.push('--dump-prompts');
   if (config.logDir) args.push('--log-dir', config.logDir);
   if (config.workDir) args.push('--work-dir', config.workDir);
   if (config.local) args.push('--local');
-  if (typeof config.parentPid === 'number') args.push('--parent-pid', String(config.parentPid));
+  if (config.recoverCorruptedDatabase) args.push('--recover-corrupted-database');
   return args;
 }
 
@@ -339,8 +344,31 @@ function getResolveDiagnostics(error: unknown): Partial<BackendStartupErrorDetai
   return diagnostics as Partial<BackendStartupErrorDetails>;
 }
 
-function killBackendProcessTree(childProcess: ChildProcess | null, signal: 'SIGTERM' | 'SIGKILL'): void {
-  if (!childProcess?.pid) return;
+function ensureBackendStartupDirectory(dir: string | undefined): void {
+  if (!dir || dir.trim() === '') return;
+  mkdirSync(dir, { recursive: true });
+}
+
+function waitForChildProcessEnd(childProcess: ChildProcess): Promise<void> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      childProcess.removeListener('error', finish);
+      childProcess.removeListener('exit', finish);
+      childProcess.removeListener('close', finish);
+      resolve();
+    };
+
+    childProcess.once('error', finish);
+    childProcess.once('exit', finish);
+    childProcess.once('close', finish);
+  });
+}
+
+function killBackendProcessTree(childProcess: ChildProcess | null, signal: 'SIGTERM' | 'SIGKILL'): Promise<void> {
+  if (!childProcess?.pid) return Promise.resolve();
 
   if (process.platform === 'win32') {
     const args = ['/PID', String(childProcess.pid), '/T'];
@@ -446,7 +474,8 @@ export class BackendLifecycleManager {
     logDir?: string,
     dirs?: BackendDirConfig,
     options?: BackendStartOptions,
-    preferredPort?: number
+    preferredPort?: number,
+    launchFlags: BackendLaunchFlags = {}
   ): Promise<number> {
     const appVersion = this.appMeta.version;
     let binaryPath: string;
@@ -520,14 +549,26 @@ export class BackendLifecycleManager {
       workDir: dirs?.workDir,
       appVersion,
       isPackaged: this.appMeta.isPackaged,
-      parentPid: process.pid,
+      recoverCorruptedDatabase: launchFlags.recoverCorruptedDatabase === true,
     });
     console.log(`[poundingcore] starting: ${binaryPath} ${args.join(' ')}`);
+
+    try {
+      ensureBackendStartupDirectory(dbPath);
+      ensureBackendStartupDirectory(logDir);
+      ensureBackendStartupDirectory(dirs?.cacheDir);
+      ensureBackendStartupDirectory(dirs?.workDir);
+      ensureBackendStartupDirectory(dirs?.logDir);
+    } catch (error) {
+      this._status = 'error';
+      throw makeStartupError('spawn', 'aioncore startup directory preparation failed', error);
+    }
 
     try {
       this.childProcess = spawn(binaryPath, args, {
         stdio: ['pipe', 'pipe', 'pipe'],
         env: dirs ? buildSpawnEnv(dirs) : process.env,
+        cwd: dirs?.workDir ?? dbPath,
         detached: process.platform !== 'win32',
       });
     } catch (error) {

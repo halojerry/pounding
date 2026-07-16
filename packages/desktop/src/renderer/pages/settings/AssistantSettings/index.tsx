@@ -18,17 +18,16 @@
  * read-only so users can inspect what's bundled.
  */
 import { Message } from '@arco-design/web-react';
-import coworkSvg from '@/renderer/assets/icons/cowork.svg';
-import { useDetectedAgents, useAssistantEditor, useAssistantList } from '@/renderer/hooks/assistant';
-import SettingsPageWrapper from '../components/SettingsPageWrapper';
-import { resolveAvatarImageSrc } from './assistantUtils';
+import { useAssistantEditor, useAssistantList } from '@/renderer/hooks/assistant';
+import { useManagedAgentRuntimeCatalog } from '@/renderer/hooks/agent/useManagedAgents';
+import { buildAssistantEditorBackends, resolveAvatarImageSrc } from './assistantUtils';
 import AssistantEditorPage from './AssistantEditorPage';
-import AssistantListPanel from './AssistantListPanel';
+import AssistantHomeTabs from './home/AssistantHomeTabs';
 import DeleteAssistantModal from './DeleteAssistantModal';
 import SkillConfirmModals from './SkillConfirmModals';
-import type { AssistantEditorViewModel } from './types';
+import type { AssistantEditorViewModel, AssistantListItem } from './types';
 import React, { useCallback, useEffect, useMemo, useRef } from 'react';
-import { useLocation, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 type AssistantNavigationState = {
   openAssistantId?: string;
@@ -39,18 +38,19 @@ const OPEN_ASSISTANT_EDITOR_INTENT_KEY = 'guid.openAssistantEditorIntent';
 const AssistantSettings: React.FC = () => {
   const [message, messageContext] = Message.useMessage({ maxCount: 10 });
   const location = useLocation();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const navigationState = (location.state as AssistantNavigationState | null) ?? null;
-  const highlightId = searchParams.get('highlight');
-  const handleHighlightConsumed = useCallback(() => {
-    setSearchParams({}, { replace: true });
-  }, [setSearchParams]);
-  const avatarImageMap: Record<string, string> = useMemo(
-    () => ({
-      'cowork.svg': coworkSvg,
-      '\u{1F6E0}\u{FE0F}': coworkSvg,
-    }),
-    []
+
+  // Which home tab to show when returning from the editor. Editing an official
+  // assistant should land back on the Official tab; everything else on Mine.
+  const [homeTab, setHomeTab] = React.useState<'mine' | 'official'>('mine');
+
+  // "Chat" on an assistant → open a new conversation with it preselected.
+  const handleStartChat = useCallback(
+    (assistant: AssistantListItem) => {
+      navigate('/guid', { state: { selectedAssistantId: assistant.id } });
+    },
+    [navigate]
   );
 
   // Compose hooks
@@ -63,12 +63,13 @@ const AssistantSettings: React.FC = () => {
     reorderAssistants,
     localeKey,
   } = useAssistantList();
+  const managedAgentRuntimeCatalog = useManagedAgentRuntimeCatalog();
   const builtinAvatarOptions = useMemo(
     () =>
       assistants
         .filter((assistant) => assistant.source === 'builtin' && assistant.avatar?.startsWith('/api/assistants/'))
         .map((assistant) => {
-          const src = resolveAvatarImageSrc(assistant.avatar, avatarImageMap);
+          const src = resolveAvatarImageSrc(assistant.avatar);
           if (!src) {
             return null;
           }
@@ -80,21 +81,21 @@ const AssistantSettings: React.FC = () => {
           };
         })
         .filter((option): option is NonNullable<typeof option> => option !== null),
-    [assistants, avatarImageMap, localeKey]
+    [assistants, localeKey]
   );
-
-  const { availableBackends, refreshAgentDetection } = useDetectedAgents();
-
   const editor = useAssistantEditor({
     localeKey,
     activeAssistant,
     setActiveAssistantId,
     loadAssistants,
-    refreshAgentDetection,
     message,
   });
+  const availableBackends = useMemo(
+    () => buildAssistantEditorBackends(managedAgentRuntimeCatalog, localeKey, editor.editAgent),
+    [editor.editAgent, localeKey, managedAgentRuntimeCatalog]
+  );
 
-  const editAvatarImage = editor.editAvatarPreview || resolveAvatarImageSrc(editor.editAvatar, avatarImageMap);
+  const editAvatarImage = editor.editAvatarPreview || resolveAvatarImageSrc(editor.editAvatar);
   const hasConsumedNavigationIntentRef = useRef(false);
   const showEditor = editor.editVisible && (editor.isCreating || activeAssistantId !== null);
   const editorViewModel: AssistantEditorViewModel = {
@@ -131,6 +132,12 @@ const AssistantSettings: React.FC = () => {
         setMode: editor.setDefaultPermissionMode,
         value: editor.defaultPermissionValue,
         setValue: editor.setDefaultPermissionValue,
+      },
+      thoughtLevel: {
+        mode: editor.defaultThoughtLevelMode,
+        setMode: editor.setDefaultThoughtLevelMode,
+        value: editor.defaultThoughtLevelValue,
+        setValue: editor.setDefaultThoughtLevelValue,
       },
       skills: {
         mode: editor.defaultSkillsMode,
@@ -203,7 +210,7 @@ const AssistantSettings: React.FC = () => {
   }, [assistants, editor, navigationState]);
 
   return (
-    <SettingsPageWrapper className='!h-full !overflow-hidden' contentClassName='!h-full'>
+    <div className='h-full w-full overflow-hidden bg-bg-0'>
       <div className='flex flex-col h-full w-full'>
         {messageContext}
         <div className='flex-1 min-h-0'>
@@ -214,19 +221,35 @@ const AssistantSettings: React.FC = () => {
               onBack={() => editor.setEditVisible(false)}
             />
           ) : (
-            <AssistantListPanel
+            <AssistantHomeTabs
               assistants={assistants}
               localeKey={localeKey}
-              avatarImageMap={avatarImageMap}
-              onEdit={(assistant) => void editor.handleEdit(assistant)}
-              onDuplicate={(assistant) => void editor.handleDuplicate(assistant)}
+              initialTab={homeTab}
+              onTabChange={setHomeTab}
+              onOpenDetail={(assistant) => {
+                if (assistant.source === 'builtin') setHomeTab('official');
+                setActiveAssistantId(assistant.id);
+                void editor.handleEdit(assistant);
+              }}
+              onOpenSettings={(assistant) => {
+                if (assistant.source === 'builtin') setHomeTab('official');
+                setActiveAssistantId(assistant.id);
+                void editor.handleEdit(assistant);
+              }}
+              onDuplicate={(assistant) => {
+                // A duplicate becomes a new user assistant, so return to My
+                // Assistants after saving — not the Official tab it came from.
+                setHomeTab('mine');
+                void editor.handleDuplicate(assistant);
+              }}
               onDelete={(assistant) => editor.handleDeleteRequest(assistant)}
-              onCreate={() => void editor.handleCreate()}
+              onCreate={() => {
+                setHomeTab('mine');
+                void editor.handleCreate();
+              }}
               onToggleEnabled={(assistant, checked) => void editor.handleToggleEnabled(assistant, checked)}
               onReorder={(activeId, overId) => void reorderAssistants(activeId, overId)}
-              setActiveAssistantId={setActiveAssistantId}
-              highlightId={highlightId}
-              onHighlightConsumed={handleHighlightConsumed}
+              onStartChat={handleStartChat}
             />
           )}
 
@@ -235,7 +258,6 @@ const AssistantSettings: React.FC = () => {
             onCancel={() => editor.setDeleteConfirmVisible(false)}
             onConfirm={editor.handleDeleteConfirm}
             activeAssistant={activeAssistant}
-            avatarImageMap={avatarImageMap}
           />
 
           <SkillConfirmModals
@@ -253,7 +275,7 @@ const AssistantSettings: React.FC = () => {
           />
         </div>
       </div>
-    </SettingsPageWrapper>
+    </div>
   );
 };
 

@@ -25,7 +25,17 @@ function requireRelativePath(baseDir, runtimeKey, parts, checked, missing) {
   const relativePath = bundledPath(runtimeKey, ...parts);
   checked.push(relativePath);
 
-  if (!fs.existsSync(path.join(baseDir, ...parts))) {
+  if (!isFile(path.join(baseDir, ...parts))) {
+    missing.push(relativePath);
+  }
+}
+
+function requireRelativeDirectory(baseDir, runtimeKey, parts, checked, missing) {
+  const relativePath = bundledPath(runtimeKey, ...parts);
+  checked.push(relativePath);
+
+  const fullPath = path.join(baseDir, ...parts);
+  if (!fs.existsSync(fullPath) || !fs.statSync(fullPath).isDirectory()) {
     missing.push(relativePath);
   }
 }
@@ -44,6 +54,51 @@ function isFile(filePath) {
   return fs.existsSync(filePath) && fs.statSync(filePath).isFile();
 }
 
+function requireFile(baseDir, runtimeKey, parts, checked, missing) {
+  const relativePath = bundledPath(runtimeKey, ...parts);
+  checked.push(relativePath);
+
+  if (!isFile(path.join(baseDir, ...parts))) {
+    missing.push(relativePath);
+  }
+}
+
+function requireDirectory(baseDir, runtimeKey, parts, checked, missing) {
+  const relativePath = bundledPath(runtimeKey, ...parts);
+  checked.push(relativePath);
+
+  const fullPath = path.join(baseDir, ...parts);
+  if (!fs.existsSync(fullPath) || !fs.statSync(fullPath).isDirectory()) {
+    missing.push(relativePath);
+  }
+}
+
+function verifyBundleManifest(baseDir, runtimeKey, electronPlatformName, targetArch, checked, missing) {
+  const parts = ['manifest.json'];
+  const relativePath = bundledPath(runtimeKey, ...parts);
+  const manifestPath = path.join(baseDir, ...parts);
+  checked.push(relativePath);
+
+  if (!isFile(manifestPath)) {
+    missing.push(relativePath);
+    return;
+  }
+
+  const manifest = readManifest(manifestPath);
+  if (!manifest) {
+    missing.push(`${relativePath}<invalid-json>`);
+    return;
+  }
+
+  if (manifest.platform !== electronPlatformName) {
+    missing.push(`${relativePath}<platform:${electronPlatformName}>`);
+  }
+
+  if (manifest.arch !== targetArch) {
+    missing.push(`${relativePath}<arch:${targetArch}>`);
+  }
+}
+
 function requireManagedNode(baseDir, runtimeKey, platform, checked, missing) {
   const nodeRoot = path.join(baseDir, 'managed-resources', 'node');
   const versions = readDirectories(nodeRoot);
@@ -56,17 +111,31 @@ function requireManagedNode(baseDir, runtimeKey, platform, checked, missing) {
     return;
   }
 
-  const executableFound = versions.some((version) => {
-    const executablePath = path.join(nodeRoot, version, ...executableParts);
-    return isFile(executablePath);
-  });
-
-  const relativePath = bundledPath(runtimeKey, 'managed-resources', 'node', '*', ...executableParts);
-  checked.push(relativePath);
-
-  if (!executableFound) {
-    missing.push(relativePath);
+  for (const version of versions) {
+    requireFile(baseDir, runtimeKey, ['managed-resources', 'node', version, ...executableParts], checked, missing);
   }
+}
+
+const CODEX_VENDOR_TRIPLE_BY_RUNTIME_KEY = {
+  'win32-arm64': 'aarch64-pc-windows-msvc',
+  'win32-x64': 'x86_64-pc-windows-msvc',
+};
+
+function acpToolPlatformExecutableParts(platform, runtimeKey, toolId) {
+  if (platform !== 'win32') return null;
+
+  if (toolId === 'codex-acp') {
+    const vendorTriple = CODEX_VENDOR_TRIPLE_BY_RUNTIME_KEY[runtimeKey];
+    if (!vendorTriple) return null;
+
+    return ['node_modules', '@openai', `codex-${runtimeKey}`, 'vendor', vendorTriple, 'bin', 'codex.exe'];
+  }
+
+  if (toolId === 'claude-agent-acp') {
+    return ['node_modules', '@anthropic-ai', `claude-agent-sdk-${runtimeKey}`, 'claude.exe'];
+  }
+
+  return null;
 }
 
 function readManifest(manifestPath) {
@@ -77,7 +146,7 @@ function readManifest(manifestPath) {
   }
 }
 
-function requireManagedAcpTool(baseDir, runtimeKey, toolId, checked, missing) {
+function requireManagedAcpTool(baseDir, runtimeKey, platform, toolId, checked, missing) {
   const toolRoot = path.join(baseDir, 'managed-resources', 'acp', toolId);
   const versions = readDirectories(toolRoot);
 
@@ -95,7 +164,7 @@ function requireManagedAcpTool(baseDir, runtimeKey, toolId, checked, missing) {
       'managed-resources',
       'acp',
       toolId,
-      '*',
+      version,
       runtimeKey,
       'manifest.json'
     );
@@ -128,6 +197,39 @@ function requireManagedAcpTool(baseDir, runtimeKey, toolId, checked, missing) {
     if (!isFile(path.join(platformRoot, entrypoint))) {
       missing.push(entrypointRelativePath);
     }
+
+    requireFile(
+      baseDir,
+      runtimeKey,
+      ['managed-resources', 'acp', toolId, version, runtimeKey, 'package.json'],
+      checked,
+      missing
+    );
+    requireFile(
+      baseDir,
+      runtimeKey,
+      ['managed-resources', 'acp', toolId, version, runtimeKey, 'package-lock.json'],
+      checked,
+      missing
+    );
+    requireDirectory(
+      baseDir,
+      runtimeKey,
+      ['managed-resources', 'acp', toolId, version, runtimeKey, 'node_modules'],
+      checked,
+      missing
+    );
+
+    const platformExecutableParts = acpToolPlatformExecutableParts(platform, runtimeKey, toolId);
+    if (platformExecutableParts) {
+      requireFile(
+        baseDir,
+        runtimeKey,
+        ['managed-resources', 'acp', toolId, version, runtimeKey, ...platformExecutableParts],
+        checked,
+        missing
+      );
+    }
   }
 }
 
@@ -138,11 +240,11 @@ function verifyBundledPoundingcoreResources({ resourcesDir, electronPlatformName
   const missing = [];
 
   requireRelativePath(baseDir, runtimeKey, [backendBinaryName(electronPlatformName)], checked, missing);
-  requireRelativePath(baseDir, runtimeKey, ['manifest.json'], checked, missing);
-  requireRelativePath(baseDir, runtimeKey, ['managed-resources'], checked, missing);
+  verifyBundleManifest(baseDir, runtimeKey, electronPlatformName, targetArch, checked, missing);
+  requireRelativeDirectory(baseDir, runtimeKey, ['managed-resources'], checked, missing);
   requireManagedNode(baseDir, runtimeKey, electronPlatformName, checked, missing);
-  requireManagedAcpTool(baseDir, runtimeKey, 'codex-acp', checked, missing);
-  requireManagedAcpTool(baseDir, runtimeKey, 'claude-agent-acp', checked, missing);
+  requireManagedAcpTool(baseDir, runtimeKey, electronPlatformName, 'codex-acp', checked, missing);
+  requireManagedAcpTool(baseDir, runtimeKey, electronPlatformName, 'claude-agent-acp', checked, missing);
 
   return { runtimeKey, checked, missing };
 }

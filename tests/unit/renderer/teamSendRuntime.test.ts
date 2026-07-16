@@ -1,92 +1,159 @@
-import { describe, expect, it } from 'vitest';
-import { buildTeamSendRuntime } from '../../../packages/desktop/src/renderer/pages/team/components/teamSendRuntime';
-import type { TeamRunViewState } from '../../../packages/desktop/src/renderer/pages/team/hooks/useTeamRunView';
+import { describe, expect, it, vi } from 'vitest';
+import type { ITeamSlotWork, TeamSlotBlockedReason } from '@/common/types/team/teamTypes';
+import {
+  buildTeamSendRuntime,
+  buildTeamStopHandler,
+  buildTeamWorkStatusText,
+} from '@/renderer/pages/team/components/teamSendRuntime';
+import type { TeamRunViewState } from '@/renderer/pages/team/hooks/useTeamRunView';
 
-const activeRunView: TeamRunViewState = {
+const work = (overrides: Partial<ITeamSlotWork> = {}): ITeamSlotWork => ({
+  slot_id: 'lead',
+  role: 'lead',
+  state: 'idle',
+  queued_foreground_count: 0,
+  queued_background_count: 0,
+  active_turn_id: null,
+  active_turn_started_at_ms: null,
+  active_turn_elapsed_ms: null,
+  active_turn_slow: null,
+  active_turn_slow_threshold_ms: null,
+  blocked_reason: null,
+  team_run_id: 'run-1',
+  ...overrides,
+});
+
+const view = (slotWork?: ITeamSlotWork): TeamRunViewState => ({
   activeRun: {
     team_id: 'team-1',
     team_run_id: 'run-1',
+    source: 'user_message',
+    has_user_intervention: false,
     target_slot_id: 'lead',
     target_role: 'lead',
     status: 'running',
-    active_child_count: 1,
-    pending_wake_count: 0,
-    starting_child_count: 0,
+    queued_intent_count: slotWork?.queued_foreground_count ?? 0,
+    starting_batch_count: slotWork?.state === 'starting' ? 1 : 0,
+    running_batch_count: slotWork?.state === 'running' ? 1 : 0,
+    active_enqueue_lease_count: 0,
+    slot_work: slotWork ? [slotWork] : [],
   },
   childTurnsBySlot: {},
-};
+  slotWorkBySlot: slotWork ? { [slotWork.slot_id]: slotWork } : {},
+});
 
 describe('buildTeamSendRuntime', () => {
-  it('locks leader sendbox while team run is active', () => {
+  it('treats the first queued user-visible team work item as processing', () => {
+    const slotWork = work({
+      state: 'queued',
+      queued_foreground_count: 1,
+    });
+    const runtime = buildTeamSendRuntime({ slot_id: 'lead', runView: view(slotWork) });
+
+    expect(runtime.loading).toBe(true);
+    expect(runtime.queuedCount).toBe(1);
+  });
+
+  it('posts immediately while the slot is running with queued work', () => {
+    const slotWork = work({
+      state: 'running',
+      queued_foreground_count: 2,
+      queued_background_count: 3,
+      active_turn_id: 'turn-1',
+    });
+    const runtime = buildTeamSendRuntime({ slot_id: 'lead', runView: view(slotWork), statusText: '5 queued' });
+
+    expect(runtime.loading).toBe(true);
+    expect(runtime.queuedCount).toBe(5);
+    expect(runtime.statusText).toBe('5 queued');
+    expect(runtime.runtimeGate).toEqual({ hydrated: true, canSendMessage: true, isProcessing: false });
+  });
+
+  it('keeps the stop affordance while a batch is starting', () => {
+    const onStop = vi.fn(async () => {});
     const runtime = buildTeamSendRuntime({
       slot_id: 'lead',
-      isLeader: true,
-      runView: activeRunView,
+      runView: view(work({ state: 'starting' })),
+      onStop,
     });
 
     expect(runtime.loading).toBe(true);
-    expect(runtime.runtimeGate.canSendMessage).toBe(false);
-    expect(runtime.runtimeGate.isProcessing).toBe(true);
+    expect(runtime.onStop).toBe(onStop);
+    expect(runtime.runtimeGate.canSendMessage).toBe(true);
   });
 
-  it('locks leader sendbox while team run reports starting work', () => {
+  it('allows sending while RuntimeStarting is blocked', () => {
     const runtime = buildTeamSendRuntime({
       slot_id: 'lead',
-      isLeader: true,
-      runView: {
-        activeRun: {
-          team_id: 'team-1',
-          team_run_id: 'run-1',
-          target_slot_id: 'lead',
-          target_role: 'lead',
-          status: 'completed',
-          active_child_count: 0,
-          pending_wake_count: 0,
-          starting_child_count: 1,
-        },
-        childTurnsBySlot: {},
-      },
-    });
-
-    expect(runtime.loading).toBe(true);
-    expect(runtime.runtimeGate.canSendMessage).toBe(false);
-    expect(runtime.runtimeGate.isProcessing).toBe(true);
-  });
-
-  it('does not lock teammate sendbox just because another team run is active', () => {
-    const runtime = buildTeamSendRuntime({
-      slot_id: 'worker',
-      isLeader: false,
-      runView: activeRunView,
+      runView: view(work({ state: 'blocked', blocked_reason: 'runtime_starting' })),
+      statusText: 'Waiting for this assistant to start…',
     });
 
     expect(runtime.loading).toBe(false);
+    expect(runtime.statusText).toBe('Waiting for this assistant to start…');
     expect(runtime.runtimeGate.canSendMessage).toBe(true);
-    expect(runtime.runtimeGate.isProcessing).toBe(false);
   });
 
-  it('locks teammate sendbox while its child turn is active', () => {
-    const runtime = buildTeamSendRuntime({
-      slot_id: 'worker',
-      isLeader: false,
-      runView: {
-        ...activeRunView,
-        childTurnsBySlot: {
-          worker: {
-            team_id: 'team-1',
-            team_run_id: 'run-1',
-            slot_id: 'worker',
-            role: 'teammate',
-            conversation_id: 'conv-worker',
-            turn_id: 'turn-worker',
-            status: 'running',
-          },
-        },
-      },
+  it.each<TeamSlotBlockedReason>(['runtime_failed', 'removing', 'session_stopped'])(
+    'blocks sending for fatal reason %s',
+    (blocked_reason) => {
+      const runtime = buildTeamSendRuntime({
+        slot_id: 'lead',
+        runView: view(work({ state: 'blocked', blocked_reason })),
+        statusText: blocked_reason,
+      });
+
+      expect(runtime.runtimeGate.canSendMessage).toBe(false);
+      expect(runtime.runtimeGate.isProcessing).toBe(false);
+      expect(runtime.statusText).toBe(blocked_reason);
+    }
+  );
+});
+
+describe('buildTeamWorkStatusText', () => {
+  const text = (slotWork?: ITeamSlotWork) =>
+    buildTeamWorkStatusText(slotWork, {
+      processing: () => 'processing',
+      processingWithQueued: (count) => `processing + ${count} queued`,
+      runtimeStarting: () => 'runtime starting',
+      runtimeFailed: () => 'runtime failed',
+      removing: () => 'removing',
+      sessionStopped: () => 'session stopped',
     });
 
-    expect(runtime.loading).toBe(true);
-    expect(runtime.runtimeGate.canSendMessage).toBe(false);
-    expect(runtime.runtimeGate.isProcessing).toBe(true);
+  it('shows processing instead of queued for a freshly accepted single work item', () => {
+    expect(text(work({ state: 'queued', queued_foreground_count: 1 }))).toBe('processing');
+  });
+
+  it('shows only additional queued work while a turn is already running', () => {
+    expect(text(work({ state: 'running', queued_foreground_count: 1, active_turn_id: 'turn-1' }))).toBe(
+      'processing + 1 queued'
+    );
+  });
+
+  it('hides queued count while work has not started yet', () => {
+    expect(text(work({ state: 'queued', queued_foreground_count: 2 }))).toBe('processing');
+  });
+});
+
+describe('buildTeamStopHandler', () => {
+  it('uses authoritative state and queued counts rather than child events', async () => {
+    const slotWork = work({ state: 'queued', queued_background_count: 2 });
+    const pauseSlotWork = vi.fn(async () => {});
+    const handler = buildTeamStopHandler({
+      team_id: 'team-1',
+      slot_id: 'lead',
+      runView: view(slotWork),
+      pauseSlotWork,
+    });
+
+    await handler();
+
+    expect(pauseSlotWork).toHaveBeenCalledWith({
+      team_id: 'team-1',
+      team_run_id: 'run-1',
+      slot_id: 'lead',
+      reason: 'user_stop',
+    });
   });
 });

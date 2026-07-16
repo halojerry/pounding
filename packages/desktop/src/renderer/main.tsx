@@ -79,9 +79,9 @@ configService.initialize().catch((err) => {
 import './services/i18n';
 import { registerPwa } from './services/registerPwa';
 
-import { mutate as swrMutate } from 'swr';
-import { DETECTED_AGENTS_SWR_KEY, fetchDetectedAgents } from './utils/model/agentTypes';
+import { ipcBridge } from '@/common';
 import { repairAllCronJobTimeZonesOnce } from '@renderer/pages/cron/repairCronJobTimeZone';
+import { bootstrapRendererConfig } from '@renderer/services/bootstrapRenderer';
 
 // Components and utilities
 import Layout from './components/layout/Layout';
@@ -91,8 +91,16 @@ import { useAuth } from './hooks/context/AuthContext';
 import { ConversationHistoryProvider } from './hooks/context/ConversationHistoryContext';
 import HOC from './utils/ui/HOC';
 import type { BackendStartupFailureInfo } from '@/common/types/platform/electron';
-
-const AIONUI_DOWNLOAD_URL = 'https://github.com/halojerry/pounding/releases';
+import type { IRuntimeStatusEvent, RuntimeFailureKind } from '@/common/adapter/ipcBridge';
+import {
+  InstallationIntegrityContent,
+  InstallationIntegrityModalHost,
+  type InstallationIntegrityDiagnostics,
+  getBackendStartupInstallationDescription,
+  getDownloadLatestModalActionProps,
+  getRuntimeComponentInstallationDescription,
+  showInstallationIntegrityModal,
+} from './components/layout/InstallationIntegrityDialog';
 
 // Patch Korean locale with missing properties from English locale
 const koKRComplete = {
@@ -120,6 +128,113 @@ const arcoLocales: Record<string, typeof enUS> = {
   'ja-JP': jaJP,
   'ko-KR': koKRComplete,
   'en-US': enUS,
+};
+
+const INSTALLATION_INTEGRITY_FAILURES = new Set<RuntimeFailureKind>([
+  'bundled_resource_missing',
+  'bundled_resource_invalid',
+  'validation_failed',
+]);
+
+function isInstallationIntegrityFailure(kind: RuntimeFailureKind | undefined): boolean {
+  return INSTALLATION_INTEGRITY_FAILURES.has(kind ?? 'unknown');
+}
+
+function captureRuntimeInstallationIntegrityFailure(event: IRuntimeStatusEvent): void {
+  if (!isInstallationIntegrityFailure(event.failure_kind)) {
+    return;
+  }
+
+  void import('@sentry/electron/renderer')
+    .then((Sentry) => {
+      Sentry.withScope((scope) => {
+        scope.setTag('aionui.installation_integrity', event.failure_kind ?? 'unknown');
+        scope.setTag('aionui.runtime_resource', event.resource);
+        scope.setTag('aionui.runtime_resource_id', event.resource_id ?? '');
+        scope.setTag('aionui.runtime_scope', event.scope.kind);
+        Sentry.captureMessage('runtime-installation-integrity-failure', 'error');
+      });
+    })
+    .catch(() => {});
+}
+
+function buildRuntimeInstallationDiagnostics(
+  event: IRuntimeStatusEvent,
+  description: string
+): InstallationIntegrityDiagnostics {
+  return {
+    source: 'runtime_status',
+    description,
+    runtime: {
+      failureKind: event.failure_kind,
+      message: event.message,
+      phase: event.phase,
+      resource: event.resource,
+      resourceId: event.resource_id,
+      scopeId: event.scope.id,
+      scopeKind: event.scope.kind,
+    },
+  };
+}
+
+function resolveRuntimeResourceLabel(event: IRuntimeStatusEvent, t: TFunction): string {
+  if (event.resource === 'node') {
+    return t('settings.runtimeResource.node');
+  }
+  if (event.resource_id === 'codex-acp') {
+    return t('settings.runtimeResource.codexAcp');
+  }
+  if (event.resource_id === 'claude-agent-acp') {
+    return t('settings.runtimeResource.claudeAgentAcp');
+  }
+  return t('settings.runtimeResource.acpTool');
+}
+
+const RuntimeFailureDialogs: React.FC = () => {
+  const { t } = useTranslation();
+  const [modal, modalContextHolder] = Modal.useModal();
+  const shownFailuresRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    return ipcBridge.runtime.statusChanged.on((event: IRuntimeStatusEvent) => {
+      if (event.phase !== 'failed') {
+        return;
+      }
+      const signature = [
+        event.resource,
+        event.resource_id ?? '',
+        event.scope.kind,
+        event.scope.id,
+        event.failure_kind ?? 'unknown',
+        event.message ?? '',
+      ].join('|');
+      if (shownFailuresRef.current.has(signature)) {
+        return;
+      }
+      shownFailuresRef.current.add(signature);
+
+      const resource = resolveRuntimeResourceLabel(event, t);
+      const installationIntegrityFailure = isInstallationIntegrityFailure(event.failure_kind);
+      const description = installationIntegrityFailure
+        ? getRuntimeComponentInstallationDescription(t, resource)
+        : t('settings.runtimeStatus.failedUnknown', { resource });
+      if (installationIntegrityFailure) {
+        captureRuntimeInstallationIntegrityFailure(event);
+        showInstallationIntegrityModal(modal, t, description, buildRuntimeInstallationDiagnostics(event, description));
+        return;
+      }
+
+      modal.error({
+        title: t('common.error'),
+        content: <InstallationIntegrityContent description={description} />,
+        okText: t('common.confirm'),
+        closable: false,
+        maskClosable: false,
+      });
+    });
+  }, [modal, t]);
+
+  return <>{modalContextHolder}</>;
 };
 
 const AppProviders: React.FC<PropsWithChildren> = ({ children }) =>
@@ -152,20 +267,7 @@ const Main = () => {
 
   useEffect(() => {
     if (!ready) return;
-    // Prefetch `/api/agents` in parallel with configService.initialize() and
-    // seed the shared SWR cache so the Guid page's model/mode selectors can
-    // read `handshake.available_models` on the very first render — without
-    // waiting for a session to be created.
-    Promise.all([
-      configService.initialize().catch((err) => {
-        console.error('Failed to initialize config:', err);
-      }),
-      fetchDetectedAgents()
-        .then((agents) => swrMutate(DETECTED_AGENTS_SWR_KEY, agents, false))
-        .catch((err) => {
-          console.error('Failed to prefetch agents:', err);
-        }),
-    ]).finally(() => setConfigReady(true));
+    void bootstrapRendererConfig().finally(() => setConfigReady(true));
   }, [ready]);
 
   useEffect(() => {
@@ -192,29 +294,58 @@ const App = HOC.Wrapper(Config)(Main);
 
 const BackendIncompatibleRuntimeScreen: React.FC<{ failure: BackendStartupFailureInfo }> = ({ failure }) => {
   const { t } = useTranslation();
+
+  const isIncompatibleRuntime = failure.reason === 'backend_incompatible_runtime';
+  const isPackageArchitectureMismatch = failure.reason === 'backend_package_architecture_mismatch';
+  const isDataMigrationFailure = failure.reason === 'backend_data_migration_failed';
+  const isLocalDataRepairFailure = failure.reason === 'backend_local_data_repair_failed';
+  const isRecoverableDatabaseCorruption = failure.reason === 'backend_recoverable_database_corruption';
+  const isStartupDirectoryFailure = failure.reason === 'backend_startup_directory_unavailable';
+  const title = t('common.backendStartup.incompatibleRuntime.title');
+  const description = isIncompatibleRuntime
+    ? t('common.backendStartup.incompatibleRuntime.description')
+    : isPackageArchitectureMismatch
+      ? t('common.backendStartup.packageArchitectureMismatch.description', {
+          packageArch: failure.packageArch ?? 'x64',
+          deviceArch: failure.deviceArch ?? 'arm64',
+          expectedArch: failure.expectedDownloadArch ?? 'arm64',
+        })
+      : isDataMigrationFailure
+        ? t('common.backendStartup.dataMigration.description')
+        : isLocalDataRepairFailure
+          ? t('common.backendStartup.localDataRepair.description')
+          : isStartupDirectoryFailure
+            ? t('common.backendStartup.startupDirectory.description')
+            : isRecoverableDatabaseCorruption
+              ? t('common.backendStartup.recoverableDatabaseCorruption.description')
+              : getBackendStartupInstallationDescription(t);
   const requiredVersions = failure.requiredVersions?.map((version) => `GLIBC_${version}`).join(', ');
 
-  return (
-    <div className='min-h-screen flex items-center justify-center bg-bg-1 px-6 text-center text-t-1'>
-      <Result
-        status='warning'
-        title={t('common.backendStartup.incompatibleRuntime.title')}
-        subTitle={
-          <div className='mx-auto max-w-[560px] text-t-secondary'>
-            <Typography.Paragraph className='m-0'>
-              {t('common.backendStartup.incompatibleRuntime.description')}
-            </Typography.Paragraph>
-            {requiredVersions ? (
-              <Typography.Paragraph className='mt-3 mb-0 text-12px text-t-tertiary'>
-                {t('common.backendStartup.incompatibleRuntime.requiredVersions', { versions: requiredVersions })}
-              </Typography.Paragraph>
-            ) : null}
-          </div>
-        }
-      />
-    </div>
-  );
-};
+  if (!isIncompatibleRuntime && !isPackageArchitectureMismatch) {
+    return (
+      <div className='min-h-screen bg-bg-1'>
+        <InstallationIntegrityModalHost
+          description={description}
+          diagnosticsKind={
+            isRecoverableDatabaseCorruption
+              ? 'recoverable_database_corruption'
+              : isStartupDirectoryFailure
+                ? 'startup_directory'
+                : isLocalDataRepairFailure
+                  ? 'local_data_repair'
+                  : isDataMigrationFailure
+                    ? 'data_migration'
+                    : 'incomplete_installation'
+          }
+          diagnostics={{
+            source: 'backend_startup_failure',
+            description,
+            backendStartupFailure: failure as unknown as Record<string, unknown>,
+          }}
+        />
+      </div>
+    );
+  }
 
 const BackendIncompleteInstallationScreen: React.FC = () => {
   const { t } = useTranslation();
@@ -273,8 +404,13 @@ const root = createRoot(document.getElementById('root')!);
 const backendStartupFailure = window.__backendStartupFailure;
 const shouldShowBackendStartupFailureScreen =
   backendStartupFailure?.reason === 'backend_incompatible_runtime' ||
-  backendStartupFailure?.reason === 'backend_incomplete_installation';
-if (backendStartupFailure && shouldShowBackendStartupFailureScreen) {
+  backendStartupFailure?.reason === 'backend_incomplete_installation' ||
+  backendStartupFailure?.reason === 'backend_package_architecture_mismatch' ||
+  backendStartupFailure?.reason === 'backend_data_migration_failed' ||
+  backendStartupFailure?.reason === 'backend_local_data_repair_failed' ||
+  backendStartupFailure?.reason === 'backend_recoverable_database_corruption' ||
+  backendStartupFailure?.reason === 'backend_startup_failed';
+if (backendStartupFailure && shouldShowBackendStartupFailureDialog) {
   root.render(
     <Config>
       <BackendStartupFailureScreen failure={backendStartupFailure} />

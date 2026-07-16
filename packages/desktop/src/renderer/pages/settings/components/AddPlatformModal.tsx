@@ -5,13 +5,12 @@ import { uuid } from '@/common/utils';
 import { isGoogleApisHost } from '@/common/utils/urlValidation';
 import ModalHOC from '@/renderer/utils/ui/ModalHOC';
 import { Form, Input, Message, Select, Switch } from '@arco-design/web-react';
-import { LinkCloud, Edit, Search, Loading } from '@icon-park/react';
+import { LinkCloud, Search, Loading, Refresh } from '@icon-park/react';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import useModeModeList from '@renderer/hooks/agent/useModeModeList';
 import useProtocolDetection from '@renderer/hooks/system/useProtocolDetection';
 import AionModal from '@/renderer/components/base/AionModal';
-import ApiKeyEditorModal from './ApiKeyEditorModal';
 import {
   MODEL_PLATFORMS,
   NEW_API_PROTOCOL_OPTIONS,
@@ -212,7 +211,6 @@ const AddPlatformModal = ModalHOC<{
   const [message, messageContext] = Message.useMessage();
   const { t } = useTranslation();
   const [form] = Form.useForm();
-  const [api_keyEditorVisible, setApiKeyEditorVisible] = useState(false);
   // 用于追踪上次检测时的输入值，避免重复检测
   // Track last detection input to avoid redundant detection
   const [lastDetectionInput, setLastDetectionInput] = useState<{ base_url: string; api_key: string } | null>(null);
@@ -395,23 +393,18 @@ const AddPlatformModal = ModalHOC<{
 
   return (
     <AionModal
+      variant='standard'
       visible={modalProps.visible}
       onCancel={modalCtrl.close}
       header={{ title: t('settings.addModel'), showClose: true }}
-      style={{ maxWidth: '92vw', borderRadius: 16 }}
-      contentStyle={{
-        background: 'var(--dialog-fill-0)',
-        borderRadius: 16,
-        padding: '20px 24px 16px',
-        overflow: 'auto',
-      }}
+      style={{ maxWidth: '92vw' }}
       onOk={handleSubmit}
       confirmLoading={modalProps.confirmLoading}
       okText={t('common.confirm')}
       cancelText={t('common.cancel')}
     >
       {messageContext}
-      <div className='pt-4px pb-12px'>
+      <div>
         <Form form={form} layout='vertical' className='[&_.arco-form-item]:mb-12px [&_.arco-form-item:last-child]:mb-0'>
           {/* 模型平台选择（第一层）/ Model Platform Selection (first level) */}
           <Form.Item
@@ -434,6 +427,10 @@ const AddPlatformModal = ModalHOC<{
                   // model is a multi-select field — reset to an empty array, not
                   // '' (which would surface as a stray empty tag).
                   form.setFieldValue('model', []);
+                  // Prefill the platform's default Base URL so users can see and
+                  // edit it. Custom / New API have no preset — clear the field so
+                  // it doesn't carry over the previously selected platform's URL.
+                  form.setFieldValue('base_url', plat.base_url ?? '');
                 }
               }}
               renderFormat={(option) => {
@@ -451,10 +448,30 @@ const AddPlatformModal = ModalHOC<{
             </Select>
           </Form.Item>
 
-          {/* Base URL - 自定义选项、标准 Gemini 和 New API 显示 / Base URL - for Custom, standard Gemini and New API */}
+          {/* Base URL - shown for every platform (except Bedrock) so users can
+              see and edit the endpoint. Preset platforms are prefilled with their
+              default URL and offer a reset button to restore it. */}
           <Form.Item
-            hidden={isBedrock || (!isCustom && !isNewApi && platformValue !== 'gemini')}
-            label={t('settings.apiEndpoint', 'API 请求地址')}
+            hidden={isBedrock}
+            label={
+              <span className='inline-flex items-center gap-4px'>
+                {t('settings.apiEndpoint', 'API 请求地址')}
+                {selectedPlatform?.base_url && !isFullUrl && (
+                  <button
+                    type='button'
+                    aria-label={t('settings.baseUrlResetToDefault', 'Reset to default')}
+                    title={t('settings.baseUrlResetToDefault', 'Reset to default')}
+                    className='inline-flex items-center justify-center border-none bg-transparent p-0 cursor-pointer text-t-tertiary hover:text-primary-6'
+                    onClick={() => {
+                      form.setFieldValue('base_url', selectedPlatform.base_url ?? '');
+                      void modelListState.mutate();
+                    }}
+                  >
+                    <Refresh theme='outline' size={14} />
+                  </button>
+                )}
+              </span>
+            }
             field={'base_url'}
             required={isCustom || isNewApi}
             rules={[{ required: isCustom || isNewApi }]}
@@ -517,14 +534,6 @@ const AddPlatformModal = ModalHOC<{
               onBlur={() => {
                 void modelListState.mutate();
               }}
-              suffix={
-                <Edit
-                  theme='outline'
-                  size={16}
-                  className='cursor-pointer text-t-secondary hover:text-t-primary flex'
-                  onClick={() => setApiKeyEditorVisible(true)}
-                />
-              }
             />
           </Form.Item>
 
@@ -708,29 +717,6 @@ const AddPlatformModal = ModalHOC<{
           )}
         </Form>
       </div>
-
-      {/* API Key 编辑器弹窗 / API Key Editor Modal */}
-      <ApiKeyEditorModal
-        visible={api_keyEditorVisible}
-        api_keys={api_key || ''}
-        onClose={() => setApiKeyEditorVisible(false)}
-        onSave={(keys) => {
-          form.setFieldValue('api_key', keys);
-          void modelListState.mutate();
-        }}
-        onTestKey={async (key) => {
-          try {
-            const res = await ipcBridge.mode.fetchModelList.invoke({
-              base_url: actualBaseUrl,
-              api_key: key,
-              platform: selectedPlatform?.platform ?? 'custom',
-            });
-            return Array.isArray(res?.models) && res.models.length > 0;
-          } catch {
-            return false;
-          }
-        }}
-      />
     </AionModal>
   );
 });

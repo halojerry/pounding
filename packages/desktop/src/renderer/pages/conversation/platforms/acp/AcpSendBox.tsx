@@ -18,8 +18,6 @@ import FilePreview from '@/renderer/components/media/FilePreview';
 import HorizontalFileList from '@/renderer/components/media/HorizontalFileList';
 import { classifyConfigSetError, useAcpConfigOptions } from '@/renderer/hooks/agent/useAcpConfigOptions';
 import { useAcpModelInfo } from '@/renderer/hooks/agent/useAcpModelInfo';
-import { useAgentModesForBackend } from '@/renderer/hooks/agent/useAgentModesForBackend';
-import { savePreferredMode, savePreferredThoughtLevel } from '@/renderer/pages/guid/hooks/agentSelectionUtils';
 import { useAutoTitle } from '@/renderer/hooks/chat/useAutoTitle';
 import { getSendBoxDraftHook, type FileOrFolderItem } from '@/renderer/hooks/chat/useSendBoxDraft';
 import { createSetUploadFile, useSendBoxFiles } from '@/renderer/hooks/chat/useSendBoxFiles';
@@ -36,7 +34,7 @@ import {
 import { usePreviewContext } from '@/renderer/pages/conversation/Preview';
 import { useConversationRuntimeView } from '@/renderer/pages/conversation/runtime/useConversationRuntimeView';
 import { getConversationRuntimeWorkspaceErrorMessage } from '@/renderer/pages/conversation/utils/conversationCreateError';
-import { warmupConversation } from '@/renderer/pages/conversation/utils/warmupConversation';
+import { getChatSurfaceWidthClass } from '@/renderer/pages/conversation/utils/chatSurfaceWidth';
 import { useTeamPermission } from '@/renderer/pages/team/hooks/TeamPermissionContext';
 import type { TeamSendBoxRuntime } from '@/renderer/pages/team/components/teamSendRuntime';
 import { allSupportedExts } from '@/renderer/services/FileService';
@@ -121,8 +119,7 @@ const AcpSendBox: React.FC<{
   teamSendMessage,
   teamRuntime,
 }) => {
-  const { aiProcessing, setAiProcessing, resetState, hasThinkingMessage, slashCommands, fetchSlashCommands } =
-    messageState;
+  const { aiProcessing, setAiProcessing, resetState, hasThinkingMessage, slashCommands } = messageState;
   const { t } = useTranslation();
   const teamPermission = useTeamPermission();
   // In team mode, all agents show the permission mode selector (members don't propagate)
@@ -134,7 +131,6 @@ const AcpSendBox: React.FC<{
   const isMobile = Boolean(layout?.isMobile);
   const conversationContext = useConversationContextSafe();
   const loadedSkills = conversationContext?.loadedSkills ?? [];
-  const assistantId = conversationContext?.assistantId;
   const loadedMcpStatuses =
     conversationContext?.loadedMcpStatuses ??
     (conversationContext?.loadedMcpServers ?? []).map<IConversationMcpStatus>((name) => ({
@@ -144,28 +140,21 @@ const AcpSendBox: React.FC<{
     }));
   const [isMobileSheetOpen, setIsMobileSheetOpen] = useState(false);
   const [currentMode, setCurrentMode] = useState<string | undefined>(session_mode);
-  const prepareRuntimeSync = useCallback(async () => {
-    if (teamPermission) {
-      await teamPermission.warmupSession();
-    }
-    await warmupConversation(conversation_id);
-  }, [conversation_id, teamPermission]);
+  const prepareRuntimeConfig = useCallback(async () => {
+    if (teamPermission) return;
+  }, [teamPermission]);
   const runtimeConfig = useAcpConfigOptions({
     conversation_id,
-    prepareRuntime: prepareRuntimeSync,
+    prepareRuntime: prepareRuntimeConfig,
+    prepareSetRuntime: teamPermission?.warmupSession,
+    loadConfigOptions: teamPermission?.loadConfigOptions,
     enabled: true,
   });
   const runtimeMode = runtimeConfig.mode;
   const runtimeThoughtLevel = runtimeConfig.thoughtLevel;
   const handleThoughtLevelSetOption = useCallback(
-    async (optionId: string, value: string) => {
-      const result = await runtimeConfig.setConfigOption(optionId, value);
-      if (backend && !assistantId) {
-        void savePreferredThoughtLevel(backend, value);
-      }
-      return result;
-    },
-    [assistantId, backend, runtimeConfig]
+    async (optionId: string, value: string) => runtimeConfig.setConfigOption(optionId, value),
+    [runtimeConfig]
   );
 
   // Drive the mobile sheet's model entry off the same source AcpModelSelector uses
@@ -176,14 +165,13 @@ const AcpSendBox: React.FC<{
   } = useAcpModelInfo({
     conversation_id,
     backend,
-    prepareRuntime: prepareRuntimeSync,
+    prepareRuntime: prepareRuntimeConfig,
+    prepareSetRuntime: teamPermission?.warmupSession,
+    loadConfigOptions: teamPermission?.loadConfigOptions,
     enabled: isMobile,
-    persistGlobalPreference: !assistantId,
     onSelectModelSuccess: () => Message.success(t('agent.model.switchSuccess')),
     onSelectModelFailed: (_modelId, error) => Message.error(t(configErrorMessageKey(error))),
   });
-  const availableAgentModes = useAgentModesForBackend(backend);
-
   useEffect(() => {
     if (!runtimeMode?.currentValue) return;
     setCurrentMode(runtimeMode.currentValue);
@@ -195,7 +183,6 @@ const AcpSendBox: React.FC<{
       try {
         await runtimeConfig.setConfigOption(runtimeMode.id, mode);
         setCurrentMode(mode);
-        if (backend && !assistantId) void savePreferredMode(backend, mode);
         if (isLeaderInTeam) teamPermission?.propagateMode?.(mode);
         Message.success(t('agentMode.switchSuccess'));
       } catch (error) {
@@ -203,29 +190,14 @@ const AcpSendBox: React.FC<{
         Message.error(t(configErrorMessageKey(error)));
       }
     },
-    [assistantId, backend, isLeaderInTeam, runtimeConfig, runtimeMode, t, teamPermission]
+    [isLeaderInTeam, runtimeConfig, runtimeMode, t, teamPermission]
   );
-
-  // In team mode, warmup the agent then fetch slash commands
-  useEffect(() => {
-    if (!teamPermission) return;
-    void teamPermission
-      .warmupSession()
-      .then(() => warmupConversation(conversation_id))
-      .then(() => {
-        fetchSlashCommands();
-      })
-      .catch((error) => {
-        Message.error(getConversationRuntimeWorkspaceErrorMessage(error, t));
-      });
-  }, [teamPermission, conversation_id, fetchSlashCommands, t]);
 
   const handleContentChange = useCallback(
     (val: string) => {
-      if (val && teamPermission) teamPermission.warmupSession();
       setContent(val);
     },
-    [teamPermission, setContent]
+    [setContent]
   );
   const { setSendBoxHandler } = usePreviewContext();
 
@@ -396,15 +368,16 @@ Please check your local CLI tool authentication status`,
 
   const {
     items: queuedCommands,
-    isPaused: isQueuePaused,
+    mode: queueMode,
     isInteractionLocked: isQueueInteractionLocked,
     hasPendingCommands,
     enqueue,
     remove,
+    prioritize,
+    sendNow,
     clear,
     reorder,
-    pause,
-    resume,
+    toggleMode,
     lockInteraction,
     unlockInteraction,
     resetActiveExecution,
@@ -471,7 +444,7 @@ Please check your local CLI tool authentication status`,
         value: item.value,
         label: item.label,
         description: item.description ?? undefined,
-      })) ?? availableAgentModes;
+      })) ?? [];
     const modeOptions: MobileActionSheetOption[] = availableModes.map((mode) => ({
       key: mode.value,
       label: t(`agentMode.${mode.value}`, { defaultValue: mode.label }),
@@ -483,6 +456,7 @@ Please check your local CLI tool authentication status`,
       ? (model_info?.available_models ?? []).map((model) => ({
           key: model.id,
           label: model.label || model.id,
+          description: model.description,
           active: model_info?.current_model_id === model.id,
         }))
       : [];
@@ -565,10 +539,10 @@ Please check your local CLI tool authentication status`,
       entries.push({
         key: 'skills',
         icon: <MagicHat theme='outline' size='16' />,
-        label: t('common.skills', { defaultValue: 'Skills' }),
+        label: t('common.selectedSkills', { defaultValue: 'Selected skills' }),
         variant: 'muted',
         submenu: {
-          title: t('common.skills', { defaultValue: 'Skills' }),
+          title: t('common.selectedSkills', { defaultValue: 'Selected skills' }),
           selectable: false,
           options: skillOptions,
           onSelect: (name) => {
@@ -592,10 +566,10 @@ Please check your local CLI tool authentication status`,
       entries.push({
         key: 'mcp',
         icon: <Shield theme='outline' size='16' />,
-        label: t('conversation.mcp.loaded', { defaultValue: 'Loaded MCP' }),
+        label: t('conversation.mcp.selected', { defaultValue: 'Selected MCP' }),
         variant: 'muted',
         submenu: {
-          title: t('conversation.mcp.loaded', { defaultValue: 'Loaded MCP' }),
+          title: t('conversation.mcp.selected', { defaultValue: 'Selected MCP' }),
           selectable: false,
           options: mcpOptions,
           onSelect: () => undefined,
@@ -606,7 +580,6 @@ Please check your local CLI tool authentication status`,
     return entries;
   }, [
     attachEntries,
-    availableAgentModes,
     canSwitchModel,
     currentMode,
     handleSheetModeChange,
@@ -654,24 +627,39 @@ Please check your local CLI tool authentication status`,
     }
   };
   const effectiveHandleStop = teamRuntime?.onStop ?? handleStop;
+  const handleSendNowQueued = useCallback(
+    async (item: ConversationCommandQueueItem) => {
+      // Stop the current reply (best-effort), then promote the chosen command
+      // to the front of the queue in auto mode.  The drain effect will fire it
+      // once the execution gate shows canExecute — avoiding the 409 race that
+      // occurs when sendNow() calls onExecute() directly before the backend
+      // has finished processing the stop.
+      await effectiveHandleStop();
+      prioritize(item.id);
+    },
+    [effectiveHandleStop, prioritize]
+  );
+  const sendBoxWidthClass = getChatSurfaceWidthClass(Boolean(teamPermission));
 
   return (
-    <div className='max-w-800px w-full mx-auto flex flex-col mt-auto mb-16px'>
+    <div className={`${sendBoxWidthClass} flex flex-col mt-auto mb-16px`}>
       <CommandQueuePanel
         items={queuedCommands}
-        paused={isQueuePaused}
+        mode={queueMode}
+        isMobile={isMobile}
         interactionLocked={isQueueInteractionLocked}
-        onPause={pause}
-        onResume={resume}
         onInteractionLock={lockInteraction}
         onInteractionUnlock={unlockInteraction}
         onEdit={handleEditQueuedCommand}
+        onSendNow={handleSendNowQueued}
+        onToggleMode={toggleMode}
         onReorder={reorder}
         onRemove={remove}
         onClear={clear}
       />
       <ThoughtDisplay
         running={teamRuntime?.loading ?? (aiProcessing && !hasThinkingMessage)}
+        statusText={teamRuntime?.statusText}
         onStop={effectiveHandleStop}
       />
 
@@ -707,14 +695,6 @@ Please check your local CLI tool authentication status`,
         }
         rightTools={
           <div className='flex items-center gap-8px min-w-0'>
-            {!isMobile && (
-              <AcpThoughtLevelSelector
-                thoughtLevel={runtimeThoughtLevel}
-                setStatus={runtimeConfig.setStatus}
-                onSetOption={handleThoughtLevelSetOption}
-                iconOnly={Boolean(teamPermission)}
-              />
-            )}
             {showModeSelector && (
               <AgentModeSelector
                 backend={backend}
@@ -726,8 +706,9 @@ Please check your local CLI tool authentication status`,
                 compactLabelPrefix={t('agentMode.permission')}
                 hideCompactLabelPrefixOnMobile
                 onModeChanged={isLeaderInTeam ? teamPermission?.propagateMode : undefined}
-                beforeRuntimeSync={prepareRuntimeSync}
-                persistGlobalPreference={!assistantId}
+                beforeRuntimeSync={prepareRuntimeConfig}
+                beforeRuntimeSet={teamPermission?.warmupSession}
+                loadConfigOptions={teamPermission?.loadConfigOptions}
               />
             )}
           </div>

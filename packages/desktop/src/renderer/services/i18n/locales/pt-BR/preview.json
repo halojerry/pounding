@@ -53,6 +53,10 @@
   "closeAll": "Fechar Todas",
   "readOnlyLabel": "Pré-visualização somente leitura",
   "pathLabel": "Caminho",
+  "missingFile": {
+    "title": "Arquivo não encontrado",
+    "openInNewTab": "Tentar abrir em uma nova aba"
+  },
   "noTabs": "Nenhuma guia aberta",
   "openInPanelTooltip": "Ver no painel de visualização",
   "mermaidTitle": "Diagrama Mermaid",
@@ -75,7 +79,7 @@
       "outsideSandbox": "Este arquivo está fora da sandbox atual do projeto."
     },
     "serverInstall": {
-      "hint": "O POUNDING está sendo executado em um servidor. O componente de pré-visualização precisa ser instalado nesse servidor. Execute o comando abaixo no servidor e tente novamente:",
+      "hint": "O AionUi está sendo executado em um servidor. O componente de pré-visualização precisa ser instalado nesse servidor. Execute o comando abaixo no servidor e tente novamente:",
       "icuNote": "Se ainda não iniciar, instale a biblioteca ICU no servidor (Debian/Ubuntu: apt-get install -y libicu-dev)."
     }
   },
@@ -134,6 +138,6 @@
     "loading": "Iniciando visualização do PPT...",
     "installing": "Instalando componente de visualização...",
     "startFailed": "Falha ao iniciar a visualização do PPT",
-    "installHint": "Instale o OfficeCLI pela página oficial de releases iOfficeAI/OfficeCli"
+    "installHint": "Instale o OfficeCLI pela página oficial de releases iOfficeAI/OfficeCLI"
   }
 }

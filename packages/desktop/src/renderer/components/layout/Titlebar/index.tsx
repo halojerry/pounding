@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import classNames from 'classnames';
-import { ArrowCircleLeft, ArrowLeft, ArrowRight, ExpandLeft, ExpandRight, Peoples } from '@icon-park/react';
+import { ArrowCircleLeft, ArrowLeft, ArrowRight, ExpandLeft, ExpandRight, Peoples, Search } from '@icon-park/react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 import { ipcBridge } from '@/common';
 import { TEAM_MODE_ENABLED } from '@/common/config/constants';
+import ConversationSearchPopover from '@renderer/pages/conversation/GroupedHistory/ConversationSearchPopover';
 import MobileConversationBrand from './MobileConversationBrand';
 import WindowControls from '../WindowControls';
 import { WORKSPACE_STATE_EVENT, dispatchWorkspaceToggleEvent } from '@renderer/utils/workspace/workspaceEvents';
@@ -163,6 +164,11 @@ const Titlebar: React.FC<TitlebarProps> = ({ workspaceAvailable }) => {
   const showHistoryNav = Boolean(navigationHistory) && !layout?.isMobile;
   const historyBackTooltip = t('common.historyBack', { defaultValue: 'Back' });
   const historyForwardTooltip = t('common.forward', { defaultValue: 'Forward' });
+  // Conversation search moved from the sidebar into the titlebar toolbar
+  // (between the sidebar toggle and the back/forward nav). Desktop only —
+  // mobile keeps search inside the sidebar.
+  const showSearchButton = !layout?.isMobile;
+  const searchTooltip = t('conversation.historySearch.tooltip', { defaultValue: 'Search conversations' });
 
   const handleSiderToggle = () => {
     if (!showSiderToggle || !layout?.setSiderCollapsed) return;
@@ -333,6 +339,28 @@ const Titlebar: React.FC<TitlebarProps> = ({ workspaceAvailable }) => {
           >
             <SidebarIcon size={iconSize} strokeWidth={desktopIconStroke} />
           </button>
+        )}
+        {showSearchButton && (
+          <ConversationSearchPopover
+            renderTrigger={({ onClick }) => (
+              <button
+                type='button'
+                className='app-titlebar__button'
+                onClick={onClick}
+                aria-label={searchTooltip}
+                title={searchTooltip}
+              >
+                <Search
+                  theme='outline'
+                  size={iconSize}
+                  fill='currentColor'
+                  strokeWidth={desktopIconStroke}
+                  className='block leading-none'
+                  style={{ lineHeight: 0 }}
+                />
+              </button>
+            )}
+          />
         )}
         {showHistoryNav && (
           <>

@@ -2575,6 +2575,26 @@ export class NewApiDesktopAccountService {
         writePoundingConfig(status.token, status.baseUrl || undefined);
       }
 
+      // Self-heal the managed provider in the backend DB. The frontend login
+      // state survives backend DB resets/migrations, but the provider row does
+      // not — leaving aionrs conversations (and Team rebuild) with
+      // "Provider 'aionrs' not found". Re-upsert whenever it is missing.
+      try {
+        if (status.token && status.models.length > 0) {
+          const provider = await findManagedProvider();
+          if (!provider) {
+            console.warn('[POUNDING] Managed provider missing from backend DB — restoring on refresh');
+            await upsertManagedProvider({
+              apiKey: status.token,
+              models: status.models,
+              baseUrl: status.baseUrl || undefined,
+            });
+          }
+        }
+      } catch (error) {
+        console.warn('[POUNDING] Failed to self-heal managed provider on refresh:', error);
+      }
+
       // Sync WebUI credentials on every startup refresh, not just login.
       // Uses the API token as the WebUI password — same credential the user
       // already has from the desktop login flow. No separate WebUI password needed.

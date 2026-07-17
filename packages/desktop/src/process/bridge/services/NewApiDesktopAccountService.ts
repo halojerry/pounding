@@ -391,6 +391,23 @@ function normalizeBaseUrl(baseUrl: string): string {
   return baseUrl.replace(/\/+$/, '');
 }
 
+/**
+ * A recovered runtime snapshot is only a POUNDING login if it points at the
+ * POUNDING API. CLI config files (~/.claude/settings.json, ~/.hermes/...)
+ * may carry the user's own third-party keys — treating those as a POUNDING
+ * session fakes a logged-in state whose key can't fetch POUNDING models.
+ */
+function isPoundingBaseUrl(baseUrl: string | undefined): boolean {
+  if (!baseUrl) return false;
+  try {
+    const managed = new URL(NEW_API_BASE_URL);
+    const candidate = new URL(normalizeBaseUrl(baseUrl));
+    return candidate.hostname === managed.hostname;
+  } catch {
+    return false;
+  }
+}
+
 function normalizeProviderEnv(env: unknown): ClaudeProviderEnv {
   if (!isRecord(env)) return {};
   return Object.fromEntries(
@@ -1221,6 +1238,11 @@ function recoverManagedRuntimeSnapshotFromClaudeSettings(): RecoveredManagedRunt
   const currentSettings = readJsonObjectFile<ClaudeSettings>(claudeSettingsPath);
   if (!currentSettings) return undefined;
   const env = normalizeProviderEnv(currentSettings.env);
+  // Only treat this as a POUNDING session when the settings explicitly point
+  // at the POUNDING API. A user's own Claude CLI setup (official Anthropic API
+  // or another relay) must NOT fake a POUNDING login — its key can't fetch
+  // POUNDING group models.
+  if (!isPoundingBaseUrl(env.ANTHROPIC_BASE_URL)) return undefined;
   const token = env.ANTHROPIC_AUTH_TOKEN?.trim() || env.ANTHROPIC_API_KEY?.trim();
   const models = normalizeManagedRuntimeModels([
     env.ANTHROPIC_MODEL,
@@ -2003,6 +2025,8 @@ function recoverManagedRuntimeSnapshotFromHermesConfig(): RecoveredManagedRuntim
   const baseUrl = baseUrlMatch?.[1]?.trim();
   const model = modelMatch?.[1]?.trim();
   if (!baseUrl || !model) return undefined;
+  // Only a config pointing at the POUNDING API counts as a POUNDING session.
+  if (!isPoundingBaseUrl(baseUrl)) return undefined;
   return {
     token,
     baseUrl: normalizeBaseUrl(baseUrl),

@@ -2805,6 +2805,7 @@ export const __TEST__ = {
   mergeAccountStatus,
   mergeManagedRuntimeModelSets,
   shouldSelfHealManagedRuntimeStatus,
+  isPoundingBaseUrl,
   toPersistedAccountStatus,
   toBackendManagedRuntimeAccount,
   fromManagedRuntimeAccountStatus,

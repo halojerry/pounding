@@ -3,7 +3,7 @@ use serde::Deserialize;
 
 use crate::error::SystemError;
 
-const DEFAULT_REPO: &str = "halojerry/AionCore";
+const DEFAULT_REPO: &str = "halojerry/poundingcore";
 const GITHUB_API_BASE: &str = "https://api.github.com";
 
 /// Service that checks GitHub Releases for available updates.

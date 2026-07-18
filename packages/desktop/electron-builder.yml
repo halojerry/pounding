@@ -229,7 +229,7 @@ publish:
     channel: latest
   - provider: github
     owner: halojerry
-    repo: AionUi
+    repo: pounding
     publishAutoUpdate: true
     releaseType: release
     channel: latest

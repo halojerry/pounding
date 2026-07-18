@@ -186,8 +186,8 @@ apply_text_replacements() {
   replace_in_dir "$ROOT" "iOfficeAI/POUNDING" "iOfficeAI/AionUi" "restore upstream URLs"
 
   # --- iOfficeAI → halojerry ---
-  replace_in_dir "$SRC" "iOfficeAI/AionUi"   "halojerry/AionUi"   "URL: iOfficeAI/AionUi"
-  replace_in_dir "$SRC" "iOfficeAI/AionCore" "halojerry/AionCore" "URL: iOfficeAI/AionCore"
+  replace_in_dir "$SRC" "iOfficeAI/AionUi"   "halojerry/pounding"   "URL: iOfficeAI/AionUi"
+  replace_in_dir "$SRC" "iOfficeAI/AionCore" "halojerry/poundingcore" "URL: iOfficeAI/AionCore"
 
   # --- Locale files ---
   # Two-pass sed: quoted patterns match JSON values that ARE exactly the brand name;

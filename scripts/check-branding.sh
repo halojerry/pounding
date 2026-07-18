@@ -110,7 +110,7 @@ check_exists "PoundingInteractiveLogo.tsx exists" "$ROOT/packages/desktop/src/re
 # ---- NSIS Installer ----
 for nsh in "$ROOT/resources/"windows-installer-*.nsh; do
   if [ -f "$nsh" ]; then
-    check "NSIS: $(basename "$nsh") halojerry" 'halojerry/AionUi/releases' "$nsh"
+    check "NSIS: $(basename "$nsh") halojerry" 'halojerry/pounding/releases' "$nsh"
     check_not "NSIS: $(basename "$nsh") AionUi.exe" 'AionUi\.exe' "$nsh" "should be POUNDING.exe"
   fi
 done

@@ -101,7 +101,7 @@
     },
     "localDataRepair": {
       "title": "本機資料修復失敗",
-      "description": "AionUi 已開啟，但 AionCore 在準備本機啟動資料時停止，例如 assistant 或代理記錄。重新安裝 AionUi 可能無法解決此問題。請傳送診斷報告或聯絡支援，以便檢查本機資料庫。",
+      "description": "POUNDING 已開啟，但 poundingcore 在準備本機啟動資料時停止，例如 assistant 或代理記錄。重新安裝 POUNDING 可能無法解決此問題。請傳送診斷報告或聯絡支援，以便檢查本機資料庫。",
       "sendDiagnostics": "傳送診斷",
       "diagnosticsSent": "診斷已傳送",
       "diagnosticsReportSuccess": "診斷報告已傳送",
@@ -127,8 +127,8 @@
       "rebuildFailed": "備份舊資料庫並重建新資料庫失敗"
     },
     "transientConcurrentStartup": {
-      "title": "AionUi 正在啟動",
-      "description": "此視窗開啟時，另一個 AionUi 啟動程序仍在使用本機資料。這是暫時的，您的資料是安全的——無需重新安裝。請稍候片刻後重試，或重新啟動 AionUi。",
+      "title": "POUNDING 正在啟動",
+      "description": "此視窗開啟時，另一個 POUNDING 啟動程序仍在使用本機資料。這是暫時的，您的資料是安全的——無需重新安裝。請稍候片刻後重試，或重新啟動 POUNDING。",
       "sendDiagnostics": "傳送診斷",
       "diagnosticsSent": "診斷已傳送",
       "diagnosticsReportSuccess": "診斷報告已傳送",

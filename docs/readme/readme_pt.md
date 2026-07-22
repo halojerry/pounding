@@ -40,21 +40,21 @@
 ---
 
 <p align="center">
-  <a href="https://x.com/AionUi/status/2079493379914961069">
-    <img src="../../resources/kimi/contributor-bonus-black-blue.jpg" alt="AionUi × Kimi Bônus para Contribuidores" width="600">
+  <a href="https://x.com/POUNDING/status/2079493379914961069">
+    <img src="../../resources/kimi/contributor-bonus-black-blue.jpg" alt="POUNDING × Kimi Bônus para Contribuidores" width="600">
   </a>
 </p>
 
 <p align="center">
-  🎁 <strong>Parceria AionUi × Kimi</strong>: planos premium <strong>Kimi "Allegretto" grátis (valor de US$ 39/mês · ¥199/mês)</strong> para nossos contribuidores!
+  🎁 <strong>Parceria POUNDING × Kimi</strong>: planos premium <strong>Kimi "Allegretto" grátis (valor de US$ 39/mês · ¥199/mês)</strong> para nossos contribuidores!
 </p>
 
 <h3 align="center">
-  <a href="https://x.com/AionUi/status/2079493379914961069">Ver detalhes da campanha e como resgatar →</a>
+  <a href="https://x.com/POUNDING/status/2079493379914961069">Ver detalhes da campanha e como resgatar →</a>
 </h3>
 
 <p align="center">
-  <sub><strong>Kimi K3</strong> chegou e funciona de imediato no AionUi — <a href="https://www.kimi.com/code?aff=aionui" target="_blank">assine um plano Kimi For Coding</a> ou obtenha uma chave de API (<a href="https://platform.kimi.ai?aff=aionui" target="_blank">Global</a> / <a href="https://platform.kimi.com?aff=aionui" target="_blank">China</a>)</sub>
+  <sub><strong>Kimi K3</strong> chegou e funciona de imediato no POUNDING — <a href="https://www.kimi.com/code?aff=aionui" target="_blank">assine um plano Kimi For Coding</a> ou obtenha uma chave de API (<a href="https://platform.kimi.ai?aff=aionui" target="_blank">Global</a> / <a href="https://platform.kimi.com?aff=aionui" target="_blank">China</a>)</sub>
 </p>
 
 ---

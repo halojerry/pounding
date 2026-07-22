@@ -40,21 +40,21 @@
 ---
 
 <p align="center">
-  <a href="https://x.com/AionUi/status/2079493379914961069">
-    <img src="../../resources/kimi/contributor-bonus-black-blue.jpg" alt="AionUi × Kimi コントリビューターボーナス" width="600">
+  <a href="https://x.com/POUNDING/status/2079493379914961069">
+    <img src="../../resources/kimi/contributor-bonus-black-blue.jpg" alt="POUNDING × Kimi コントリビューターボーナス" width="600">
   </a>
 </p>
 
 <p align="center">
-  🎁 <strong>AionUi × Kimi 戦略提携</strong>：コントリビューター向けに <strong>Kimi「Allegretto」プラン（$39/月・¥199/月相当）を無料進呈</strong>！
+  🎁 <strong>POUNDING × Kimi 戦略提携</strong>：コントリビューター向けに <strong>Kimi「Allegretto」プラン（$39/月・¥199/月相当）を無料進呈</strong>！
 </p>
 
 <h3 align="center">
-  <a href="https://x.com/AionUi/status/2079493379914961069">キャンペーン詳細と申請方法を見る →</a>
+  <a href="https://x.com/POUNDING/status/2079493379914961069">キャンペーン詳細と申請方法を見る →</a>
 </h3>
 
 <p align="center">
-  <sub><strong>Kimi K3</strong> が登場、AionUi ですぐに使えます——<a href="https://www.kimi.com/code?aff=aionui" target="_blank">Kimi For Coding プランを入手</a>、または API キー（<a href="https://platform.kimi.ai?aff=aionui" target="_blank">グローバル</a> / <a href="https://platform.kimi.com?aff=aionui" target="_blank">中国</a>）</sub>
+  <sub><strong>Kimi K3</strong> が登場、POUNDING ですぐに使えます——<a href="https://www.kimi.com/code?aff=aionui" target="_blank">Kimi For Coding プランを入手</a>、または API キー（<a href="https://platform.kimi.ai?aff=aionui" target="_blank">グローバル</a> / <a href="https://platform.kimi.com?aff=aionui" target="_blank">中国</a>）</sub>
 </p>
 
 ---

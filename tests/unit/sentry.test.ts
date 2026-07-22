@@ -209,7 +209,7 @@ describe('captureBackendStartupFailure', () => {
       expect(scopeSetTag).toHaveBeenCalledWith('pounding.backend_startup.missing_hub_dir', 'true');
       expect(scopeSetTag).toHaveBeenCalledWith('pounding.backend_startup.last_update_status', 'quit-and-install');
       expect(scopeSetTag).toHaveBeenCalledWith('pounding.backend_startup.seconds_since_quit_and_install', '46');
-      // getInstallPathKind still matches the upstream `...\Programs\AionUi\resources`
+      // getInstallPathKind still matches the upstream `...\Programs\POUNDING\resources`
       // pattern; the POUNDING install path classifies as 'custom'.
       expect(scopeSetTag).toHaveBeenCalledWith('pounding.backend_startup.install_path_kind', 'custom');
       expect(scopeSetContext).toHaveBeenCalledWith(

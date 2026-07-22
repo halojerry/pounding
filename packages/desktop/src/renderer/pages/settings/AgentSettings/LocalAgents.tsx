@@ -28,8 +28,8 @@ import {
   type AgentAvailabilityFilter,
 } from './agentFilters';
 
-// Upstream AionUi wiki — the ACP setup guide lives in the upstream repo.
-const LOCAL_AGENT_SETUP_GUIDE_URL = 'https://github.com/iOfficeAI/AionUi/wiki/ACP-Setup';
+// Upstream POUNDING wiki — the ACP setup guide lives in the upstream repo.
+const LOCAL_AGENT_SETUP_GUIDE_URL = 'https://github.com/halojerry/pounding/wiki/ACP-Setup';
 
 const LocalAgents: React.FC = () => {
   const { t, i18n } = useTranslation();

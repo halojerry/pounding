@@ -19,7 +19,7 @@ export type TeamRunViewState = {
   slotWorkBySlot: Record<string, ITeamSlotWork | undefined>;
   /**
    * True when the team session was reclaimed by idle-cleanup (backend broadcast
-   * `sessionStatusChanged` with status `stopped`). Event-driven and independent
+   * `sessionChanged` with status `stopped`). Event-driven and independent
    * of `slotWorkBySlot`, which is re-derived/emptied on reconcile and would
    * otherwise lose the stopped signal. Cleared on recovery (`starting`/`ready`)
    * or on any applied active run event (self-heal).
@@ -203,7 +203,7 @@ export const useTeamRunView = (team_id: string) => {
       ipcBridge.team.agentRenamed.on((event) => {
         if (event.team_id === team_id) void reconcile('team.agentRenamed');
       }),
-      ipcBridge.team.sessionStatusChanged.on((event) => {
+      ipcBridge.team.sessionChanged.on((event) => {
         if (event.team_id !== team_id) return;
         if (event.status === 'stopped') {
           setState((prev) => ({ ...prev, sessionStopped: true }));

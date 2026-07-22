@@ -41,12 +41,12 @@
 
 <p align="center">
   <a href="https://github.com/iOfficeAI/AionUi/discussions/3640">
-    <img src="../../resources/kimi/contributor-bonus-black-blue.jpg" alt="AionUi × Kimi 贡献者激励" width="600">
+    <img src="../../resources/kimi/contributor-bonus-black-blue.jpg" alt="POUNDING × Kimi 贡献者激励" width="600">
   </a>
 </p>
 
 <p align="center">
-  🎁 <strong>AionUi × Kimi 战略合作</strong>：面向贡献者免费赠送 <strong>Kimi「Allegretto」订阅计划（价值 ¥199/月 · $39/月）</strong>！
+  🎁 <strong>POUNDING × Kimi 战略合作</strong>：面向贡献者免费赠送 <strong>Kimi「Allegretto」订阅计划（价值 ¥199/月 · $39/月）</strong>！
 </p>
 
 <h3 align="center">
@@ -54,7 +54,7 @@
 </h3>
 
 <p align="center">
-  <sub><strong>Kimi K3</strong> 已发布，在 AionUi 中开箱即用——<a href="https://www.kimi.com/code?aff=aionui" target="_blank">订阅 Kimi For Coding</a>，或获取 API Key（<a href="https://platform.kimi.com?aff=aionui" target="_blank">国内</a> / <a href="https://platform.kimi.ai?aff=aionui" target="_blank">海外</a>）· 也欢迎转发我们在 <a href="https://x.com/AionUi/status/2079493379914961069" target="_blank">X 上的活动帖</a></sub>
+  <sub><strong>Kimi K3</strong> 已发布，在 POUNDING 中开箱即用——<a href="https://www.kimi.com/code?aff=aionui" target="_blank">订阅 Kimi For Coding</a>，或获取 API Key（<a href="https://platform.kimi.com?aff=aionui" target="_blank">国内</a> / <a href="https://platform.kimi.ai?aff=aionui" target="_blank">海外</a>）· 也欢迎转发我们在 <a href="https://x.com/POUNDING/status/2079493379914961069" target="_blank">X 上的活动帖</a></sub>
 </p>
 
 ---

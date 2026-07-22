@@ -1278,9 +1278,9 @@
       "addModel": "Help me add a new LLM provider and API key, then set it as the default model.",
       "addMcp": "Help me set up an MCP server.",
       "addSkill": "Help me import a skill and attach it to an assistant.",
-      "setupRemote": "Help me set up remote access so I can open AionUi from my phone or over the internet.",
-      "diagnose": "I ran into a problem with AionUi, please help me diagnose it.\n\n[Module] {{module}}\n[Description] {{description}}\n[Attachments] see the screenshots in the input.\n\nPlease diagnose the cause and tell me how to fix it.",
-      "diagnoseChatError": "I ran into an error during a conversation in AionUi, please help me diagnose it.\n\n[Error] {{error}}\n\nPlease diagnose the cause and tell me how to fix it."
+      "setupRemote": "Help me set up remote access so I can open POUNDING from my phone or over the internet.",
+      "diagnose": "I ran into a problem with POUNDING, please help me diagnose it.\n\n[Module] {{module}}\n[Description] {{description}}\n[Attachments] see the screenshots in the input.\n\nPlease diagnose the cause and tell me how to fix it.",
+      "diagnoseChatError": "I ran into an error during a conversation in POUNDING, please help me diagnose it.\n\n[Error] {{error}}\n\nPlease diagnose the cause and tell me how to fix it."
     },
     "solveWithButler": "Ask the Butler"
   },

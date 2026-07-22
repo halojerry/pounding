@@ -6,6 +6,7 @@
 
 import type { SpeechToTextConfig } from '@/common/types/provider/speech';
 import type { Theme } from '@/common/theme/types';
+import type { ManagedRuntimeCliTarget, NewApiAccountStatus } from '@/common/types/newApiAccount';
 import { buildStorage } from '@/common/platform/storage';
 
 // 系统配置存储

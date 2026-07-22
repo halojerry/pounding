@@ -1068,7 +1068,7 @@ if (shouldRegisterBackendStartup(gotTheLock)) {
     .then(handleAppReady)
     .catch((error) => {
       // App initialization failed
-      console.error('[AionUi] App initialization failed:', error);
+      console.error('[POUNDING] App initialization failed:', error);
       app.quit();
     });
 }

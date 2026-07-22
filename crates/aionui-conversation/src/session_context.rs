@@ -41,28 +41,41 @@ impl<'a> SessionContextBuilder<'a> {
         }
     }
 
-    pub(crate) async fn build_options(&self, row: &ConversationRow) -> Result<BuildTaskOptions, ConversationError> {
-        Ok(BuildTaskOptions::new(self.build(row).await?))
+    pub(crate) async fn build_options(
+        &self,
+        row: &ConversationRow,
+        seed: Option<AionrsRuntimePermissionSeed>,
+    ) -> Result<BuildTaskOptions, ConversationError> {
+        Ok(BuildTaskOptions::new(
+            self.build_with_workspace_override(row, None, seed).await?,
+        ))
     }
 
     pub(crate) async fn build_options_with_workspace_override(
         &self,
         row: &ConversationRow,
         workspace_override: Option<&str>,
+        seed: Option<AionrsRuntimePermissionSeed>,
     ) -> Result<BuildTaskOptions, ConversationError> {
         Ok(BuildTaskOptions::new(
-            self.build_with_workspace_override(row, workspace_override).await?,
+            self.build_with_workspace_override(row, workspace_override, seed)
+                .await?,
         ))
     }
 
+    /// Test-only convenience wrapper. Production entry points thread a real
+    /// permission seed via `build_options*`; tests exercise the default
+    /// (no-seed) path.
+    #[cfg(test)]
     async fn build(&self, row: &ConversationRow) -> Result<AgentSessionContext, ConversationError> {
-        self.build_with_workspace_override(row, None).await
+        self.build_with_workspace_override(row, None, None).await
     }
 
     async fn build_with_workspace_override(
         &self,
         row: &ConversationRow,
         workspace_override: Option<&str>,
+        seed: Option<AionrsRuntimePermissionSeed>,
     ) -> Result<AgentSessionContext, ConversationError> {
         let agent_type: AgentType = string_to_enum(&row.r#type)?;
         reject_deprecated_runtime_kind(row, &agent_type)?;
@@ -73,7 +86,7 @@ impl<'a> SessionContextBuilder<'a> {
         let team = TeamSessionBinding::from_extra_value(&extra).map_err(|e| ConversationError::BadRequest {
             reason: format!("Invalid Team runtime context: {e}"),
         })?;
-        let kind = self.build_kind(row, &agent_type, extra, team.clone()).await?;
+        let kind = self.build_kind(row, &agent_type, extra, team.clone(), seed).await?;
 
         Ok(AgentSessionContext {
             conversation: ConversationContext {
@@ -109,7 +122,10 @@ impl<'a> SessionContextBuilder<'a> {
         if let Some(override_path) = workspace_override.map(str::trim).filter(|value| !value.is_empty()) {
             let normalized = match validate_workspace_path_availability(override_path) {
                 Ok(normalized) => normalized,
-                Err(error) => return Err(map_runtime_workspace_validation_error(error)),
+                Err(error) => {
+                    log_workspace_path_check(&row.id, &error);
+                    return Err(map_runtime_workspace_validation_error(error));
+                }
             };
             return Ok(WorkspaceContext {
                 path: normalized,
@@ -140,7 +156,10 @@ impl<'a> SessionContextBuilder<'a> {
             {
                 path
             }
-            Err(error) => return Err(map_runtime_workspace_validation_error(error)),
+            Err(error) => {
+                log_workspace_path_check(&row.id, &error);
+                return Err(map_runtime_workspace_validation_error(error));
+            }
         };
 
         Ok(WorkspaceContext {
@@ -156,6 +175,7 @@ impl<'a> SessionContextBuilder<'a> {
         agent_type: &AgentType,
         extra: serde_json::Value,
         team: Option<TeamSessionBinding>,
+        seed: Option<AionrsRuntimePermissionSeed>,
     ) -> Result<AgentSessionKind, ConversationError> {
         match agent_type {
             AgentType::Acp => self
@@ -163,7 +183,7 @@ impl<'a> SessionContextBuilder<'a> {
                 .await
                 .map(|context| AgentSessionKind::Acp(Box::new(context))),
             AgentType::Aionrs => Ok(AgentSessionKind::Aionrs(Box::new(build_aionrs_context(
-                row, extra, team,
+                row, extra, team, seed,
             )))),
             AgentType::Gemini
             | AgentType::Codex
@@ -331,10 +351,27 @@ impl<'a> SessionContextBuilder<'a> {
     }
 }
 
+/// Runtime permission gate inputs for an aionrs rebuild, loaded from the
+/// conversation's persisted assistant snapshot in the service layer
+/// (`ConversationService::load_aionrs_permission_seed`) and threaded down so
+/// `SessionContextBuilder` needs no `conversation_repo` handle.
+///
+/// - `default_permission_mode`: the assistant's permission mode (`auto` /
+///   `fixed`), decides whether the runtime value may be adopted.
+/// - `resolved_permission_value`: the last runtime-selected permission
+///   persisted on the snapshot; only honored under `auto` for non-team
+///   sessions.
+#[derive(Debug, Clone)]
+pub(crate) struct AionrsRuntimePermissionSeed {
+    pub default_permission_mode: String,
+    pub resolved_permission_value: Option<String>,
+}
+
 fn build_aionrs_context(
     row: &ConversationRow,
     extra: serde_json::Value,
     team: Option<TeamSessionBinding>,
+    permission_seed: Option<AionrsRuntimePermissionSeed>,
 ) -> AionrsSessionBuildContext {
     let mut config: AionrsBuildExtra = match serde_json::from_value(extra.clone()) {
         Ok(config) => config,
@@ -350,10 +387,42 @@ fn build_aionrs_context(
     config.user_id.get_or_insert_with(|| row.user_id.clone());
     apply_team_seed_to_aionrs_config(&team, &mut config);
     let belongs_to_team = team.is_some();
+    // Team-bound sessions keep the team seed / create-time value; runtime
+    // resolved permission is intentionally NOT read back (centralized team
+    // governance — same safety principle as `fixed`). Only non-team sessions
+    // consult the persisted runtime permission.
+    if !belongs_to_team && let Some(seed) = permission_seed {
+        apply_runtime_permission_seed(seed, row, &mut config);
+    }
     AionrsSessionBuildContext {
         config,
         team,
         belongs_to_team,
+    }
+}
+
+/// Applies the persisted runtime permission to the rebuild seed, honoring
+/// `default_permission_mode` semantics (spec §7.1/§7.2). Callers must ensure
+/// team-bound sessions never reach here.
+fn apply_runtime_permission_seed(
+    seed: AionrsRuntimePermissionSeed,
+    row: &ConversationRow,
+    config: &mut AionrsBuildExtra,
+) {
+    // `fixed` (and any unknown mode): keep the create-time seed
+    // (== create-time default_permission_value); never adopt the runtime
+    // residue — anti-privilege-escalation gate.
+    if seed.default_permission_mode != "auto" {
+        return;
+    }
+    // `auto`: remember and reuse the runtime selection. The resolved value is
+    // authoritative and MUST override the create-time seed.
+    if let Some(resolved) = seed.resolved_permission_value.filter(|value| !value.is_empty()) {
+        debug!(
+            conversation_id = %row.id,
+            "session_context: aionrs rebuild seeded from resolved runtime permission"
+        );
+        config.session_mode = Some(resolved);
     }
 }
 
@@ -496,6 +565,30 @@ fn map_runtime_workspace_validation_error(error: WorkspacePathValidationError) -
     }
 }
 
+fn log_workspace_path_check(conversation_id: &str, error: &WorkspacePathValidationError) {
+    warn!(
+        target: "aionui_feedback_diagnostics",
+        diagnostic_event = "feedback.runtime.workspace_path_check",
+        conversation_id = %conversation_id,
+        path_present = !matches!(error, WorkspacePathValidationError::Empty),
+        path_exists = matches!(
+            error,
+            WorkspacePathValidationError::NotDirectory(_) | WorkspacePathValidationError::NotAccessible { .. }
+        ),
+        error_class = %workspace_error_class(error),
+        "feedback.runtime.workspace_path_check"
+    );
+}
+
+fn workspace_error_class(error: &WorkspacePathValidationError) -> &'static str {
+    match error {
+        WorkspacePathValidationError::Empty => "empty",
+        WorkspacePathValidationError::DoesNotExist(_) => "not_found",
+        WorkspacePathValidationError::NotDirectory(_) => "not_directory",
+        WorkspacePathValidationError::NotAccessible { .. } => "not_accessible",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -503,6 +596,10 @@ mod tests {
         CreateAcpSessionParams, SaveRuntimeStateParams, SqliteAcpSessionRepository, SqliteAgentMetadataRepository,
         UpsertAgentMetadataParams, init_database_memory,
     };
+    use std::io::Write;
+    use std::sync::Mutex;
+    use tracing::Level;
+    use tracing_subscriber::fmt;
 
     struct TestRepos {
         workspace_root: PathBuf,
@@ -514,6 +611,36 @@ mod tests {
         fn builder(&self) -> SessionContextBuilder<'_> {
             SessionContextBuilder::new(&self.workspace_root, &self.metadata_repo, &self.acp_session_repo)
         }
+    }
+
+    #[derive(Clone)]
+    struct SharedBuf(Arc<Mutex<Vec<u8>>>);
+
+    impl Write for SharedBuf {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    fn capture_logs(max_level: Level, f: impl FnOnce()) -> String {
+        let buffer = Arc::new(Mutex::new(Vec::<u8>::new()));
+        let make_writer = {
+            let buffer = Arc::clone(&buffer);
+            move || SharedBuf(Arc::clone(&buffer))
+        };
+        let subscriber = fmt::Subscriber::builder()
+            .with_max_level(max_level)
+            .with_writer(make_writer)
+            .with_ansi(false)
+            .finish();
+
+        tracing::subscriber::with_default(subscriber, f);
+        String::from_utf8(buffer.lock().unwrap().clone()).unwrap()
     }
 
     async fn setup() -> TestRepos {
@@ -911,6 +1038,33 @@ mod tests {
         assert_eq!(context.workspace.path, custom.to_string_lossy());
     }
 
+    #[test]
+    fn workspace_validation_failure_logs_redacted_runtime_check() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let raw_path = "/tmp/aionui-secret-workspace-token-12345";
+        let captured = capture_logs(Level::WARN, || {
+            runtime.block_on(async {
+                let repos = setup().await;
+                let row = row("aionrs", serde_json::json!({ "workspace": raw_path }), None);
+
+                let err = repos.builder().build(&row).await.unwrap_err();
+                assert!(matches!(err, ConversationError::WorkspacePathRuntimeUnavailable { .. }));
+            });
+        });
+
+        assert!(captured.contains("aionui_feedback_diagnostics"), "{captured}");
+        assert!(captured.contains("feedback.runtime.workspace_path_check"), "{captured}");
+        assert!(captured.contains("conversation_id=conv-1"), "{captured}");
+        assert!(captured.contains("path_present=true"), "{captured}");
+        assert!(captured.contains("path_exists=false"), "{captured}");
+        assert!(captured.contains("error_class=not_found"), "{captured}");
+        assert!(!captured.contains(raw_path), "{captured}");
+        assert!(!captured.contains("token-12345"), "{captured}");
+    }
+
     fn assert_archived(err: ConversationError, expected_id: &str) {
         match err {
             ConversationError::Archived { id, reason } => {
@@ -942,5 +1096,71 @@ mod tests {
             let err = repos.builder().build(&row).await.unwrap_err();
             assert_archived(err, "conv-1");
         }
+    }
+
+    fn aionrs_seed(mode: &str, resolved: Option<&str>) -> AionrsRuntimePermissionSeed {
+        AionrsRuntimePermissionSeed {
+            default_permission_mode: mode.to_owned(),
+            resolved_permission_value: resolved.map(ToOwned::to_owned),
+        }
+    }
+
+    #[test]
+    fn aionrs_auto_mode_rebuild_adopts_resolved_permission_value() {
+        // AC#1: auto happy path — runtime yolo survives rebuild.
+        let row = row("aionrs", serde_json::json!({ "session_mode": "default" }), None);
+        let ctx = build_aionrs_context(
+            &row,
+            serde_json::json!({ "session_mode": "default" }),
+            None,
+            Some(aionrs_seed("auto", Some("yolo"))),
+        );
+        assert_eq!(ctx.config.session_mode.as_deref(), Some("yolo"));
+    }
+
+    #[test]
+    fn aionrs_auto_mode_resolved_overrides_create_time_seed() {
+        // AC#2: existing-data compat — create-time non-yolo seed is overridden.
+        let row = row("aionrs", serde_json::json!({ "session_mode": "auto_edit" }), None);
+        let ctx = build_aionrs_context(
+            &row,
+            serde_json::json!({ "session_mode": "auto_edit" }),
+            None,
+            Some(aionrs_seed("auto", Some("yolo"))),
+        );
+        assert_eq!(ctx.config.session_mode.as_deref(), Some("yolo"));
+    }
+
+    #[test]
+    fn aionrs_fixed_mode_ignores_resolved_permission_value() {
+        // AC#3: fixed safety gate — runtime residue must NOT escalate.
+        let row = row("aionrs", serde_json::json!({ "session_mode": "default" }), None);
+        let ctx = build_aionrs_context(
+            &row,
+            serde_json::json!({ "session_mode": "default" }),
+            None,
+            Some(aionrs_seed("fixed", Some("yolo"))),
+        );
+        assert_eq!(ctx.config.session_mode.as_deref(), Some("default"));
+    }
+
+    #[test]
+    fn aionrs_team_bound_session_ignores_resolved_permission_value() {
+        // Team-bound governance: keep team seed, never read resolved runtime value.
+        let team = TeamSessionBinding::from_extra_value(&serde_json::json!({
+            "teamId": "team-1",
+            "slot_id": "worker-1",
+            "role": "teammate",
+            "session_mode": "auto_edit"
+        }))
+        .unwrap();
+        let row = row("aionrs", serde_json::json!({ "session_mode": "auto_edit" }), None);
+        let ctx = build_aionrs_context(
+            &row,
+            serde_json::json!({ "session_mode": "auto_edit" }),
+            team,
+            Some(aionrs_seed("auto", Some("yolo"))),
+        );
+        assert_eq!(ctx.config.session_mode.as_deref(), Some("auto_edit"));
     }
 }

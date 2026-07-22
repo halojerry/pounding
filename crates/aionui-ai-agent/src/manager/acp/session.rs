@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use agent_client_protocol::schema::{
     AgentCapabilities, AuthMethod, AvailableCommand, SessionConfigKind, SessionConfigOption,
@@ -74,10 +76,16 @@ pub struct AcpSession {
     desired: Desired,
     observed: Observed,
     advertised: Advertised,
-    /// Guards against concurrent `set_config_option` calls so a second
-    /// in-flight update is rejected with a conflict rather than racing the
-    /// first. Set by `try_begin_config_set`, cleared by `end_config_set`.
-    config_set_in_flight: bool,
+    /// Single-flight lease over user-triggered config/mode/model updates.
+    ///
+    /// Held as an `Arc<AtomicBool>` (not a plain `bool`) so a
+    /// `ConfigSetGuardToken` can carry an owning clone and reset the flag from
+    /// its `Drop` on every exit path — success, error, RPC timeout,
+    /// future-cancel, and panic unwind. This removes the ELECTRON-3MS deadlock
+    /// where a hung `set_config_option` RPC left the lease stuck until runtime
+    /// recovery rebuilt the session. Cloning `AcpSession` shares the flag
+    /// (transient in-flight state); no invariant depends on it being distinct.
+    config_set_in_flight: Arc<AtomicBool>,
     pending_events: Vec<AcpSessionEvent>,
     /// Whether `open_session_new` has just completed and the next prompt
     /// should receive preset_context / skill-index injection.
@@ -112,11 +120,20 @@ pub struct AcpSession {
     last_close_reason: Option<CloseReason>,
 }
 
-/// Opaque token proving a config-set critical section is active. Returned by
-/// `try_begin_config_set` and consumed by `end_config_set` so the guard flag
-/// can only be cleared by the holder of the section.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ConfigSetGuardToken;
+/// RAII lease over `config_set_in_flight`. Holds an `Arc<AtomicBool>` clone;
+/// its `Drop` synchronously stores `false`, so the lease is released on
+/// success, error, timeout, future-cancel, and panic unwind alike. Not
+/// `Clone`/`Copy` — a single guard owns the lease for its whole lifetime.
+#[derive(Debug)]
+pub struct ConfigSetGuardToken {
+    flag: Arc<AtomicBool>,
+}
+
+impl Drop for ConfigSetGuardToken {
+    fn drop(&mut self) {
+        self.flag.store(false, Ordering::Release);
+    }
+}
 
 /// A startup config preference (from build extras) awaiting the advertised
 /// config-option catalog before it can be mapped to a concrete option id.
@@ -160,7 +177,7 @@ impl AcpSession {
             },
             observed: Observed::default(),
             advertised: Advertised::default(),
-            config_set_in_flight: false,
+            config_set_in_flight: Arc::new(AtomicBool::new(false)),
             pending_events: Vec::new(),
             pending_model_notice: None,
             last_close_reason: None,
@@ -170,21 +187,21 @@ impl AcpSession {
 
 // ─── Config-set guard ───────────────────────────────────────────────────────
 impl AcpSession {
-    /// Begin a config-set critical section. Returns `Some(token)` when no
-    /// other update is in flight, or `None` when one already is (caller must
-    /// reject with a conflict). The returned token must be passed back to
-    /// `end_config_set` to release the guard.
+    /// Atomically claim the single-flight config lease. Returns a RAII guard
+    /// on success (releases the lease on drop), or `None` when a config update
+    /// is already in flight — preserving the `rejected_in_progress` semantics.
     pub fn try_begin_config_set(&mut self) -> Option<ConfigSetGuardToken> {
-        if self.config_set_in_flight {
-            return None;
+        if self
+            .config_set_in_flight
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+        {
+            Some(ConfigSetGuardToken {
+                flag: Arc::clone(&self.config_set_in_flight),
+            })
+        } else {
+            None
         }
-        self.config_set_in_flight = true;
-        Some(ConfigSetGuardToken)
-    }
-
-    /// Release the config-set critical section opened by `try_begin_config_set`.
-    pub fn end_config_set(&mut self, _token: ConfigSetGuardToken) {
-        self.config_set_in_flight = false;
     }
 }
 

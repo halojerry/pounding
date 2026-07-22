@@ -75,7 +75,11 @@ function patchElectronBuilderNsisInstaller() {
     .split('POUNDING-fixed-uninstaller.exe')
     .join('POUNDING-fixed-uninstaller.exe')
     .split('POUNDING-bundled-uninstaller override source.')
-    .join('POUNDING-bundled-uninstaller override source.');
+    .join('POUNDING-bundled-uninstaller override source.')
+    .split('$AionUiSessionLogPath')
+    .join('$POUNDINGSessionLogPath')
+    .split('$AionUiSessionId')
+    .join('$POUNDINGSessionId');
 
   const retryPrompt = [
     '    ${if} $R5 > 5',

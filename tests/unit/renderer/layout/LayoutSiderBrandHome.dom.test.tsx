@@ -56,6 +56,17 @@ vi.mock('@renderer/pages/conversation/Preview/context/PreviewContext', () => ({
   usePreviewContext: () => ({ closePreview: () => {} }),
 }));
 
+vi.mock('@renderer/hooks/context/NewApiAccountContext', () => ({
+  useNewApiAccount: () => ({ ready: false, isLoggedIn: false, status: null }),
+}));
+vi.mock('@renderer/components/layout/PoundingInteractiveLogo', () => ({
+  default: ({ className, compact }: { className?: string; compact?: boolean }) => (
+    <div className={className} data-compact={compact ? 'true' : 'false'} />
+  ),
+}));
+vi.mock('@renderer/components/layout/DesktopLoginGate', () => ({ default: () => null }));
+vi.mock('@renderer/components/settings/EnvConflictBanner', () => ({ default: () => null }));
+
 import Layout from '@renderer/components/layout/Layout';
 
 const renderLayout = () => render(<Layout sider={<div>sider</div>} />);

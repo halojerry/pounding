@@ -19,7 +19,7 @@ const { execSync, execFileSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { verifyBundledAioncoreResources } = require('./verify-bundled-aioncore-resources');
+const { verifyBundledPoundingcoreResources } = require('./verify-bundled-poundingcore-resources');
 
 const GITHUB_OWNER = 'halojerry';
 const GITHUB_REPO = 'poundingcore';
@@ -169,7 +169,7 @@ function prepareManagedResources(binaryPath, targetDir) {
 }
 
 function verifyPreparedAioncoreBundle(projectRoot, platform, arch) {
-  const result = verifyBundledAioncoreResources({
+  const result = verifyBundledPoundingcoreResources({
     resourcesDir: path.join(projectRoot, 'resources'),
     electronPlatformName: platform,
     targetArch: arch,
@@ -625,6 +625,6 @@ function preparePoundingcore(options) {
 module.exports = {
   getActionsArtifactMissingMessage,
   getActionsArtifactName,
-  prepareAioncore,
+  preparePoundingcore,
   verifyPreparedAioncoreBundle,
 };

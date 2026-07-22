@@ -8,6 +8,7 @@ export type TeamSendBoxRuntime = {
   loading: boolean;
   queuedCount: number;
   statusText?: string;
+  startedAtMs: number | null;
   onStop?: () => Promise<void>;
 };
 
@@ -16,6 +17,13 @@ type BuildTeamSendRuntimeOptions = {
   runView: TeamRunViewState;
   statusText?: string;
   onStop?: () => Promise<void>;
+  /**
+   * True when the team session was idle-reclaimed (see
+   * `TeamRunViewState.sessionStopped`). Stopped is recoverable-and-sendable: the
+   * next send triggers lazy recovery, so the gate stays open and no spinner is
+   * shown, regardless of any stale `session_stopped` slot work.
+   */
+  sessionStopped?: boolean;
 };
 
 type PauseSlotWorkParams = {
@@ -34,7 +42,11 @@ type BuildTeamStopHandlerOptions = {
   onRunStateStale?: () => Promise<boolean>;
 };
 
-const FATAL_BLOCK_REASONS = new Set<TeamSlotBlockedReason>(['runtime_failed', 'removing', 'session_stopped']);
+// `session_stopped` is intentionally NOT fatal: an idle-reclaimed session is
+// recoverable and must stay sendable so the lazy-recovery send path can fire.
+// A stale `session_stopped` slot still shows the stopped status text (see
+// `buildTeamWorkStatusText`) but no longer blocks sending.
+const FATAL_BLOCK_REASONS = new Set<TeamSlotBlockedReason>(['runtime_failed', 'removing']);
 
 type TeamWorkStatusTextFormatters = {
   processing: () => string;
@@ -134,18 +146,23 @@ export const buildTeamSendRuntime = ({
   runView,
   statusText,
   onStop,
+  sessionStopped,
 }: BuildTeamSendRuntimeOptions): TeamSendBoxRuntime => {
   const work = runView.slotWorkBySlot[slot_id];
   const queuedCount = getTeamWorkQueuedCount(work);
   const fatalBlock = work?.blocked_reason ? FATAL_BLOCK_REASONS.has(work.blocked_reason) : false;
-  const loading = hasActiveTeamWork(work) || (!fatalBlock && queuedCount > 0);
+  // Stopped session: force the recoverable-stopped shape — keep the gate open
+  // and suppress the spinner, overriding any residual fatal block or active work.
+  const effectiveFatalBlock = sessionStopped ? false : fatalBlock;
+  const loading = sessionStopped ? false : hasActiveTeamWork(work) || (!fatalBlock && queuedCount > 0);
   return {
     loading,
     queuedCount,
     statusText,
+    startedAtMs: work?.active_turn_started_at_ms ?? null,
     runtimeGate: {
       hydrated: true,
-      canSendMessage: !fatalBlock,
+      canSendMessage: !effectiveFatalBlock,
       isProcessing: false,
     },
     onStop,

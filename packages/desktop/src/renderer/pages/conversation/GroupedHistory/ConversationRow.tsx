@@ -12,7 +12,7 @@ import { resolveConversationLeadingMark } from '@/renderer/pages/conversation/ut
 import { cleanupSiderTooltips, getSiderTooltipProps } from '@/renderer/utils/ui/siderTooltip';
 import { useLayoutContext } from '@/renderer/hooks/context/LayoutContext';
 import { Checkbox, Dropdown, Menu, Spin, Tooltip } from '@arco-design/web-react';
-import { DeleteOne, EditOne, Export, MessageOne, MoreOne, Pushpin, Robot } from '@icon-park/react';
+import { DeleteOne, EditOne, Export, MessageOne, MoreOne, Pushpin, Robot, Timer } from '@icon-park/react';
 import classNames from 'classnames';
 import React from 'react';
 import { useTranslation } from 'react-i18next';
@@ -32,6 +32,7 @@ const ConversationRow: React.FC<ConversationRowProps> = (props) => {
     selected,
     menuVisible,
     dimIcon = false,
+    dragHandle,
   } = props;
   const logos = useAgentLogos();
   const layout = useLayoutContext();
@@ -42,6 +43,7 @@ const ConversationRow: React.FC<ConversationRowProps> = (props) => {
     onOpenMenu,
     onMenuVisibleChange,
     onEditStart,
+    onCreateCronTask,
     onDelete,
     onExport,
     onTogglePin,
@@ -59,8 +61,9 @@ const ConversationRow: React.FC<ConversationRowProps> = (props) => {
       return <CronJobIndicator status={cronStatus} size={16} className='flex-shrink-0' />;
     }
 
-    // When the row is pinned, hovering reveals a pushpin marker that overlays
-    // the leading icon. We dim the resting icon on hover so the pin reads cleanly.
+    // When the row is pinned, hovering reveals an overlay on the leading icon —
+    // the drag handle when the row is sortable, otherwise a pushpin marker.
+    // We dim the resting icon on hover so the overlay reads cleanly.
     const pinnedHoverFade = isPinned ? 'group-hover:opacity-0 transition-opacity' : '';
     const composedClass = classNames(pinnedHoverFade);
 
@@ -165,15 +168,19 @@ const ConversationRow: React.FC<ConversationRowProps> = (props) => {
         )}
         <span className='size-22px flex items-center justify-center shrink-0 relative'>
           {isGenerating && !batchMode ? <Spin size={16} /> : renderLeadingIcon()}
-          {/* Pinned indicator: only visible when row is hovered, overlays leading icon */}
-          {!batchMode && isPinned && !isMobile && !isGenerating && (
-            <span
-              className='absolute inset-0 flex-center text-t-secondary pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity'
-              style={{ lineHeight: 0 }}
-            >
-              <Pushpin theme='outline' size='14' />
-            </span>
-          )}
+          {/* Hover overlay on the leading icon: drag handle for sortable pinned rows, pushpin marker otherwise */}
+          {!batchMode &&
+            isPinned &&
+            !isMobile &&
+            !isGenerating &&
+            (dragHandle ?? (
+              <span
+                className='absolute inset-0 flex-center text-t-secondary pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity'
+                style={{ lineHeight: 0 }}
+              >
+                <Pushpin theme='outline' size='14' />
+              </span>
+            ))}
         </span>
         <FlexFullContainer className='h-24px min-w-0 flex-1 collapsed-hidden'>
           <Tooltip
@@ -217,6 +224,10 @@ const ConversationRow: React.FC<ConversationRowProps> = (props) => {
                       onEditStart(conversation);
                       return;
                     }
+                    if (key === 'createCronTask') {
+                      onCreateCronTask(conversation);
+                      return;
+                    }
                     if (key === 'export') {
                       onExport?.(conversation);
                       return;
@@ -236,6 +247,12 @@ const ConversationRow: React.FC<ConversationRowProps> = (props) => {
                     <div className='flex items-center gap-8px'>
                       <EditOne theme='outline' size='14' />
                       <span>{t('conversation.history.rename')}</span>
+                    </div>
+                  </Menu.Item>
+                  <Menu.Item key='createCronTask'>
+                    <div className='flex items-center gap-8px'>
+                      <Timer theme='outline' size='14' />
+                      <span>{t('conversation.history.createCronTask')}</span>
                     </div>
                   </Menu.Item>
                   {onExport && (

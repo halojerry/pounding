@@ -101,7 +101,7 @@
     },
     "localDataRepair": {
       "title": "本地数据修复失败",
-      "description": "POUNDING 已打开，但 poundingcore 在修复本地智能体缓存数据时停止。重新安装 POUNDING 可能无法解决此问题。请发送诊断报告或联系支持，以便检查本地数据库。",
+      "description": "AionUi 已打开，但 AionCore 在准备本地启动数据时停止，例如 assistant 或智能体记录。重新安装 AionUi 可能无法解决此问题。请发送诊断报告或联系支持，以便检查本地数据库。",
       "sendDiagnostics": "发送诊断",
       "diagnosticsSent": "诊断已发送",
       "diagnosticsReportSuccess": "诊断报告已发送",
@@ -125,6 +125,15 @@
       "diagnosticsReportSuccess": "诊断报告已发送",
       "diagnosticsReportFailed": "诊断报告发送失败",
       "rebuildFailed": "备份旧库并重建新库失败"
+    },
+    "transientConcurrentStartup": {
+      "title": "AionUi 正在启动",
+      "description": "此窗口打开时，另一个 AionUi 启动进程仍在使用本地数据。这是暂时的，您的数据是安全的——无需重新安装。请稍候片刻后重试，或重启 AionUi。",
+      "sendDiagnostics": "发送诊断",
+      "diagnosticsSent": "诊断已发送",
+      "diagnosticsReportSuccess": "诊断报告已发送",
+      "diagnosticsReportFailed": "诊断报告发送失败",
+      "diagnosticsHint": "如果该问题反复出现，您可以发送诊断报告。"
     }
   },
   "fileAttach.addFiles": "添加文件",

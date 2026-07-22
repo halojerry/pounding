@@ -44,6 +44,13 @@ const STARTUP_DIRECTORY_FAILURE_STAGES = new Set(['spawn']);
 const STARTUP_DIRECTORY_PERMISSION_RE = /\b(?:EACCES|EPERM)\b|permission denied|operation not permitted/i;
 const STARTUP_DIRECTORY_UNAVAILABLE_RE =
   /startup directory preparation failed|(?:\b(?:ENOENT|ENOTDIR|EEXIST)\b[\s\S]{0,160}\bmkdir\b)|(?:\bmkdir\b[\s\S]{0,160}\b(?:ENOENT|ENOTDIR|EEXIST)\b)/i;
+const ASSISTANT_STORAGE_BOOTSTRAP_BOUNDARY_CODE = 'BOOTSTRAP_SERVER_FAILED';
+// Benign boundary code emitted by an aioncore instance that yielded the
+// data-dir instance guard to a peer (Sentry 135525166 Option A).
+const TRANSIENT_CONCURRENT_STARTUP_PEER_CODE = 'BOOTSTRAP_PEER_ALREADY_RUNNING';
+// Distinct bootstrap stage emitted when assistant storage bootstrap loses a
+// concurrent-startup race and exhausts its retries (Sentry 135525166 Option B).
+const ASSISTANT_BOOTSTRAP_CONTENTION_STAGE = 'router.assistant.bootstrap.concurrency_contended';
 const MAX_REPORTED_DIR_ENTRIES = 20;
 
 function collectBackendStartupText(error: unknown): string {
@@ -182,6 +189,32 @@ function classifyLocalDataRepairFailure(
   };
 }
 
+// A transient concurrent-startup race (two aioncore instances briefly bootstrapping
+// the same data directory) is self-recoverable and must NOT be reported as local
+// data corruption. It is signalled either by the benign peer-yield boundary code
+// (Option A) or by the assistant-bootstrap contention stage after retries are
+// exhausted (Option B). Everything else — including an ordinary
+// `router.assistant.bootstrap` failure — is intentionally left to the generic
+// `backend_startup_failed` bucket rather than the old unconditional
+// "local data repair failed" false alarm (Sentry 135525166).
+function classifyTransientConcurrentStartupFailure(
+  backendBoundaryCode: string | undefined,
+  backendBoundaryStage: string | undefined
+): BackendStartupFailureInfo | undefined {
+  const isPeerYield = backendBoundaryCode === TRANSIENT_CONCURRENT_STARTUP_PEER_CODE;
+  const isAssistantBootstrapContention =
+    backendBoundaryCode === ASSISTANT_STORAGE_BOOTSTRAP_BOUNDARY_CODE &&
+    backendBoundaryStage === ASSISTANT_BOOTSTRAP_CONTENTION_STAGE;
+
+  if (!isPeerYield && !isAssistantBootstrapContention) return undefined;
+
+  return {
+    reason: 'backend_transient_concurrent_startup',
+    backendBoundaryCode,
+    backendBoundaryStage,
+  };
+}
+
 function classifyStartupDirectoryFailure(
   details: ErrorWithDetails['details'],
   text: string
@@ -234,6 +267,12 @@ export function classifyBackendStartupFailure(error: unknown): BackendStartupFai
 
   const localDataRepairFailure = classifyLocalDataRepairFailure(backendBoundaryCode, backendBoundaryStage, text);
   if (localDataRepairFailure) return localDataRepairFailure;
+
+  const transientConcurrentStartupFailure = classifyTransientConcurrentStartupFailure(
+    backendBoundaryCode,
+    backendBoundaryStage
+  );
+  if (transientConcurrentStartupFailure) return transientConcurrentStartupFailure;
 
   if (
     backendBoundaryCode === 'BOOTSTRAP_DATA_INIT_FAILED' &&

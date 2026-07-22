@@ -101,7 +101,7 @@
     },
     "localDataRepair": {
       "title": "Local data repair failed",
-      "description": "POUNDING opened, but poundingcore stopped while repairing local agent cache data. Reinstalling POUNDING may not fix this. Send a diagnostics report or contact support so the local database can be inspected.",
+      "description": "AionUi açıldı, ancak AionCore assistant veya agent kayıtları gibi yerel başlangıç verilerini hazırlarken durdu. AionUi'yi yeniden yüklemek bu sorunu çözmeyebilir. Yerel veritabanının incelenebilmesi için tanılama raporu gönderin veya destek ekibiyle iletişime geçin.",
       "sendDiagnostics": "Send diagnostics",
       "diagnosticsSent": "Diagnostics sent",
       "diagnosticsReportSuccess": "Diagnostics report sent",
@@ -125,6 +125,15 @@
       "diagnosticsReportSuccess": "Tanılama raporu gönderildi",
       "diagnosticsReportFailed": "Tanılama raporu gönderilemedi",
       "rebuildFailed": "Eski DB yedeklenip yeni DB oluşturulamadı"
+    },
+    "transientConcurrentStartup": {
+      "title": "AionUi başlatılıyor",
+      "description": "Bu pencere açıldığında başka bir AionUi başlatma işlemi yerel verileri hâlâ kullanıyordu. Bu geçicidir ve verileriniz güvende — yeniden yükleme gerekmez. Lütfen biraz bekleyip tekrar deneyin veya AionUi'yi yeniden başlatın.",
+      "sendDiagnostics": "Send diagnostics",
+      "diagnosticsSent": "Diagnostics sent",
+      "diagnosticsReportSuccess": "Diagnostics report sent",
+      "diagnosticsReportFailed": "Failed to send diagnostics report",
+      "diagnosticsHint": "Bu durum tekrar ederse bir tanılama raporu gönderebilirsiniz."
     }
   },
   "fileAttach.addFiles": "Dosya ekle",

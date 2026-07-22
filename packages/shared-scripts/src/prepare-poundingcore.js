@@ -19,6 +19,7 @@ const { execSync, execFileSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { verifyBundledAioncoreResources } = require('./verify-bundled-aioncore-resources');
 
 const GITHUB_OWNER = 'halojerry';
 const GITHUB_REPO = 'poundingcore';
@@ -167,25 +168,17 @@ function prepareManagedResources(binaryPath, targetDir) {
   return bundleOut;
 }
 
-/**
- * Recursively copy a directory. Creates target directory and preserves
- * symlinks. Equivalent to `cp -R src dst`.
- */
-function copyDirectorySync(src, dest) {
-  ensureDirectory(dest);
-  const entries = fs.readdirSync(src, { withFileTypes: true });
-  for (const entry of entries) {
-    const srcPath = path.join(src, entry.name);
-    const destPath = path.join(dest, entry.name);
-    if (entry.isDirectory()) {
-      copyDirectorySync(srcPath, destPath);
-    } else if (entry.isSymbolicLink()) {
-      const linkTarget = fs.readlinkSync(srcPath);
-      fs.symlinkSync(linkTarget, destPath);
-    } else {
-      fs.copyFileSync(srcPath, destPath);
-    }
+function verifyPreparedAioncoreBundle(projectRoot, platform, arch) {
+  const result = verifyBundledAioncoreResources({
+    resourcesDir: path.join(projectRoot, 'resources'),
+    electronPlatformName: platform,
+    targetArch: arch,
+  });
+  if (result.missing.length > 0 || result.failures.length > 0) {
+    const summary = result.missing.length > 0 ? result.missing.join(', ') : JSON.stringify(result.failures);
+    throw new Error(`Prepared aioncore bundle is missing required bundled resource(s): ${summary}`);
   }
+  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -539,6 +532,7 @@ function preparePoundingcore(options) {
         files: [binaryName, 'managed-resources/'],
       };
       writeJson(path.join(targetDir, 'manifest.json'), manifest);
+      verifyPreparedAioncoreBundle(projectRoot, platform, arch);
       console.log(`  Using local aioncore bundle: ${resolvedLocalBundleDir}`);
       return { prepared: true, dir: targetDir, sourceType: 'local-bundle' };
     }
@@ -615,6 +609,7 @@ function preparePoundingcore(options) {
     };
 
     writeJson(path.join(targetDir, 'manifest.json'), manifest);
+    verifyPreparedAioncoreBundle(projectRoot, platform, arch);
     console.log(
       `  Bundled poundingcore prepared: resources/bundled-poundingcore/${runtimeKey}/${binaryName} [source=${sourceType}]`
     );
@@ -630,5 +625,6 @@ function preparePoundingcore(options) {
 module.exports = {
   getActionsArtifactMissingMessage,
   getActionsArtifactName,
-  preparePoundingcore,
+  prepareAioncore,
+  verifyPreparedAioncoreBundle,
 };

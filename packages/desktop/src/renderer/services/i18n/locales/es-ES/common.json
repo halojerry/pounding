@@ -101,7 +101,7 @@
     },
     "localDataRepair": {
       "title": "Local data repair failed",
-      "description": "POUNDING opened, but poundingcore stopped while repairing local agent cache data. Reinstalling POUNDING may not fix this. Send a diagnostics report or contact support so the local database can be inspected.",
+      "description": "AionUi se abrió, pero AionCore se detuvo al preparar datos locales de inicio, como registros de asistentes o agentes. Reinstalar AionUi puede no solucionar este problema. Envía un informe de diagnóstico o contacta con soporte para que se pueda inspeccionar la base de datos local.",
       "sendDiagnostics": "Send diagnostics",
       "diagnosticsSent": "Diagnostics sent",
       "diagnosticsReportSuccess": "Diagnostics report sent",
@@ -125,6 +125,15 @@
       "diagnosticsReportSuccess": "Diagnostics report sent",
       "diagnosticsReportFailed": "Failed to send diagnostics report",
       "rebuildFailed": "Failed to back up old DB and rebuild new DB"
+    },
+    "transientConcurrentStartup": {
+      "title": "AionUi se está iniciando",
+      "description": "Cuando se abrió esta ventana, otro proceso de inicio de AionUi todavía estaba usando los datos locales. Esto es temporal y tus datos están seguros: no es necesario reinstalar. Espera un momento e inténtalo de nuevo, o reinicia AionUi.",
+      "sendDiagnostics": "Send diagnostics",
+      "diagnosticsSent": "Diagnostics sent",
+      "diagnosticsReportSuccess": "Diagnostics report sent",
+      "diagnosticsReportFailed": "Failed to send diagnostics report",
+      "diagnosticsHint": "Si esto sigue ocurriendo, puedes enviar un informe de diagnóstico."
     }
   },
   "fileAttach.addFiles": "Agregar archivos",

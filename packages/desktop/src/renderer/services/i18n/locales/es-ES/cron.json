@@ -15,7 +15,7 @@
     "unconfigured": "Sin tarea programada",
     "unconfiguredHint": "Aún no hay tareas programadas. ¡Crea una con tu agente!",
     "createNow": "Crear ahora",
-    "defaultPrompt": "Todos los días a las 10am, busca las últimas noticias de IA, resume y genera un informe de insights."
+    "defaultPrompt": "Todos los días a las 10am, busca las últimas noticias de IA, resume y genera un informe de insights. (Usa la habilidad /cron para crear una tarea programada en AionUi.)"
   },
   "actions": {
     "goTo": "Ver chat",
@@ -83,6 +83,8 @@
       "prompt": "Prompt",
       "promptRequired": "El prompt es obligatorio",
       "promptPlaceholder": "Instrucciones para que el agente ejecute",
+      "queue": "Protección de cola",
+      "queueHint": "Cuando está activada, se omite una nueva ejecución mientras la conversación programada anterior siga en curso, sin interrumpir al asistente.",
       "frequency": "Frecuencia",
       "cronExpr": "Expresión Cron",
       "cronExprRequired": "La expresión cron es obligatoria",
@@ -129,7 +131,23 @@
       "weeklyAt": "Cada {{day}} a las {{time}}"
     },
     "createViaChat": "Create via chat",
-    "createManually": "Create manually"
+    "createManually": "Create manually",
+    "custom": {
+      "modeLabel": "Patrón de repetición",
+      "interval": "Cada intervalo",
+      "monthly": "Mensualmente",
+      "advanced": "Expresión Cron avanzada",
+      "every": "Cada",
+      "unit": "Unidad",
+      "minutes": "Minutos",
+      "hours": "Horas",
+      "time": "Hora",
+      "weekdays": "Días de la semana",
+      "monthDay": "Día del mes",
+      "preview": "Cron generado"
+    },
+    "searchPlaceholder": "Buscar tareas...",
+    "noSearchResults": "No hay tareas programadas coincidentes."
   },
   "trigger": {
     "runScheduledTask": "Ejecutar tarea programada: {{name}}"

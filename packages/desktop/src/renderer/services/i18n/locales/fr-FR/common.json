@@ -102,7 +102,7 @@
     },
     "localDataRepair": {
       "title": "La réparation des données locales a échoué",
-      "description": "POUNDING s'est ouvert, mais poundingcore s'est arrêté lors de la réparation des données du cache de l'agent local. La réinstallation d'POUNDING ne résoudra peut-être pas ce problème. Envoyez un rapport de diagnostic ou contactez l'assistance afin que la base de données locale puisse être inspectée.",
+      "description": "AionUi s'est ouvert, mais AionCore s'est arrêté lors de la préparation des données locales de démarrage, comme les enregistrements d'assistants ou d'agents. La réinstallation d'AionUi ne résoudra peut-être pas ce problème. Envoyez un rapport de diagnostic ou contactez l'assistance afin que la base de données locale puisse être inspectée.",
       "sendDiagnostics": "Envoyer des diagnostics",
       "diagnosticsSent": "Diagnostics envoyés",
       "diagnosticsReportSuccess": "Rapport de diagnostic envoyé",
@@ -126,6 +126,15 @@
       "diagnosticsReportSuccess": "Rapport de diagnostic envoyé",
       "diagnosticsReportFailed": "Échec de l'envoi du rapport de diagnostic",
       "rebuildFailed": "Échec de la sauvegarde de l'ancienne base de données et de la reconstruction de la nouvelle base de données"
+    },
+    "transientConcurrentStartup": {
+      "title": "AionUi démarre",
+      "description": "À l'ouverture de cette fenêtre, un autre démarrage d'AionUi utilisait encore les données locales. C'est temporaire et vos données sont en sécurité — aucune réinstallation n'est nécessaire. Veuillez patienter un instant et réessayer, ou redémarrer AionUi.",
+      "sendDiagnostics": "Envoyer des diagnostics",
+      "diagnosticsSent": "Diagnostics envoyés",
+      "diagnosticsReportSuccess": "Rapport de diagnostic envoyé",
+      "diagnosticsReportFailed": "Échec de l'envoi du rapport de diagnostic",
+      "diagnosticsHint": "Si cela se reproduit, vous pouvez envoyer un rapport de diagnostic."
     }
   },
   "fileAttach.addFiles": "Ajouter des fichiers",

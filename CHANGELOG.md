@@ -1,5 +1,161 @@
 # Changelog
 
+## [2.1.39](https://github.com/iOfficeAI/AionUi/compare/v2.1.38...v2.1.39) (2026-07-21)
+
+### Desktop
+
+#### Features
+
+- **settings:** configure model capabilities (#3639)
+- **settings:** promote Kimi/Moonshot placement in platform and agent lists (#3629)
+- **feedback:** route-aware module preselection and ask-the-butler chip on error surfaces (#3626)
+- **github:** automated issue/PR/discussion triage to module owners (#3631)
+- **github:** post claim invitation when an issue is labeled bonus (#3649)
+
+#### Bug Fixes
+
+- **startup:** stop false "local data repair failed" alarm from concurrent startup (#3650)
+- **conversation:** show sign-in hint for empty ACP turns needing auth (#3644)
+- **workspace:** stable file tree — expand state, search, preview panel (#3642)
+- **agent-settings:** hide launch path for npx agents and fix repair-panel status banner (#3641)
+- **settings:** keep agent repair panel mounted during background revalidation (#3624)
+- **preview:** render distinct heading texts in markdown preview (#3630)
+- **chat:** restore arrow-up icon on send buttons (#3627)
+- **github:** never auto-assign bonus-labeled issues in triage workflow (#3647)
+- **github:** use English-only module dropdown with exact-match triage parsing (#3636)
+
+### Core ([v0.1.50](https://github.com/iOfficeAI/AionCore/releases/tag/v0.1.50))
+
+#### Features
+
+- **assets:** update Kimi logo to official brand mark (#646)
+- **provider:** add per-model capability settings
+
+#### Bug Fixes
+
+- **acp:** bound config RPC timeout and release lease without tearing down connection (#654)
+- **agent:** reflect auth failures from real turns into agent availability (#655)
+- **agent:** reject and clear launch-path override for npx-bridged agents (#651)
+- **agent:** surface sign-in hint on empty ACP turns from auth-gated agents (#653)
+- **ai-agent:** enable official kimi k2.7 code image input
+- **conversation:** rebuild aionrs sessions from persisted runtime permission (#661)
+- **db:** prevent duplicate migration versions
+- **provider:** preserve automatic vision detection
+- **startup:** make concurrent aioncore startup safe over one data directory (#657)
+- **ci:** validate migrations against latest release
+
+---
+
+## [2.1.38](https://github.com/iOfficeAI/AionUi/compare/v2.1.37...v2.1.38) (2026-07-20)
+
+### Desktop
+
+#### Features
+
+- **guid:** task-oriented default prompts with refined suggestion styling (#3622)
+- **guid:** expand assistant more dropdown into responsive multi-column panel (#3621)
+- **settings:** add agent and assistant search (#3616)
+
+#### Bug Fixes
+
+- **system:** let backend own keep-awake blocker (#3620)
+- **installer:** run arch check before registry mutation (#3619)
+- **team:** treat idle-stopped session as recoverable, not a draft-box block (#3618)
+- **settings:** hide agent search on mobile (#3617)
+
+### Core ([v0.1.49](https://github.com/iOfficeAI/AionCore/releases/tag/v0.1.49))
+
+#### Features
+
+- **agents:** sync ACP Registry integrations (#637)
+- **ai-agent:** use responses api for gpt-5.6
+- **config:** add conversation rename command (#638)
+- **idle:** extend idle-cleanup timeouts and make them env-configurable (#643)
+
+#### Bug Fixes
+
+- **ai-agent:** ignore max token limits for aionui requests
+- **system:** apply keep-awake client preference (#642)
+- **team:** broadcast Stopped status on idle-cleanup team reclaim (#640)
+
+---
+
+## [2.1.37](https://github.com/iOfficeAI/AionUi/compare/v2.1.36...v2.1.37) (2026-07-18)
+
+### Desktop
+
+#### Bug Fixes
+
+- **renderer:** keep team elapsed timer continuous across remount (#3612)
+- **bridge:** accept void-param invokes after JSON serialization (#3611)
+
+---
+
+## [2.1.36](https://github.com/iOfficeAI/AionUi/compare/v2.1.35...v2.1.36) (2026-07-17)
+
+### Desktop
+
+#### Features
+
+- **ui:** standardize drag-to-reorder UX for team tabs and pinned conversations (#3606)
+- **ui:** add search to skills/MCP submenus and assistant default selects (#3605)
+- **skills:** skill detail page with assistant attachment (#3604)
+- **skills:** add batch delete for custom skills (#3600)
+- **cron:** add queue protection and custom schedules (#3552)
+
+#### Styling
+
+- **skills:** soften batch-mode selected card state (#3603)
+
+### Core ([v0.1.48](https://github.com/iOfficeAI/AionCore/releases/tag/v0.1.48))
+
+#### Features
+
+- **agents:** add Pi coding agent as builtin ACP agent (#618)
+- **ai-agent:** route image attachments by model capability
+- **aionrs:** inline image attachments for Aion CLI
+- **team:** add CLI fallback collaboration transport (#629)
+
+#### Bug Fixes
+
+- **acp:** confirm legacy mode/model on ACK instead of awaiting observed update (#635)
+- **agents:** honor login PATH and validate builtin CLIs (#622)
+- **ai-agent:** pin image-capable aionrs revision
+- **assistant:** canonicalize rule file storage (#625)
+- **assistant:** stop legacy override sync from clobbering user toggles (#634)
+
+#### Code Refactoring
+
+- **runtime:** remove legacy Bun runtime support (#623)
+
+---
+
+## [2.1.35](https://github.com/iOfficeAI/AionUi/compare/v2.1.34...v2.1.35) (2026-07-14)
+
+### Desktop
+
+#### Bug Fixes
+
+- **renderer:** restrict message file marker parsing (#3590)
+- **conversation:** handle busy send conflicts (#3589)
+- **packaging:** verify bundled resources from manifest (#3587)
+- **feedback:** attach team route context
+- **startup:** classify assistant bootstrap failures (#3583)
+
+### Core ([v0.1.47](https://github.com/iOfficeAI/AionCore/releases/tag/v0.1.47))
+
+#### Features
+
+- **cron:** deduplicate and protect scheduled executions (#601)
+- **diagnostics:** expand feedback runtime evidence (#612)
+
+#### Bug Fixes
+
+- **assistant:** skip dirty assistant bootstrap records (#615)
+- **managed-resources:** emit bundled resource manifest (#617)
+
+---
+
 ## [2.1.34](https://github.com/iOfficeAI/AionUi/compare/v2.1.33...v2.1.34) (2026-07-13)
 
 ### Desktop

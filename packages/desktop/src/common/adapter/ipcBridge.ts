@@ -14,7 +14,7 @@
 
 import type { IConfirmation } from '@/common/chat/chatLib';
 import type { AcpSlashCommandApiItem } from '@/common/chat/slash/types';
-import { bridge } from '@office-ai/platform';
+import { bridge } from '@/common/platform/bridge';
 import type { OpenDialogOptions } from 'electron';
 import type {
   ICssTheme,
@@ -1414,6 +1414,7 @@ export const cron = {
       agent_config: p.updates.metadata?.agent_config,
       conversation_title: p.updates.metadata?.conversation_title,
       max_retries: p.updates.state?.max_retries,
+      queue_enabled: p.updates.state?.queue_enabled,
     })
   ),
   removeJob: httpDelete<void, { job_id: string }>((p) => `/api/cron/jobs/${p.job_id}`),
@@ -1471,6 +1472,7 @@ export interface ICronJob {
     run_count: number;
     retry_count: number;
     max_retries: number;
+    queue_enabled: boolean;
   };
 }
 
@@ -1514,6 +1516,7 @@ export interface ICreateCronJobParams {
   conversation_title?: string;
   created_by: 'user' | 'agent';
   execution_mode?: 'existing' | 'new_conversation';
+  queue_enabled?: boolean;
   agent_config?: ICronAgentConfigWrite;
 }
 
@@ -1532,6 +1535,7 @@ export interface ICronJobUpdateParams {
   };
   state?: {
     max_retries?: number;
+    queue_enabled?: boolean;
   };
 }
 

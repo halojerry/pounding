@@ -52,19 +52,8 @@ vi.mock('@renderer/hooks/file/useDirectorySelection', () => ({
 vi.mock('@renderer/utils/ui/siderTooltip', () => ({ cleanupSiderTooltips: () => {} }));
 vi.mock('@renderer/hooks/ui/useConversationShortcuts', () => ({ useConversationShortcuts: () => {} }));
 vi.mock('@renderer/utils/platform', () => ({ isElectronDesktop: platformMocks.isElectronDesktopMock }));
-// Layout calls useNewApiAccount(); stub the context so no NewApiAccountProvider is required.
-vi.mock('@renderer/hooks/context/NewApiAccountContext', () => ({
-  NewApiAccountProvider: ({ children }: { children?: React.ReactNode }) => children,
-  useNewApiAccount: () => ({
-    ready: true,
-    status: { loggedIn: false, baseUrl: 'https://api.mxou.cn', models: [], updatedAt: 0 },
-    isLoggedIn: false,
-    prepStatus: { inProgress: false, completed: false, stage: 'idle', completedTargets: [], percent: 0 },
-    login: () => Promise.resolve({ success: true }),
-    logout: () => Promise.resolve(),
-    refresh: () => Promise.resolve(),
-    retryPrep: () => Promise.resolve(),
-  }),
+vi.mock('@renderer/pages/conversation/Preview/context/PreviewContext', () => ({
+  usePreviewContext: () => ({ closePreview: () => {} }),
 }));
 
 import Layout from '@renderer/components/layout/Layout';

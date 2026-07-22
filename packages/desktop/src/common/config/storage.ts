@@ -5,14 +5,14 @@
  */
 
 import type { SpeechToTextConfig } from '@/common/types/provider/speech';
-import type { ManagedRuntimeCliTarget, NewApiAccountStatus } from '@/common/types/newApiAccount';
-import { storage } from '@office-ai/platform';
+import type { Theme } from '@/common/theme/types';
+import { buildStorage } from '@/common/platform/storage';
 
 // 系统配置存储
-export const ConfigStorage = storage.buildStorage<IConfigStorageRefer>('agent.config');
+export const ConfigStorage = buildStorage<IConfigStorageRefer>('agent.config');
 
 // 系统环境变量存储
-export const EnvStorage = storage.buildStorage<IEnvStorageRefer>('agent.env');
+export const EnvStorage = buildStorage<IEnvStorageRefer>('agent.env');
 
 export interface IConfigStorageRefer {
   'google.config'?: {
@@ -474,6 +474,15 @@ export type ModelCapability = {
   isUserSelected?: boolean;
 };
 
+export type ModelOpenAiApiMode = 'chat_completions' | 'responses';
+
+export type ModelImageInputCapability = 'supported' | 'unsupported';
+
+export type ModelSettings = {
+  image_input?: ModelImageInputCapability;
+  openai_api_mode?: ModelOpenAiApiMode;
+};
+
 export interface IProvider {
   id: string;
   platform: string;
@@ -533,6 +542,11 @@ export interface IProvider {
       error?: string; // 错误信息 / error message
     }
   >;
+  /**
+   * Explicit per-model overrides. Missing entries retain automatic image-input
+   * capability and OpenAI API mode resolution.
+   */
+  model_settings?: Record<string, ModelSettings>;
   is_full_url?: boolean;
 }
 

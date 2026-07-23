@@ -74,6 +74,8 @@ import type {
   ITeamRunEvent,
   ITeamRunStateResponse,
   ITeamSessionChangedEvent,
+  ITeamSessionStatusChangedEvent,
+  ITeamSlotWorkChangedEvent,
   ITeamTaskChangedEvent,
   ICancelTeamChildTurnParams,
   ICancelTeamRunParams,
@@ -2077,6 +2079,9 @@ export const team = {
       files: p.files,
     })
   ),
+  attachAgent: httpPost<void, { team_id: string; slot_id: string }>(
+    (p) => `/api/teams/${p.team_id}/agents/${p.slot_id}/attach`
+  ),
   cancelRun: httpPost<void, ICancelTeamRunParams>(
     (p) => `/api/teams/${p.team_id}/runs/${p.team_run_id}/cancel`,
     (p) => ({
@@ -2116,6 +2121,7 @@ export const team = {
   childTurnStarted: wsEmitter<ITeamChildTurnEvent>('team.childTurnStarted'),
   childTurnCompleted: wsEmitter<ITeamChildTurnEvent>('team.childTurnCompleted'),
   childTurnCancelled: wsEmitter<ITeamChildTurnEvent>('team.childTurnCancelled'),
+  slotWorkChanged: wsEmitter<ITeamSlotWorkChangedEvent>('team.slotWorkChanged'),
 };
 
 // ---------------------------------------------------------------------------

@@ -78,6 +78,7 @@ vi.mock('@/common', () => ({
       childTurnStarted: makeTeamEventChannel('childTurnStarted'),
       childTurnCompleted: makeTeamEventChannel('childTurnCompleted'),
       childTurnCancelled: makeTeamEventChannel('childTurnCancelled'),
+      slotWorkChanged: makeTeamEventChannel('slotWorkChanged'),
       listChanged: makeTeamEventChannel('listChanged'),
     },
     cron: {

@@ -129,6 +129,7 @@ C (登录)   → 改代码 + 重新生成: git diff v2.1.34 -- $(cat 003-files.t
 
 | 上游版本 | POUNDING 分支 | 方法 | 结果 |
 |---------|--------------|------|------|
-| v2.1.34 | feature/upstream-sync-v2.1.34-v5 | `git merge v2.1.34 -X theirs` | 0 tsc errors, 274/294 tests, 19 pending |
+| v2.1.39 | main (pounding) | `git merge v2.1.39 -X theirs` | 0 tsc errors, 2476 passed, branding 80/80 |
+| v2.1.34 | feature/upstream-sync-v2.1.34-v5 | `git merge v2.1.34 -X theirs` | 0 tsc errors, initial 274/294 |
 | v2.1.31 | feature/upstream-sync-v2.1.31 | squash merge (已废弃) | — |
 | v2.1.12 | origin/main | fork 点 | — |

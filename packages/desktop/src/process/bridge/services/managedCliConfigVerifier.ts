@@ -133,35 +133,6 @@ export function verifyConfigByTarget(
       }
       break;
     }
-    case 'opencode': {
-      const parsed = parseJsonRecord(content);
-      const provider = getRecord(parsed?.provider);
-      if (!parsed) {
-        errors.push('invalid OpenCode config');
-        break;
-      }
-      const providerEntries = provider
-        ? Object.values(provider)
-            .map((entry) => getRecord(entry))
-            .filter(Boolean)
-        : [];
-      const managedOptions = providerEntries
-        .map((entry) => getRecord(entry?.options))
-        .filter(Boolean)
-        .find(
-          (options) =>
-            matchesBaseUrl(getString(options?.baseURL), expected, { allowOpenAiCompatibleSuffix: true }) ||
-            Boolean(getString(options?.apiKey))
-        );
-      const baseUrl = getString(managedOptions?.baseURL);
-      const apiKey = getString(managedOptions?.apiKey);
-      if (!matchesBaseUrl(baseUrl, expected, { allowOpenAiCompatibleSuffix: true })) {
-        errors.push(`expected OpenCode base URL ${expected}`);
-      }
-      if (!baseUrl) errors.push('missing OpenCode baseURL');
-      if (!apiKey) errors.push('missing OpenCode apiKey');
-      break;
-    }
     case 'openclaw': {
       const parsed = parseJsonRecord(content);
       const models = getRecord(parsed?.models);

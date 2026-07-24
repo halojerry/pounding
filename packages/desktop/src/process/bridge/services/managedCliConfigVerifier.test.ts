@@ -67,48 +67,6 @@ describe('managedCliConfigVerifier', () => {
     expect(result.ok).toBe(true);
   });
 
-  it('verifies OpenCode config structurally', () => {
-    const result = verifyConfigByTarget(
-      'opencode',
-      JSON.stringify({
-        provider: {
-          'pounding-new-api': {
-            npm: '@ai-sdk/openai-compatible',
-            options: {
-              baseURL: 'https://api.mxou.cn',
-              apiKey: 'sk-test',
-            },
-          },
-        },
-      }),
-      undefined,
-      'https://api.mxou.cn'
-    );
-
-    expect(result.ok).toBe(true);
-  });
-
-  it('accepts normalized OpenCode base URLs with /v1 suffix', () => {
-    const result = verifyConfigByTarget(
-      'opencode',
-      JSON.stringify({
-        provider: {
-          pounding: {
-            npm: '@ai-sdk/openai-compatible',
-            options: {
-              baseURL: 'https://api.mxou.cn/v1',
-              apiKey: 'sk-test',
-            },
-          },
-        },
-      }),
-      undefined,
-      'https://api.mxou.cn'
-    );
-
-    expect(result.ok).toBe(true);
-  });
-
   it('verifies OpenClaw config structurally', () => {
     const result = verifyConfigByTarget(
       'openclaw',

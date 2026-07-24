@@ -801,49 +801,12 @@ const DESCRIPTORS: Record<ManagedCliInstallTarget, ManagedCliDescriptor> = {
       await uninstallGlobalPackage('@anthropic-ai/claude-code');
     },
   },
-  codex: {
-    target: 'codex',
-    detectCommand: 'codex',
-    detectPaths: [
-      path.join(HERMES_BIN_DIR, process.platform === 'win32' ? 'codex.cmd' : 'codex'),
-      path.join(
-        process.env.HOME || os.homedir(),
-        '.codex',
-        '.npm-global',
-        'bin',
-        process.platform === 'win32' ? 'codex.cmd' : 'codex'
-      ),
-      path.join(BUN_BIN_DIR, process.platform === 'win32' ? 'codex.cmd' : 'codex'),
-    ],
-    install: async () => {
-      const command = await getGlobalJsCommand();
-      if (command === getNpmCommand()) {
-        await installNpmPackage('@openai/codex');
-        return;
-      }
-      await installBunPackage('@openai/codex');
-    },
-    uninstall: async () => {
-      await uninstallGlobalPackage('@openai/codex');
-    },
-  },
   hermes: {
     target: 'hermes',
     detectCommand: 'hermes',
     detectPaths: [HERMES_SHIM_PATH],
     install: installHermes,
     uninstall: uninstallHermes,
-  },
-  opencode: {
-    target: 'opencode',
-    detectCommand: 'opencode',
-    detectPaths: [
-      path.join(HERMES_BIN_DIR, process.platform === 'win32' ? 'opencode.cmd' : 'opencode'),
-      getOpencodeBinaryTargetPath(),
-      getOpencodePlatformBinaryPath(),
-    ],
-    install: installOpenCode,
-    uninstall: uninstallOpenCode,
   },
   openclaw: {
     target: 'openclaw',
@@ -874,9 +837,6 @@ async function isManagedCliInstalled(descriptor: ManagedCliDescriptor): Promise<
 }
 
 async function syncAfterInstall(target: ManagedCliInstallTarget): Promise<void> {
-  if (target === 'opencode') {
-    ensureManagedOpencodeShim();
-  }
   await newApiDesktopAccountService.reconcileManagedRuntimeState({ cliTarget: target });
   await refreshAgents();
 }
@@ -908,9 +868,6 @@ async function installManagedCli(input: ManagedCliInstallOptions): Promise<Manag
     if (bundledDir) {
       console.log(`[POUNDING] Installing ${descriptor.target} from bundled resources...`);
       materializeFromBundled(descriptor, bundledDir);
-      if (descriptor.target === 'opencode') {
-        writeOpencodeShim();
-      }
       await syncAfterInstall(descriptor.target);
       const installed = await isManagedCliInstalled(descriptor);
       return {
@@ -1009,7 +966,7 @@ export type CliAvailabilityReport = {
 };
 
 export async function verifyAllClisAvailable(): Promise<CliAvailabilityReport> {
-  const targets: ManagedCliInstallTarget[] = ['hermes', 'openclaw', 'claude', 'codex', 'opencode'];
+  const targets: ManagedCliInstallTarget[] = ['hermes', 'openclaw', 'claude'];
   const missing: string[] = [];
   const details: CliAvailabilityReport['details'] = {};
 

@@ -26,7 +26,7 @@ import {
 } from '@/common/types/agent/managedRuntimeCli';
 import type { CreateProviderRequest, UpdateProviderRequest } from '@/common/types/provider/providerApi';
 import { getProviderAuthType } from '@/common/utils/platformAuthType';
-import { AuthType } from '@office-ai/aioncli-core';
+import { AuthType } from '@/common/types/provider/authType';
 import { ProcessConfig, getSystemDir } from '@process/utils/initStorage';
 import { readCodexProxyPort, ensureCodexProxyRunning } from '@process/services/CodexProxyManager';
 import { createRequire } from 'node:module';

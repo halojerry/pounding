@@ -1287,5 +1287,12 @@
     "solveWithButler": "Ask the Butler"
   },
   "providerIdConflict": "Provider ID already exists. Please try again.",
-  "autoInjectedSkillsHint": "Loaded automatically into every conversation — no need to enable them; the agent decides when to use them."
+  "autoInjectedSkillsHint": "Loaded automatically into every conversation — no need to enable them; the agent decides when to use them.",
+  "newApiDesktopGateDesc": "Please log in to your POUNDING account",
+  "newApiDesktopGateTitle": "POUNDING Desktop Login",
+  "newApiDesktopGateHint": "Access all CLI tools and models after login",
+  "newApiLogin": "POUNDING Login",
+  "newApiLogout": "Logout",
+  "newApiRegister": "Register POUNDING",
+  "newApiLoginSuccess": "Login successful"
 }

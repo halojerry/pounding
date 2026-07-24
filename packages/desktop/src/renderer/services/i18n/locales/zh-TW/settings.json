@@ -1289,5 +1289,12 @@
     "solveWithButler": "找管家排查"
   },
   "providerIdConflict": "Provider ID 已存在，請重試。",
-  "autoInjectedSkillsHint": "每次對話都會自動載入，無需手動啟用；由智能體自行決定何時呼叫。"
+  "autoInjectedSkillsHint": "每次對話都會自動載入，無需手動啟用；由智能體自行決定何時呼叫。",
+  "newApiDesktopGateDesc": "請登入您的 POUNDING 帳號",
+  "newApiDesktopGateTitle": "POUNDING 桌面登入",
+  "newApiDesktopGateHint": "登入後可使用所有 CLI 工具和模型",
+  "newApiLogin": "POUNDING 登入",
+  "newApiLogout": "登出",
+  "newApiRegister": "註冊 POUNDING",
+  "newApiLoginSuccess": "登入成功"
 }

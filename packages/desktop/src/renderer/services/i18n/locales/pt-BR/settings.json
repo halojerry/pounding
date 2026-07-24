@@ -1290,5 +1290,12 @@
     "solveWithButler": "Perguntar ao Mordomo"
   },
   "providerIdConflict": "O Provider ID já existe. Tente novamente.",
-  "autoInjectedSkillsHint": "Carregadas automaticamente em cada conversa — não é preciso ativá-las; o agente decide quando usá-las."
+  "autoInjectedSkillsHint": "Carregadas automaticamente em cada conversa — não é preciso ativá-las; o agente decide quando usá-las.",
+  "newApiDesktopGateDesc": "Faça login na sua conta POUNDING",
+  "newApiDesktopGateTitle": "Login POUNDING Desktop",
+  "newApiDesktopGateHint": "Acesse todas as ferramentas CLI e modelos após o login",
+  "newApiLogin": "Login POUNDING",
+  "newApiLogout": "Sair",
+  "newApiRegister": "Registrar POUNDING",
+  "newApiLoginSuccess": "Login bem-sucedido"
 }

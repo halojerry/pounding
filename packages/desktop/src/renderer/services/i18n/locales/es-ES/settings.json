@@ -1287,5 +1287,12 @@
     "solveWithButler": "Preguntar al Mayordomo"
   },
   "providerIdConflict": "El ID del proveedor ya existe. Inténtalo de nuevo.",
-  "autoInjectedSkillsHint": "Se cargan automáticamente en cada conversación: no hace falta activarlas; el agente decide cuándo usarlas."
+  "autoInjectedSkillsHint": "Se cargan automáticamente en cada conversación: no hace falta activarlas; el agente decide cuándo usarlas.",
+  "newApiDesktopGateDesc": "Inicie sesión en su cuenta POUNDING",
+  "newApiDesktopGateTitle": "Inicio de sesión POUNDING",
+  "newApiDesktopGateHint": "Acceda a todas las herramientas CLI y modelos tras iniciar sesión",
+  "newApiLogin": "Iniciar sesión POUNDING",
+  "newApiLogout": "Cerrar sesión",
+  "newApiRegister": "Registrar POUNDING",
+  "newApiLoginSuccess": "Inicio de sesión exitoso"
 }

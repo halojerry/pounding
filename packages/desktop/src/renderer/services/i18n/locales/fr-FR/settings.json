@@ -1287,5 +1287,12 @@
     "solveWithButler": "Demander au majordome"
   },
   "providerIdConflict": "L'ID du fournisseur existe déjà. Veuillez réessayer.",
-  "autoInjectedSkillsHint": "Chargé automatiquement dans chaque conversation – pas besoin de les activer ; l'agent décide quand les utiliser."
+  "autoInjectedSkillsHint": "Chargé automatiquement dans chaque conversation – pas besoin de les activer ; l'agent décide quand les utiliser.",
+  "newApiDesktopGateDesc": "Veuillez vous connecter à votre compte POUNDING",
+  "newApiDesktopGateTitle": "Connexion POUNDING",
+  "newApiDesktopGateHint": "Accédez à tous les outils CLI et modèles après connexion",
+  "newApiLogin": "Connexion POUNDING",
+  "newApiLogout": "Déconnexion",
+  "newApiRegister": "S'inscrire POUNDING",
+  "newApiLoginSuccess": "Connexion réussie"
 }

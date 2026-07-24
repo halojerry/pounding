@@ -1287,5 +1287,12 @@
     "solveWithButler": "از باتلر بپرس"
   },
   "providerIdConflict": "شناسه ارائه‌دهنده از قبل وجود دارد. دوباره تلاش کنید.",
-  "autoInjectedSkillsHint": "در هر گفتگو به‌طور خودکار بارگذاری می‌شوند — نیازی به فعال‌سازی نیست؛ عامل تصمیم می‌گیرد چه زمانی از آن‌ها استفاده کند."
+  "autoInjectedSkillsHint": "در هر گفتگو به‌طور خودکار بارگذاری می‌شوند — نیازی به فعال‌سازی نیست؛ عامل تصمیم می‌گیرد چه زمانی از آن‌ها استفاده کند.",
+  "newApiDesktopGateDesc": "لطفا وارد حساب POUNDING خود شوید",
+  "newApiDesktopGateTitle": "ورود به POUNDING",
+  "newApiDesktopGateHint": "دسترسی به همه ابزارها و مدل‌های CLI پس از ورود",
+  "newApiLogin": "ورود به POUNDING",
+  "newApiLogout": "خروج",
+  "newApiRegister": "ثبت‌نام POUNDING",
+  "newApiLoginSuccess": "ورود موفق"
 }

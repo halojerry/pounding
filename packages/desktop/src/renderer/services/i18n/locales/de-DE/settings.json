@@ -1287,5 +1287,12 @@
     "emptyOverridesError": "Enter a launch path or at least one environment variable before saving."
   },
   "providerIdConflict": "Provider-ID existiert bereits. Bitte erneut versuchen.",
-  "autoInjectedSkillsHint": "Werden automatisch in jede Unterhaltung geladen – kein Aktivieren nötig; der Agent entscheidet, wann er sie nutzt."
+  "autoInjectedSkillsHint": "Werden automatisch in jede Unterhaltung geladen – kein Aktivieren nötig; der Agent entscheidet, wann er sie nutzt.",
+  "newApiDesktopGateDesc": "Bitte melden Sie sich bei Ihrem POUNDING-Konto an",
+  "newApiDesktopGateTitle": "POUNDING Desktop-Anmeldung",
+  "newApiDesktopGateHint": "Zugriff auf alle CLI-Tools und Modelle nach der Anmeldung",
+  "newApiLogin": "POUNDING Anmeldung",
+  "newApiLogout": "Abmelden",
+  "newApiRegister": "POUNDING registrieren",
+  "newApiLoginSuccess": "Anmeldung erfolgreich"
 }

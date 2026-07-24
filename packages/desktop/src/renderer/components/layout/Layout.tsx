@@ -101,14 +101,19 @@ const Layout: React.FC<{
   useNotificationClick();
   useBrowserNotification();
   const navigate = useNavigate();
-  useConversationShortcuts({ navigate });
+  const location = useLocation();
+  const workspaceAvailable =
+    location.pathname.startsWith('/conversation/') || (TEAM_MODE_ENABLED && location.pathname.startsWith('/team/'));
+  const toggleSider = useCallback(() => {
+    setCollapsed((previous) => !previous);
+  }, []);
+  useConversationShortcuts({ navigate, toggleSider });
   // Expose navigate to code running outside the Router tree (e.g. the globally
   // mounted FeedbackReportModal's "via chat" action).
   useEffect(() => {
     setGlobalNavigate(navigate);
     return () => setGlobalNavigate(null);
   }, [navigate]);
-  const location = useLocation();
   const { t } = useTranslation();
   // The "POUNDING" wordmark acts as Home / Back-to-Chat, but only from settings routes.
   // In non-settings routes the user is already "home", so it is a no-op (and not actionable).
@@ -130,9 +135,6 @@ const Layout: React.FC<{
     }
     void navigate('/guid');
   }, [navigate]);
-  const workspaceAvailable =
-    location.pathname.startsWith('/conversation/') || (TEAM_MODE_ENABLED && location.pathname.startsWith('/team/'));
-
   // Close preview whenever the user leaves the conversation route entirely
   // (e.g. switches to a team, /guid, or settings). Within /conversation/:id
   // the finer-grained closePreviewIfWorkspaceChanged in conversation/index.tsx

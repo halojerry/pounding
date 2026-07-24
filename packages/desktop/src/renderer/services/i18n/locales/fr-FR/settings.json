@@ -785,6 +785,7 @@
   "noAvailableModels": "Aucun modèle disponible",
   "appDescription": "Application GUI gratuite, locale et open-source pour Gemini CLI",
   "helpDocumentation": "Documentation d'aide",
+  "helpCenter": "Centre d'aide",
   "updateLog": "Journal des mises à jour",
   "feedback": "Retour d'expérience",
   "bugReport": "Signaler un bug",

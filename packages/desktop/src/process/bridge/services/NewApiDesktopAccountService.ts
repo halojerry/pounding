@@ -28,7 +28,6 @@ import type { CreateProviderRequest, UpdateProviderRequest } from '@/common/type
 import { getProviderAuthType } from '@/common/utils/platformAuthType';
 import { AuthType } from '@/common/types/provider/authType';
 import { ProcessConfig, getSystemDir } from '@process/utils/initStorage';
-import { readCodexProxyPort, ensureCodexProxyRunning } from '@process/services/CodexProxyManager';
 import { createRequire } from 'node:module';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -1643,24 +1642,8 @@ function resolveCodexWireApi(_profile: ProviderSyncProfile): string {
 }
 
 function resolveCodexBaseUrl(_profile: ProviderSyncProfile): string {
-  // Route Codex through the local API proxy so Requests API format gets
-  // translated to Chat Completions API format for the POUNDING API.
-  //
-  // The proxy is started by CodexProxyManager before this function is called
-  // (see syncManagedProviderRuntimeConfigs ordering). Read the actual port
-  // from the well-known port file to handle port conflicts transparently.
-  //
-  // Fallback to 18792 only if the port file is missing (proxy failed to start
-  // or was killed). In that case Codex won't work regardless of the port value.
-  const proxyPort = readCodexProxyPort();
-  if (proxyPort === null) {
-    console.warn(
-      '[POUNDING] Codex proxy port file not found — proxy may have failed to start. ' +
-        'Falling back to default port 18792. Codex CLI will be unavailable until proxy is restarted.'
-    );
-    return 'http://127.0.0.1:18792/v1';
-  }
-  return `http://127.0.0.1:${proxyPort}/v1`;
+  // Codex support has been removed. Return default.
+  return 'http://127.0.0.1:18792/v1';
 }
 
 function writeCodexConfigForProviderSync(provider: TProviderWithModel, modelList: string[]): void {
@@ -2124,11 +2107,6 @@ async function syncManagedProviderRuntimeConfigs(
   // writeCodexConfigForProviderSync runs in parallel and may read the stale
   // port before the new proxy is ready → Codex config.toml points to a dead
   // port → UNKNOWN_UPSTREAM_ERROR on next conversation turn.
-  const proxyReady = await ensureCodexProxyRunning();
-  if (!proxyReady) {
-    console.warn('[POUNDING] Codex proxy not available — Codex CLI will be unavailable');
-  }
-
   await Promise.all(
     cliTasks.map(async ({ cliTarget: target, run }) => {
       const providerWithModel = buildProviderWithModel(provider, resolveManagedCliModelId(provider, prefs, target));

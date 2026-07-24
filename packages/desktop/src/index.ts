@@ -36,7 +36,6 @@ import { wasLaunchedAtLogin } from '@process/bridge/applicationBridge';
 import { onLanguageChanged } from './process/bridge/systemSettingsBridge';
 import { setInitialLanguage } from '@process/services/i18n';
 import { setupApplicationMenu } from './process/utils/appMenu';
-import { ensureCodexProxyRunning, stopCodexProxy } from './process/services/CodexProxyManager';
 import { startWebHost } from '@aionui/web-host';
 import { initializeZoomFactor, setupZoomForWindow } from './process/utils/zoom';
 import { hydrateWindowsProcessPath } from './process/startup/windowsPath';
@@ -423,20 +422,6 @@ function markBackendReady(backendPort: number, source: string): void {
   (globalThis as typeof globalThis & { __backendStartupFailed?: boolean }).__backendStartupFailed = false;
   void ensureAdminUserOnce(backendPort);
   scheduleBackendMigrations();
-
-  // Start the codex-api-proxy so Codex CLI works out-of-the-box.
-  // Don't block startup — the proxy starts asynchronously.
-  void ensureCodexProxyRunning()
-    .then((result) => {
-      if (result) {
-        console.log(`[POUNDING] Codex API proxy running on port ${result.port}`);
-      } else {
-        console.warn('[POUNDING] Codex API proxy could not be started — Codex CLI will not work');
-      }
-    })
-    .catch((err) => {
-      console.warn('[POUNDING] Codex API proxy startup failed:', err.message || err);
-    });
 }
 
 function resolveDebugBackendStartupFailure(): BackendStartupFailureInfo | null {
@@ -1130,7 +1115,6 @@ installQuitCleanup({
 });
 
 app.on('will-quit', () => {
-  stopCodexProxy();
   console.log('[POUNDING] will-quit — all cleanup should be complete');
 });
 

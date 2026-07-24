@@ -1294,5 +1294,6 @@
   "newApiLogin": "Iniciar sesión POUNDING",
   "newApiLogout": "Cerrar sesión",
   "newApiRegister": "Registrar POUNDING",
-  "newApiLoginSuccess": "Inicio de sesión exitoso"
+  "newApiLoginSuccess": "Inicio de sesión exitoso",
+  "display": "Pantalla"
 }

@@ -1302,5 +1302,6 @@
   "providerIdConflict": "Provider ID вже існує. Спробуйте ще раз.",
   "channels.wecomTitle": "WeCom",
   "channels.wecomDesc": "Chat with POUNDING assistant via WeCom (Enterprise WeChat AI Bot)",
-  "autoInjectedSkillsHint": "Автоматично завантажуються в кожну розмову — вмикати не потрібно; агент сам вирішує, коли їх використовувати."
+  "autoInjectedSkillsHint": "Автоматично завантажуються в кожну розмову — вмикати не потрібно; агент сам вирішує, коли їх використовувати.",
+  "display": "Відображення"
 }

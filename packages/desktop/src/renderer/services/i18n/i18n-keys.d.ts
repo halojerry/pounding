@@ -1648,6 +1648,7 @@ export type I18nKey =
   | 'settings.dingtalk.testAndConnect'
   | 'settings.dingtalk.waitingConnection'
   | 'settings.dirNotConfigured'
+  | 'settings.display'
   | 'settings.duplicateAssistant'
   | 'settings.editApiKey'
   | 'settings.editAssistant'

@@ -1296,5 +1296,6 @@
   "newApiLogin": "POUNDING 登入",
   "newApiLogout": "登出",
   "newApiRegister": "註冊 POUNDING",
-  "newApiLoginSuccess": "登入成功"
+  "newApiLoginSuccess": "登入成功",
+  "display": "顯示"
 }

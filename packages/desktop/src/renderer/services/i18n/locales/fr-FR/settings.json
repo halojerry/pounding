@@ -1294,5 +1294,6 @@
   "newApiLogin": "Connexion POUNDING",
   "newApiLogout": "Déconnexion",
   "newApiRegister": "S'inscrire POUNDING",
-  "newApiLoginSuccess": "Connexion réussie"
+  "newApiLoginSuccess": "Connexion réussie",
+  "display": "Affichage"
 }

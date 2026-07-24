@@ -1294,5 +1294,6 @@
   "newApiLogin": "POUNDING Anmeldung",
   "newApiLogout": "Abmelden",
   "newApiRegister": "POUNDING registrieren",
-  "newApiLoginSuccess": "Anmeldung erfolgreich"
+  "newApiLoginSuccess": "Anmeldung erfolgreich",
+  "display": "Anzeige"
 }

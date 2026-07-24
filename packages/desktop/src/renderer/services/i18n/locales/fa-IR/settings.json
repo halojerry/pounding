@@ -1294,5 +1294,6 @@
   "newApiLogin": "ورود به POUNDING",
   "newApiLogout": "خروج",
   "newApiRegister": "ثبت‌نام POUNDING",
-  "newApiLoginSuccess": "ورود موفق"
+  "newApiLoginSuccess": "ورود موفق",
+  "display": "نمایش"
 }

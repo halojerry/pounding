@@ -2277,7 +2277,12 @@ function buildManagedProviderPayload(params: {
   models: string[];
   baseUrl?: string;
 }): CreateProviderRequest {
-  const baseUrl = params.baseUrl || NEW_API_BASE_URL;
+  // Append /v1 to the base URL so the aionrs backend constructs
+  // the correct API path: {base_url}/chat/completions
+  // Without /v1, the URL becomes api.mxou.cn/chat/completions which
+  // returns non-streaming JSON instead of SSE.
+  const rawBaseUrl = params.baseUrl || NEW_API_BASE_URL;
+  const baseUrl = rawBaseUrl.replace(/\/+$/, '') + '/v1';
   return {
     id: NEW_API_MANAGED_PROVIDER_ID,
     name: NEW_API_PROVIDER_DISPLAY_NAME,

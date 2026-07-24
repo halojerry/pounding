@@ -365,68 +365,50 @@ function materializeFromBundled(descriptor: ManagedCliDescriptor, bundledDir: st
   const kind: string = manifest.kind || 'node'; // default 'node' for backward compat
 
   if (kind === 'native') {
-    // ── Native binary (e.g. Claude, Codex) ──────────────────────────
-    // Write a direct-exec shim — no Node.js wrapper needed.
+    // ── Native binary (e.g. Claude) ──────────────────────────────────
+    // Copy the binary to the detect path instead of writing a shim.
+    // Shims with absolute paths break on app update; a copied binary is
+    // self-contained and survives updates.
     const shimPath = descriptor.detectPaths?.[0];
-    if (shimPath) {
+    if (shimPath && !fs.existsSync(shimPath)) {
       ensureDir(path.dirname(shimPath));
-      if (!fs.existsSync(shimPath)) {
-        if (process.platform === 'win32') {
-          const shim = `@echo off\r\n"${entrypointAbs}" %*\r\n`;
-          fs.writeFileSync(shimPath, shim, { encoding: 'utf8' });
-        } else {
-          const shim = `#!/usr/bin/env bash\nexec ${JSON.stringify(entrypointAbs)} "$@"\n`;
-          fs.writeFileSync(shimPath, shim, { encoding: 'utf8', mode: 0o755 });
-        }
+      fs.copyFileSync(entrypointAbs, shimPath);
+      if (process.platform !== 'win32') {
+        fs.chmodSync(shimPath, 0o755);
       }
     }
     return;
   }
 
-  // ── Node.js package (existing path) ──────────────────────────────
+  // ── Node.js package ──────────────────────────────────────────────
+  // Copy node_modules to the global install dir so the CLI can resolve
+  // its dependencies. Then copy the entrypoint script (with #!/usr/bin/env
+  // node shebang) to the detect path — no absolute-path shim that breaks
+  // on app update.
 
-  // 1. Copy node_modules from bundle to global bun directory so the
-  //    CLI can resolve its dependencies at runtime.
   const bundledNodeModules = path.join(bundledDir, 'node_modules');
   if (fs.existsSync(bundledNodeModules)) {
     const targetNodeModules = path.join(BUN_HOME_DIR, 'install', 'global', 'node_modules');
     ensureDir(targetNodeModules);
-
-    // Infer the npm package directory from the entrypoint path.
-    // Example entrypoint: node_modules/@openai/codex/bin/codex.js
-    // → package dir: node_modules/@openai/codex → target: @openai/codex
     const pkgParts = entrypointRel.split(path.sep);
     const scopeIdx = pkgParts.indexOf('node_modules');
     if (scopeIdx >= 0 && pkgParts.length > scopeIdx + 2) {
-      const isScoped = pkgParts[scopeIdx + 2]?.startsWith('@');
-      const pkgDirName = isScoped ? pkgParts[scopeIdx + 2]! : pkgParts[scopeIdx + 1]!;
       const srcPkg = path.join(bundledNodeModules, pkgParts[scopeIdx + 1]!);
       const destPkg = path.join(targetNodeModules, pkgParts[scopeIdx + 1]!);
       copyDirContents(srcPkg, destPkg);
-
-      // Also materialise .bin/ shim entries (e.g. codex → codex.js)
       const srcBin = path.join(bundledNodeModules, '.bin');
       const destBin = path.join(targetNodeModules, '.bin');
       if (fs.existsSync(srcBin)) copyDirContents(srcBin, destBin);
     }
   }
 
-  // 2. Write a shim in POUNDING's managed CLI bin directory.
-  //    The first detectPath is always the POUNDING-managed path;
-  //    we only install there, never polluting the user's global bins.
+  // Copy the main entrypoint to the detect path with a node shebang.
   const shimPath = descriptor.detectPaths?.[0];
-  if (shimPath) {
+  if (shimPath && !fs.existsSync(shimPath)) {
     ensureDir(path.dirname(shimPath));
-    if (!fs.existsSync(shimPath)) {
-      const nodeCmd = resolveNodeForShim();
-      if (process.platform === 'win32') {
-        const shim = `@echo off\r\n"${nodeCmd}" "${entrypointAbs}" %*\r\n`;
-        fs.writeFileSync(shimPath, shim, { encoding: 'utf8' });
-      } else {
-        const shim = `#!/usr/bin/env bash\nexec ${JSON.stringify(nodeCmd)} ${JSON.stringify(entrypointAbs)} "$@"\n`;
-        fs.writeFileSync(shimPath, shim, { encoding: 'utf8', mode: 0o755 });
-      }
-    }
+    const content = fs.readFileSync(entrypointAbs, 'utf-8');
+    const withShebang = content.startsWith('#!') ? content : `#!/usr/bin/env node\n${content}`;
+    fs.writeFileSync(shimPath, withShebang, { encoding: 'utf8', mode: 0o755 });
   }
 }
 
@@ -863,22 +845,33 @@ async function installManagedCli(input: ManagedCliInstallOptions): Promise<Manag
       return { success: true, status: 'installed' };
     }
 
-    // Try bundled resources first (zero network!)
+    // Try native install first (bun add -g / pip install).
+    // This properly registers the CLI on PATH and survives app updates.
+    try {
+      console.log(`[POUNDING] Installing ${descriptor.target} via native package manager...`);
+      await descriptor.install();
+      await syncAfterInstall(descriptor.target);
+      const installed = await isManagedCliInstalled(descriptor);
+      if (installed) {
+        return { success: true, status: 'installed' };
+      }
+    } catch (err) {
+      console.warn(`[POUNDING] Native install failed for ${descriptor.target}, trying bundled fallback:`, err);
+    }
+
+    // Bundled fallback: copy binary from app resources (no network needed).
     const bundledDir = resolveBundledCliDir(descriptor.target);
     if (bundledDir) {
       console.log(`[POUNDING] Installing ${descriptor.target} from bundled resources...`);
       materializeFromBundled(descriptor, bundledDir);
       await syncAfterInstall(descriptor.target);
       const installed = await isManagedCliInstalled(descriptor);
-      return {
-        success: installed,
-        status: installed ? 'installed' : 'failed',
-        message: installed ? undefined : `${descriptor.detectCommand} still not available`,
-      };
+      if (installed) {
+        return { success: true, status: 'installed' };
+      }
     }
 
-    // Hermes uses a different bundle layout (Python wheels in runtimes/,
-    // not a Node.js package in cli/). Try preinstallHermesFromBundle.
+    // Hermes uses a different bundle layout (Python wheels in runtimes/).
     if (descriptor.target === 'hermes') {
       const bundledResourcesDir = resolveBundledResourcesDir();
       if (bundledResourcesDir) {
@@ -888,23 +881,15 @@ async function installManagedCli(input: ManagedCliInstallOptions): Promise<Manag
           writeHermesShim();
           await syncAfterInstall(descriptor.target);
           const installed = await isManagedCliInstalled(descriptor);
-          return {
-            success: installed,
-            status: installed ? 'installed' : 'failed',
-            message: installed ? undefined : 'hermes still not available after bundle install',
-          };
+          if (installed) return { success: true, status: 'installed' };
         }
       }
     }
 
-    // Fallback: network install
-    await descriptor.install();
-    await syncAfterInstall(descriptor.target);
-    const installed = await isManagedCliInstalled(descriptor);
     return {
-      success: installed,
-      status: installed ? 'installed' : 'failed',
-      message: installed ? undefined : `${descriptor.detectCommand} is still not available in PATH`,
+      success: false,
+      status: 'failed',
+      message: `${descriptor.detectCommand} is still not available in PATH`,
     };
   } catch (error) {
     return {

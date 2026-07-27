@@ -75,6 +75,10 @@ function copyDirectorySafe(sourcePath, targetPath) {
   fs.cpSync(sourcePath, targetPath, { recursive: true, force: true });
 }
 
+function copyDirectorySync(sourcePath, targetPath) {
+  copyDirectorySafe(sourcePath, targetPath);
+}
+
 function ensureExecutableMode(filePath) {
   if (process.platform === 'win32') return;
   try {

@@ -214,7 +214,6 @@ MANIFEST
 # ── 4. ACP tools ─────────────────────────────────────────────────────────
 
 CLAUDE_ACP_VERSION="${CLAUDE_ACP_VERSION:-0.52.0}"
-CODEX_ACP_VERSION="${CODEX_ACP_VERSION:-0.1.0}"
 
 vendor_acp_one() {
   local slug="$1" pkg="$2" version="$3"
@@ -289,12 +288,10 @@ MANIFEST
 
 vendor_acp() {
   vendor_acp_one "claude-agent-acp" "@agentclientprotocol/claude-agent-acp" "${CLAUDE_ACP_VERSION}"
-  vendor_acp_one "codex-acp" "@zed-industries/codex-acp" "${CODEX_ACP_VERSION}"
 }
 
 # ── 5. CLI tools ─────────────────────────────────────────────────────────
 
-OPENCODE_VERSION="${OPENCODE_VERSION:-0.1.0}"
 OPENCLAW_VERSION="${OPENCLAW_VERSION:-0.1.0}"
 HERMES_VERSION="${HERMES_VERSION:-0.1.0}"
 
@@ -368,7 +365,6 @@ MANIFEST
 }
 
 vendor_clis() {
-  vendor_cli_one "opencode" "opencode-ai" "${OPENCODE_VERSION}"
   vendor_cli_one "openclaw" "openclaw" "${OPENCLAW_VERSION}"
 }
 

@@ -167,8 +167,6 @@ echo "--- 1. Directory structure ---"
 # Use parallel arrays for compatibility with bash 3.2 (macOS default)
 EXPECTED_DIR_PATHS=(
   "cli/claude"
-  "cli/codex"
-  "cli/opencode"
   "cli/openclaw"
   "runtimes/uv"
   "runtimes/python"
@@ -178,8 +176,6 @@ EXPECTED_DIR_PATHS=(
 )
 EXPECTED_DIR_LABELS=(
   "CLI: claude"
-  "CLI: codex"
-  "CLI: opencode"
   "CLI: openclaw"
   "Runtime: uv"
   "Runtime: python"
@@ -205,7 +201,7 @@ echo ""
 # ---------------------------------------------------------------------------
 echo "--- 2. CLI bundle integrity ---"
 
-CLI_NAMES=(claude codex opencode openclaw)
+CLI_NAMES=(claude openclaw)
 VALID_PLATFORMS="darwin-arm64 darwin-x64 linux-x64 linux-arm64 win32-x64 win32-arm64"
 
 for cli in "${CLI_NAMES[@]}"; do
@@ -408,7 +404,7 @@ echo "--- 5. ACP tools ---"
 
 acp_dir="${MANAGED_RESOURCES}/acp"
 if [[ -d "${acp_dir}" ]]; then
-  for acp_tool in codex-acp claude-agent-acp; do
+  for acp_tool in claude-agent-acp; do
     if [[ -d "${acp_dir}/${acp_tool}" ]]; then
       pass "ACP tool directory exists: acp/${acp_tool}"
     else

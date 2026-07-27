@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const REQUIRED_CLI_NAMES = ['claude', 'codex'];
+const REQUIRED_CLI_NAMES = ['claude'];
 
 function backendBinaryName(platform) {
   return platform === 'win32' ? 'poundingcore.exe' : 'poundingcore';

@@ -8,17 +8,6 @@ const {
 } = require('../../../packages/shared-scripts/src/verify-bundled-poundingcore-resources');
 
 const CLAUDE_VERSION = '2.1.215';
-const CODEX_VERSION = '0.144.6';
-
-// codex ships under vendor/<triple>/... ; the triple is platform-specific.
-const CODEX_TRIPLE: Record<string, string> = {
-  'win32-x64': 'x86_64-pc-windows-msvc',
-  'win32-arm64': 'aarch64-pc-windows-msvc',
-  'darwin-arm64': 'aarch64-apple-darwin',
-  'darwin-x64': 'x86_64-apple-darwin',
-  'linux-x64': 'x86_64-unknown-linux-musl',
-  'linux-arm64': 'aarch64-unknown-linux-musl',
-};
 
 function exeSuffix(runtimeKey: string) {
   return runtimeKey.startsWith('win32') ? '.exe' : '';
@@ -26,14 +15,6 @@ function exeSuffix(runtimeKey: string) {
 
 function claudeExecutable(runtimeKey: string) {
   return `claude${exeSuffix(runtimeKey)}`;
-}
-
-function codexExecutable(runtimeKey: string) {
-  return `vendor/${CODEX_TRIPLE[runtimeKey]}/bin/codex${exeSuffix(runtimeKey)}`;
-}
-
-function codexVendorDir(runtimeKey: string) {
-  return `vendor/${CODEX_TRIPLE[runtimeKey]}`;
 }
 
 function writeFile(filePath: string) {
@@ -46,8 +27,7 @@ function writeJson(filePath: string, value: unknown) {
   writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, { flush: true });
 }
 
-// Materialize a CLI's on-disk layout: claude is a single binary at the root;
-// codex is a vendor/<triple> subtree with the main binary + sidecars.
+// Materialize a CLI's on-disk layout: claude is a single binary at the root.
 function createManagedCliFixture({
   managedResourcesDir,
   name,
@@ -60,14 +40,7 @@ function createManagedCliFixture({
   runtimeKey: string;
 }) {
   const root = join(managedResourcesDir, 'cli', name, version, runtimeKey);
-  if (name === 'claude') {
-    writeFile(join(root, claudeExecutable(runtimeKey)));
-  } else {
-    const triple = CODEX_TRIPLE[runtimeKey];
-    writeFile(join(root, 'vendor', triple, 'bin', `codex${exeSuffix(runtimeKey)}`));
-    writeFile(join(root, 'vendor', triple, 'bin', `codex-code-mode-host${exeSuffix(runtimeKey)}`));
-    writeFile(join(root, 'vendor', triple, 'codex-path', 'rg'));
-  }
+  writeFile(join(root, claudeExecutable(runtimeKey)));
   return root;
 }
 
@@ -83,14 +56,15 @@ function contractCli({ name, version, runtimeKey }: { name: string; version: str
       requiredDirectories: [],
     };
   }
+  // Only claude is supported
   return {
     name,
     version,
     root: `cli/${name}/${version}/${runtimeKey}`,
     platformDirectory: runtimeKey,
-    executable: codexExecutable(runtimeKey),
+    executable: claudeExecutable(runtimeKey),
     requiredFiles: [],
-    requiredDirectories: [codexVendorDir(runtimeKey)],
+    requiredDirectories: [],
   };
 }
 
@@ -116,7 +90,6 @@ function writeManagedResourcesContract(
     },
     clis: [
       contractCli({ name: 'claude', version: CLAUDE_VERSION, runtimeKey }),
-      contractCli({ name: 'codex', version: CODEX_VERSION, runtimeKey }),
     ],
   });
 }
@@ -137,7 +110,6 @@ function seedRuntimeKey(
   writeJson(join(resourcesDir, 'bundled-poundingcore', runtimeKey, 'manifest.json'), { platform, arch });
   writeFile(join(managedResourcesDir, ...nodeRoot.split('/'), ...nodeExecutable.split('/')));
   createManagedCliFixture({ managedResourcesDir, name: 'claude', version: CLAUDE_VERSION, runtimeKey });
-  createManagedCliFixture({ managedResourcesDir, name: 'codex', version: CODEX_VERSION, runtimeKey });
   writeManagedResourcesContract(managedResourcesDir, { runtimeKey, nodeRoot, nodeExecutable });
   return managedResourcesDir;
 }
@@ -234,7 +206,7 @@ describe('verifyBundledPoundingcoreResources', () => {
     expect(result.missing).toEqual([]);
     expect(result.failures).toEqual([]);
     expect(result.checked).toContain(
-      'bundled-poundingcore/win32-arm64/managed-resources/cli/codex/0.144.6/win32-arm64/vendor/aarch64-pc-windows-msvc/bin/codex.exe'
+      'bundled-poundingcore/win32-arm64/managed-resources/cli/claude/2.1.215/win32-arm64/claude.exe'
     );
   });
 
@@ -293,42 +265,6 @@ describe('verifyBundledPoundingcoreResources', () => {
     );
   });
 
-  it('fails when the pinned codex version directory is absent', () => {
-    // The contract pins 0.144.6; only an older tree exists on disk.
-    rmSync(join(managedResourcesDir, 'cli', 'codex', CODEX_VERSION), { recursive: true, force: true });
-    createManagedCliFixture({ managedResourcesDir, name: 'codex', version: '0.100.0', runtimeKey: 'win32-x64' });
-
-    const result = verifyBundledPoundingcoreResources({
-      resourcesDir,
-      electronPlatformName: 'win32',
-      targetArch: 'x64',
-    });
-
-    expect(result.missing).toContain(
-      'bundled-poundingcore/win32-x64/managed-resources/cli/codex/0.144.6/win32-x64/vendor/x86_64-pc-windows-msvc/bin/codex.exe'
-    );
-  });
-
-  it('fails when the codex vendor sidecar directory is missing', () => {
-    rmSync(join(managedResourcesDir, 'cli', 'codex', CODEX_VERSION, 'win32-x64', 'vendor'), {
-      recursive: true,
-      force: true,
-    });
-
-    const result = verifyBundledPoundingcoreResources({
-      resourcesDir,
-      electronPlatformName: 'win32',
-      targetArch: 'x64',
-    });
-
-    expect(result.failures).toContainEqual(
-      expect.objectContaining({
-        component: 'codex',
-        reason: 'missing_directory',
-      })
-    );
-  });
-
   it('fails when contract node root points to the required version but only a wrong node directory exists', () => {
     rmSync(join(managedResourcesDir, 'node', 'node-v24.11.0-win-x64'), { recursive: true, force: true });
     writeFile(join(managedResourcesDir, 'node', 'node-v20.0.0-win-x64', 'node.exe'));
@@ -369,7 +305,7 @@ describe('verifyBundledPoundingcoreResources', () => {
   it('fails when a required CLI is missing from the contract', () => {
     const manifestPath = join(managedResourcesDir, 'manifest.json');
     const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
-    manifest.clis = manifest.clis.filter((cli: { name: string }) => cli.name !== 'codex');
+    manifest.clis = manifest.clis.filter((cli: { name: string }) => cli.name !== 'claude');
     writeJson(manifestPath, manifest);
 
     const result = verifyBundledPoundingcoreResources({
@@ -380,7 +316,7 @@ describe('verifyBundledPoundingcoreResources', () => {
 
     expect(result.failures).toContainEqual(
       expect.objectContaining({
-        component: 'codex',
+        component: 'claude',
         reason: 'missing_required_cli',
       })
     );

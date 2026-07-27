@@ -139,12 +139,13 @@ const GuidModelSelector: React.FC<GuidModelSelectorProps> = ({
     const currentProviderModelId = current_model
       ? providerCompositeId(current_model.id, current_model.use_model || '')
       : null;
-    const addModelItem = (
+    const isProduction = process.env.NODE_ENV === 'production';
+    const addModelItem = !isProduction ? (
       <Menu.Item key='add-model' className='text-12px text-t-secondary' onClick={() => navigate('/settings/model')}>
         <Plus theme='outline' size='12' />
         {t('settings.addModel')}
       </Menu.Item>
-    );
+    ) : null;
 
     return (
       <Dropdown

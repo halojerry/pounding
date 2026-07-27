@@ -117,7 +117,7 @@ const SettingsSider: React.FC<{ collapsed?: boolean; tooltipEnabled?: boolean }>
     // hiding Pet in release builds, and hiding Agent page in production.
     const isProduction = process.env.NODE_ENV === 'production';
     const result: SiderItem[] = BUILTIN_TAB_IDS.filter(
-      (id) => (isDesktop || id !== 'pet') && (!isProduction || (id !== 'pet' && id !== 'agent'))
+      (id) => (isDesktop || id !== 'pet') && (!isProduction || (id !== 'pet' && id !== 'agent' && id !== 'model' && id !== 'appearance'))
     ).map((id) => builtinMap[id]);
 
     // Extension tabs with position anchoring

@@ -129,7 +129,33 @@ C (登录)   → 改代码 + 重新生成: git diff v2.1.34 -- $(cat 003-files.t
 
 | 上游版本 | POUNDING 分支                    | 方法                          | 结果                                      |
 | -------- | -------------------------------- | ----------------------------- | ----------------------------------------- |
+| v2.1.40 | main (pounding) | cherry-pick 6 commits | 0 tsc errors, 2610 tests, branding 80/80 |
 | v2.1.39  | main (pounding)                  | `git merge v2.1.39 -X theirs` | 0 tsc errors, 2476 passed, branding 80/80 |
 | v2.1.34  | feature/upstream-sync-v2.1.34-v5 | `git merge v2.1.34 -X theirs` | 0 tsc errors, initial 274/294             |
 | v2.1.31  | feature/upstream-sync-v2.1.31    | squash merge (已废弃)         | —                                         |
 | v2.1.12  | origin/main                      | fork 点                       | —                                         |
+
+## CI 架构教训
+
+上流 iOfficeAI/AionUi CI 健康（v2.1.41 刚发布）。POUNDING 的 CI 问题源于**偏离上游配置**。修 CI 时要对齐上游，不要自作主张加东西。
+
+### 关键对齐点
+
+| 配置 | POUNDING 旧值 | 上游值 | 影响 |
+|------|-------------|-------|------|
+| `bun-version` | `'1.3.13'` | `latest` | Windows NSIS 版本不兼容 |
+| Windows build 失败 | `exit 1` | `::notice` (不阻塞) | 单平台失败拉低全构建 |
+| `ELECTRON_BUILDER_BINARIES_MIRROR` | 有自定义镜像 | 不设置 | 镜像 404 |
+| Cache key | `runner.os + platform + arch` | `platform + arch` | Cache 命名空间不匹配 |
+
+### Code Quality 常见失败
+
+- **TS7011**: guid hook stub 缺少返回类型 → 加 `(): null`
+- **测试网络错误**: `bun run test` 中 DOM 测试调用 `/api/settings/client` CI 无后端 → 1 个 flaky
+- `bunx tsc --noEmit` 是主要检查项，本地通过基本就是通过
+
+### 发布流程
+
+- poundingcore 必须先发布（6 平台二进制）→ pounding 才能下载
+- macOS 构建最稳定；Windows 用 `continue-on-error: true`
+- 手动触发用 `gh workflow run build-and-release.yml -f manual_tag_name=v2.1.40`

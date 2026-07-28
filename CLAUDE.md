@@ -40,27 +40,27 @@ scripts/patches/
 
 ### 共享文件归属
 
-| 共享文件 | 归属 | 原因 |
-|----------|------|------|
-| `ipcBridge.ts` | 类别 C | NewApi 通道是主要改动 |
-| `SiderFooter.tsx` | 类别 C | 登录/余额 UI 是大头 |
-| `configKeys.ts` | 类别 C | NewApi 密钥占多数 |
-| `storage.ts` | 类别 C | NewApi 存储类型占多数 |
-| `index.ts` | 类别 C | CodexProxy + PATH 启动逻辑 |
+| 共享文件          | 归属   | 原因                       |
+| ----------------- | ------ | -------------------------- |
+| `ipcBridge.ts`    | 类别 C | NewApi 通道是主要改动      |
+| `SiderFooter.tsx` | 类别 C | 登录/余额 UI 是大头        |
+| `configKeys.ts`   | 类别 C | NewApi 密钥占多数          |
+| `storage.ts`      | 类别 C | NewApi 存储类型占多数      |
+| `index.ts`        | 类别 C | CodexProxy + PATH 启动逻辑 |
 
 ### 已知限制：7 个共享文件需手动验证
 
 这 7 个文件同时被品牌化（001）和逻辑 patch（002/003）修改，`git apply --3way` 有时需要手动解决：
 
-| 文件 | 归属 | 风险 |
-|------|------|------|
-| `autoUpdaterService.ts` | 002 | MEDIUM |
-| `AboutModalContent.tsx` | 002 | LOW |
-| `sentry.ts` | 002 | LOW |
-| `ipcBridge.ts` | 003 | **HIGH** |
-| `index.ts` | 003 | **HIGH** |
-| `webuiConfig.ts` | 003 | MEDIUM |
-| `backend-launcher.ts` | 003 | MEDIUM |
+| 文件                    | 归属 | 风险     |
+| ----------------------- | ---- | -------- |
+| `autoUpdaterService.ts` | 002  | MEDIUM   |
+| `AboutModalContent.tsx` | 002  | LOW      |
+| `sentry.ts`             | 002  | LOW      |
+| `ipcBridge.ts`          | 003  | **HIGH** |
+| `index.ts`              | 003  | **HIGH** |
+| `webuiConfig.ts`        | 003  | MEDIUM   |
+| `backend-launcher.ts`   | 003  | MEDIUM   |
 
 ### 高危 drift：main.tsx 的 NewApiAccountProvider（已丢过两次！）
 
@@ -127,9 +127,9 @@ C (登录)   → 改代码 + 重新生成: git diff v2.1.34 -- $(cat 003-files.t
 
 ## 版本记录
 
-| 上游版本 | POUNDING 分支 | 方法 | 结果 |
-|---------|--------------|------|------|
-| v2.1.39 | main (pounding) | `git merge v2.1.39 -X theirs` | 0 tsc errors, 2476 passed, branding 80/80 |
-| v2.1.34 | feature/upstream-sync-v2.1.34-v5 | `git merge v2.1.34 -X theirs` | 0 tsc errors, initial 274/294 |
-| v2.1.31 | feature/upstream-sync-v2.1.31 | squash merge (已废弃) | — |
-| v2.1.12 | origin/main | fork 点 | — |
+| 上游版本 | POUNDING 分支                    | 方法                          | 结果                                      |
+| -------- | -------------------------------- | ----------------------------- | ----------------------------------------- |
+| v2.1.39  | main (pounding)                  | `git merge v2.1.39 -X theirs` | 0 tsc errors, 2476 passed, branding 80/80 |
+| v2.1.34  | feature/upstream-sync-v2.1.34-v5 | `git merge v2.1.34 -X theirs` | 0 tsc errors, initial 274/294             |
+| v2.1.31  | feature/upstream-sync-v2.1.31    | squash merge (已废弃)         | —                                         |
+| v2.1.12  | origin/main                      | fork 点                       | —                                         |

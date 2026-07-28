@@ -76,7 +76,7 @@
 
 **POUNDING is more than a chat client.** It's a Cowork platform where AI agents work alongside you on your computer — reading files, writing code, browsing the web, and automating tasks. You see everything the agent does, and you're always in control.
 
-|                                 | Traditional AI Chat Clients | **POUNDING (Cowork)**                                                                                                     |
+|                                 | Traditional AI Chat Clients | **POUNDING (Cowork)**                                                                                                   |
 | :------------------------------ | :-------------------------- | :---------------------------------------------------------------------------------------------------------------------- |
 | AI can operate on your files    | Limited or No               | **Yes — built-in agent with full file access**                                                                          |
 | AI can execute multi-step tasks | Limited                     | **Yes — autonomous with your approval**                                                                                 |
@@ -534,7 +534,7 @@ _Open multiple conversations, tasks don't get mixed up, independent memory, doub
 
 POUNDING is a **free and open-source Multi-AI Agent Desktop**. Compared to Claude Cowork which only runs on macOS and is locked to Claude, POUNDING is its full-model, cross-platform enhanced version.
 
-| Dimension     | Claude Cowork | POUNDING                                                    |
+| Dimension     | Claude Cowork | POUNDING                                                  |
 | :------------ | :------------ | :-------------------------------------------------------- |
 | OS            | macOS Only    | macOS / Windows / Linux                                   |
 | Model Support | Claude Only   | Gemini, Claude, DeepSeek, OpenAI, Ollama, ...             |

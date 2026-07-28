@@ -18,7 +18,7 @@ must survive into the stable product line."
 
 | Change                                            | Category | Files                                                                                                                           | Status |
 | ------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------- | ------ |
-| Product name: POUNDING → POUNDING                   | Brand    | package.json, electron-builder.yml, app icons (icns, ico, png), .gitignore                                                      | ✅     |
+| Product name: POUNDING → POUNDING                 | Brand    | package.json, electron-builder.yml, app icons (icns, ico, png), .gitignore                                                      | ✅     |
 | i18n brand strings (all 8 locales × 5 files each) | Brand    | 40 locale JSON files                                                                                                            | ✅     |
 | Publish owner: iOfficeAI → halojerry              | Release  | electron-builder.yml                                                                                                            | ✅     |
 | COS-based release distribution                    | Release  | release-distribute.yml, 4 COS scripts, autoUpdaterService.ts, updateBridge.ts, updateTypes.ts                                   | ✅     |

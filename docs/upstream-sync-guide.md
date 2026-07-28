@@ -53,25 +53,25 @@ git apply --3way /tmp/upstream.patch
 
 ### 按文件类型
 
-| 文件类型 | 策略 |
-|---------|------|
-| `locales/*/common.json`, `login.json` | POUNDING 品牌永远优先 |
+| 文件类型                                          | 策略                               |
+| ------------------------------------------------- | ---------------------------------- |
+| `locales/*/common.json`, `login.json`             | POUNDING 品牌永远优先              |
 | `backend-launcher.ts`, `backendStartupFailure.ts` | 取上游，改 `aioncore→poundingcore` |
-| `electron-builder.yml` | POUNDING productName/appId/COS |
-| `package.json`, `CHANGELOG.md` | POUNDING 版本体系 |
-| 上游新文件 (ADD/ADD) | 取上游 |
-| POUNDING 独有文件 (MODIFY/DELETE) | 保留 POUNDING |
+| `electron-builder.yml`                            | POUNDING productName/appId/COS     |
+| `package.json`, `CHANGELOG.md`                    | POUNDING 版本体系                  |
+| 上游新文件 (ADD/ADD)                              | 取上游                             |
+| POUNDING 独有文件 (MODIFY/DELETE)                 | 保留 POUNDING                      |
 
 ### 品牌字符串速查
 
-| 上游值 | POUNDING 值 |
-|--------|------------|
-| `POUNDING` | `POUNDING` |
-| `aionui` | `pounding` |
-| `AionCore` / `aioncore` | `poundingcore` |
-| `com.aionui.app` | `com.pounding.app` |
-| `AIONCORE_LISTENING` | `POUNDINGCORE_LISTENING` |
-| `.aionui-modal-*` | `.pounding-modal-*` |
+| 上游值                  | POUNDING 值              |
+| ----------------------- | ------------------------ |
+| `POUNDING`              | `POUNDING`               |
+| `aionui`                | `pounding`               |
+| `AionCore` / `aioncore` | `poundingcore`           |
+| `com.aionui.app`        | `com.pounding.app`       |
+| `AIONCORE_LISTENING`    | `POUNDINGCORE_LISTENING` |
+| `.aionui-modal-*`       | `.pounding-modal-*`      |
 
 ## TypeScript 修复顺序
 
@@ -85,11 +85,11 @@ git apply --3way /tmp/upstream.patch
 
 ### 三级检查体系
 
-| 层级 | 触发条件 | 检查内容 |
-|------|---------|---------|
-| L1 | 关键版本 (v2.1.18, v2.1.31, v2.1.34) | tsc + branding + test + 冒烟 |
-| L2 | 大功能版本 | tsc + branding |
-| L3 | 所有版本 | tsc only |
+| 层级 | 触发条件                             | 检查内容                     |
+| ---- | ------------------------------------ | ---------------------------- |
+| L1   | 关键版本 (v2.1.18, v2.1.31, v2.1.34) | tsc + branding + test + 冒烟 |
+| L2   | 大功能版本                           | tsc + branding               |
+| L3   | 所有版本                             | tsc only                     |
 
 ### 冒烟清单
 

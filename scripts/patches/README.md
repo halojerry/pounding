@@ -25,7 +25,7 @@ Covers ~90 files: locale JSONs, CSS, icons (binary), binary name, log prefix, el
 `002-pound-channels.patch` — ~19 files.
 
 - Feishu wiki documentation links
-- COS (Tencent Cloud) update infrastructure  
+- COS (Tencent Cloud) update infrastructure
 - mxou.cn API URLs
 - Sentry DSN → POUNDING project
 - Dealer invite codes (CI injection → dealer-config.json)
@@ -44,15 +44,15 @@ These 7 files are modified by BOTH branding (001) and logic patches (002/003).
 Their context lines differ between clean v2.1.34+script and the v5 branch.
 They need MANUAL verification during each sync:
 
-| File | Owned By | Risk |
-|------|----------|------|
-| `autoUpdaterService.ts` | 002 (COS update) | MEDIUM |
-| `AboutModalContent.tsx` | 002 (Feishu URLs) | LOW |
-| `sentry.ts` | 002 (Sentry DSN) | LOW |
-| `ipcBridge.ts` | 003 (NewApi channels) | **HIGH** |
-| `index.ts` | 003 (CodexProxy startup) | **HIGH** |
-| `webuiConfig.ts` | 003 (reconcile config) | MEDIUM |
-| `backend-launcher.ts` | 003 (listening prefix) | MEDIUM |
+| File                    | Owned By                 | Risk     |
+| ----------------------- | ------------------------ | -------- |
+| `autoUpdaterService.ts` | 002 (COS update)         | MEDIUM   |
+| `AboutModalContent.tsx` | 002 (Feishu URLs)        | LOW      |
+| `sentry.ts`             | 002 (Sentry DSN)         | LOW      |
+| `ipcBridge.ts`          | 003 (NewApi channels)    | **HIGH** |
+| `index.ts`              | 003 (CodexProxy startup) | **HIGH** |
+| `webuiConfig.ts`        | 003 (reconcile config)   | MEDIUM   |
+| `backend-launcher.ts`   | 003 (listening prefix)   | MEDIUM   |
 
 ## Standard Upstream Sync Workflow
 
@@ -74,7 +74,7 @@ git apply --3way scripts/patches/002-pound-channels.patch
 git add -A && git commit -m "chore: apply POUNDING distribution channels"
 
 git apply --3way scripts/patches/003-pound-login.patch
-# ↑ may need manual fix for the 4 shared files in Known Gap  
+# ↑ may need manual fix for the 4 shared files in Known Gap
 git add -A && git commit -m "feat: apply POUNDING NewApi login system"
 
 # 5. Copy binary assets (not in patches)

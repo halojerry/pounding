@@ -76,7 +76,7 @@
 
 **POUNDING sadece bir sohbet istemcisi değil.** AI Agents'ın bilgisayarınızda sizinle çalıştığı bir Cowork platformudur — dosya okuma, kod yazma, web'de gezinme ve görevleri otomatikleştirme. Agent'ın yaptığı her şeyi görürsünüz ve her zaman kontrol sizdedir.
 
-|                                        | Geleneksel AI Sohbet İstemcileri | **POUNDING (Cowork)**                                                                                                             |
+|                                        | Geleneksel AI Sohbet İstemcileri | **POUNDING (Cowork)**                                                                                                           |
 | :------------------------------------- | :------------------------------- | :------------------------------------------------------------------------------------------------------------------------------ |
 | AI dosyalarınızda işlem yapabilir      | Sınırlı veya Yok                 | **Evet — tam dosya erişimi ile yerleşik Agent**                                                                                 |
 | AI çok adımlı görevleri çalıştırabilir | Sınırlı                          | **Evet — onayınızla özerk**                                                                                                     |
@@ -478,7 +478,7 @@ _Birden fazla konuşma açın, görevler karışmaz, bağımsız bellek, verimli
 
 POUNDING **ücretsiz ve açık kaynaklı bir Çoklu AI Agent Masaüstü** uygulamasıdır. Sadece macOS'ta çalışan ve Claude'ye kilitli Claude Cowork ile karşılaştırıldığında, POUNDING tam model, çapraz platform geliştirilmiş versiyonudur.
 
-| Boyut           | Claude Cowork | POUNDING                                            |
+| Boyut           | Claude Cowork | POUNDING                                          |
 | :-------------- | :------------ | :------------------------------------------------ |
 | İşletim Sistemi | Sadece macOS  | macOS / Windows / Linux                           |
 | Model Desteği   | Sadece Claude | Gemini, Claude, DeepSeek, OpenAI, Ollama, ...     |

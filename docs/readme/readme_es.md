@@ -76,7 +76,7 @@
 
 **POUNDING es más que un cliente de chat.** Es una plataforma Cowork donde los AI Agents trabajan contigo en tu computadora — leyendo archivos, escribiendo código, navegando por la web y automatizando tareas. Puedes ver todo lo que hace el Agent y siempre tienes el control.
 
-|                                             | Clientes de chat AI tradicionales | **POUNDING (Cowork)**                                                                                                                |
+|                                             | Clientes de chat AI tradicionales | **POUNDING (Cowork)**                                                                                                              |
 | :------------------------------------------ | :-------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------- |
 | AI puede operar en tus archivos             | Limitado o No                     | **Sí — Agent integrado con acceso completo a archivos**                                                                            |
 | AI puede ejecutar tareas de múltiples pasos | Limitado                          | **Sí — autónomo con tu aprobación**                                                                                                |
@@ -478,7 +478,7 @@ _Abre múltiples conversaciones, las tareas no se mezclan, memoria independiente
 
 POUNDING es un **Escritorio Multi-AI Agent gratuito y de código abierto**. En comparación con Claude Cowork que solo se ejecuta en macOS y está bloqueado a Claude, POUNDING es su versión mejorada de modelo completo y multiplataforma.
 
-| Dimensión          | Claude Cowork     | POUNDING                                                 |
+| Dimensión          | Claude Cowork     | POUNDING                                               |
 | :----------------- | :---------------- | :----------------------------------------------------- |
 | SO                 | Solo macOS        | macOS / Windows / Linux                                |
 | Soporte de modelos | Solo Claude       | Gemini, Claude, DeepSeek, OpenAI, Ollama, ...          |

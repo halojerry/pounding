@@ -137,7 +137,7 @@ describe('AutoUpdaterService', () => {
 
     expect(autoUpdaterMock.setFeedURL).toHaveBeenCalledWith({
       provider: 'custom',
-      url: 'https://static.aionui.com/releases',
+      url: 'https://yss-1256275613.cos.ap-guangzhou.myqcloud.com/pounding/releases',
       updateProvider: CdnGenericProvider,
     });
   });
@@ -301,7 +301,7 @@ describe('AutoUpdaterService', () => {
       releaseDate: '2026-06-08T00:00:00.000Z',
     };
     const fileInfo = {
-      url: new URL('https://static.aionui.com/releases/2.1.14/POUNDING-2.1.14-mac.zip'),
+      url: new URL('https://yss-1256275613.cos.ap-guangzhou.myqcloud.com/pounding/releases/2.1.14/POUNDING-2.1.14-mac.zip'),
       info: { url: 'POUNDING-2.1.14-mac.zip', sha512: 'sha512-value' },
     };
     const cachedUpdatePath = path.join('/cache/pending', 'POUNDING-2.1.14-mac.zip');
@@ -345,7 +345,7 @@ describe('AutoUpdaterService', () => {
       releaseDate: '2026-06-08T00:00:00.000Z',
     };
     const fileInfo = {
-      url: new URL('https://static.aionui.com/releases/2.1.14/POUNDING-2.1.14-mac.zip'),
+      url: new URL('https://yss-1256275613.cos.ap-guangzhou.myqcloud.com/pounding/releases/2.1.14/POUNDING-2.1.14-mac.zip'),
       info: { url: 'POUNDING-2.1.14-mac.zip', sha512: 'sha512-value' },
     };
     const validateDownloadedPath = vi.fn().mockResolvedValue(null);

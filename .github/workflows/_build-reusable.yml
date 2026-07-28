@@ -397,19 +397,19 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
 
-      - name: Purge potentially corrupted NSIS cache (Windows)
+      - name: Purge NSIS cache to force clean download (Windows)
         if: startsWith(matrix.platform, 'windows')
         shell: pwsh
         run: |
           $nsisDirs = Get-ChildItem "$env:ELECTRON_BUILDER_CACHE\nsis-*" -Directory -ErrorAction SilentlyContinue
           if ($nsisDirs) {
             foreach ($dir in $nsisDirs) {
-              $makensis = Get-ChildItem -Path $dir.FullName -Recurse -Filter "makensis.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-              if ($makensis -and $makensis.Length -lt 100KB) {
-                Write-Host "Purging corrupted NSIS cache: makensis.exe is only $([math]::Round($makensis.Length/1KB,1)) KB"
-                Remove-Item -Recurse -Force $dir.FullName -ErrorAction SilentlyContinue
-              }
+              Write-Host "Purging NSIS cache: $($dir.FullName)"
+              Remove-Item -Recurse -Force $dir.FullName -ErrorAction SilentlyContinue
             }
+            Write-Host "NSIS cache purged — will re-download"
+          } else {
+            Write-Host "No NSIS cache found — fresh download"
           }
 
       - name: Build with electron-builder (Windows)

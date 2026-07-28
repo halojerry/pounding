@@ -1,1 +1,1 @@
-export const usePresetAssistantResolver = () => null;
+export const usePresetAssistantResolver = (): null => null;

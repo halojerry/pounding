@@ -1,1 +1,1 @@
-export const useGuidMention = () => null;
+export const useGuidMention = (): null => null;

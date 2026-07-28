@@ -14,7 +14,6 @@ VENDOR_DIR="${PROJECT_DIR}/vendor/managed-resources"
 
 NODE_VERSION="${NODE_VERSION:-24.11.0}"
 HERMES_VERSION="${HERMES_VERSION:-0.1.0}"
-OPENCODE_VERSION="${OPENCODE_VERSION:-0.1.0}"
 OPENCLAW_VERSION="${OPENCLAW_VERSION:-0.1.0}"
 PYTHON_BUILD_STANDALONE_RELEASE="${PYTHON_BUILD_STANDALONE_RELEASE:-20250324}"
 PYTHON_VERSION="${PYTHON_VERSION:-3.12.9}"
@@ -540,7 +539,6 @@ MANIFEST
 }
 
 vendor_clis() {
-  vendor_cli_one "opencode" "opencode-ai" "${OPENCODE_VERSION}"
   vendor_cli_one "openclaw" "openclaw" "${OPENCLAW_VERSION}"
   vendor_hermes
 }
@@ -556,7 +554,6 @@ main() {
   echo "    uv:                   v${UV_VERSION}"
   echo "    chrome-devtools-mcp:  v${CHROME_DEVTOOLS_MCP_VERSION}"
   echo "    Claude ACP:           v${CLAUDE_ACP_VERSION}"
-  echo "    Codex ACP:            v${CODEX_ACP_VERSION}"
   echo "    Hermes:               v${HERMES_VERSION}"
   echo "    OpenCode:             v${OPENCODE_VERSION}"
   echo "    OpenClaw:             v${OPENCLAW_VERSION}"

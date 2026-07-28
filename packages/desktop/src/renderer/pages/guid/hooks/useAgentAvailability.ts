@@ -1,1 +1,1 @@
-export const useAgentAvailability = () => null;
+export const useAgentAvailability = (): null => null;

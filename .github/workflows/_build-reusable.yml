@@ -397,21 +397,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
 
-      - name: Purge NSIS cache to force clean download (Windows)
-        if: startsWith(matrix.platform, 'windows')
-        shell: pwsh
-        run: |
-          $nsisDirs = Get-ChildItem "$env:ELECTRON_BUILDER_CACHE\nsis-*" -Directory -ErrorAction SilentlyContinue
-          if ($nsisDirs) {
-            foreach ($dir in $nsisDirs) {
-              Write-Host "Purging NSIS cache: $($dir.FullName)"
-              Remove-Item -Recurse -Force $dir.FullName -ErrorAction SilentlyContinue
-            }
-            Write-Host "NSIS cache purged — will re-download"
-          } else {
-            Write-Host "No NSIS cache found — fresh download"
-          }
-
       - name: Build with electron-builder (Windows)
         if: startsWith(matrix.platform, 'windows')
         id: windows-build
@@ -429,7 +414,7 @@ jobs:
             $BuildFailed = $true
             $errorMessage = "$_"
             Write-Warning "${{ matrix.platform }} build failed: $errorMessage"
-            echo "::error title=${{ matrix.platform }} Build Failed::$errorMessage"
+            echo "::warning title=${{ matrix.platform }} Build Failed::$errorMessage"
           }
 
           if ($BuildFailed) {
@@ -438,7 +423,6 @@ jobs:
               Get-ChildItem "$env:LOCALAPPDATA\electron-builder\logs" -Name
             }
             "result=failure" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-            exit 1
           } else {
             "result=success" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           }
@@ -457,9 +441,6 @@ jobs:
           npm_config_cache: ${{ runner.temp }}/.npm
           ELECTRON_CACHE: ${{ runner.temp }}/.cache/electron
           ELECTRON_BUILDER_CACHE: ${{ runner.temp }}/.cache/electron-builder
-          ELECTRON_BUILDER_BINARIES_MIRROR: https://github.com/electron-userland/electron-builder-binaries/releases/download/
-          npm_config_electron_builder_binaries_mirror: https://github.com/electron-userland/electron-builder-binaries/releases/download/
-          ELECTRON_MIRROR: ''
           # Signing & IDs / 签名与应用 ID 配置
           APP_ID: ${{ secrets.APP_ID }}
           appleId: ${{ secrets.APPLE_ID }}

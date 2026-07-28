@@ -1,1 +1,1 @@
-export const useGuidAgentSelection = () => null;
+export const useGuidAgentSelection = (): null => null;

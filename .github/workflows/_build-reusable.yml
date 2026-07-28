@@ -132,8 +132,6 @@ jobs:
           key: electron-cache-${{ runner.os }}-${{ matrix.platform }}-${{ matrix.arch }}-${{ hashFiles('package.json', 'bun.lock') }}
           restore-keys: |
             electron-cache-${{ runner.os }}-${{ matrix.platform }}-${{ matrix.arch }}-
-            electron-cache-${{ runner.os }}-${{ matrix.platform }}-
-            electron-cache-${{ runner.os }}-
 
       - name: Cache status
         run: echo "electron-cache-hit=${{ steps.electron-cache.outputs.cache-hit }}"
@@ -399,6 +397,21 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
 
+      - name: Purge potentially corrupted NSIS cache (Windows)
+        if: startsWith(matrix.platform, 'windows')
+        shell: pwsh
+        run: |
+          $nsisDirs = Get-ChildItem "$env:ELECTRON_BUILDER_CACHE\nsis-*" -Directory -ErrorAction SilentlyContinue
+          if ($nsisDirs) {
+            foreach ($dir in $nsisDirs) {
+              $makensis = Get-ChildItem -Path $dir.FullName -Recurse -Filter "makensis.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+              if ($makensis -and $makensis.Length -lt 100KB) {
+                Write-Host "Purging corrupted NSIS cache: makensis.exe is only $([math]::Round($makensis.Length/1KB,1)) KB"
+                Remove-Item -Recurse -Force $dir.FullName -ErrorAction SilentlyContinue
+              }
+            }
+          }
+
       - name: Build with electron-builder (Windows)
         if: startsWith(matrix.platform, 'windows')
         id: windows-build
@@ -444,6 +457,9 @@ jobs:
           npm_config_cache: ${{ runner.temp }}/.npm
           ELECTRON_CACHE: ${{ runner.temp }}/.cache/electron
           ELECTRON_BUILDER_CACHE: ${{ runner.temp }}/.cache/electron-builder
+          ELECTRON_BUILDER_BINARIES_MIRROR: https://github.com/electron-userland/electron-builder-binaries/releases/download/
+          npm_config_electron_builder_binaries_mirror: https://github.com/electron-userland/electron-builder-binaries/releases/download/
+          ELECTRON_MIRROR: ''
           # Signing & IDs / 签名与应用 ID 配置
           APP_ID: ${{ secrets.APP_ID }}
           appleId: ${{ secrets.APPLE_ID }}

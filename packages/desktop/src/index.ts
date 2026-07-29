@@ -986,7 +986,10 @@ const handleAppReady = async (): Promise<void> => {
       void refreshTrayMenu();
     });
 
-    if (!isE2ETestMode) {
+    // Only attempt WebUI restore when the backend has started successfully.
+    // If the backend failed to start, there is nothing to restore from and the
+    // fetch will fail with a confusing "TypeError: fetch failed" log.
+    if (!isE2ETestMode && backendStartedOk) {
       // 窗口创建后异步恢复 WebUI，不阻塞 UI / Restore WebUI async after window creation, non-blocking
       restoreDesktopWebUIFromPreferences().catch((error) => {
         console.error('[WebUI] Failed to auto-restore:', error);

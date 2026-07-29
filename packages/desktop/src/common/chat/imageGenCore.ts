@@ -271,7 +271,7 @@ export async function executeImageGeneration(
     let completion: UnifiedChatCompletionResponse;
     if (isDedicatedImageModel) {
       // Use /v1/images/generations for dedicated image models
-      const baseUrl = provider.base_url.replace(/\/+$/, '');
+      const baseUrl = provider.base_url.replace(/\/+$/, '').replace(/\/v1\/?$/, '');
       const imagesUrl = `${baseUrl}/v1/images/generations`;
       const fetchResponse = await fetch(imagesUrl, {
         method: 'POST',

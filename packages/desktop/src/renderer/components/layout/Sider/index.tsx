@@ -69,7 +69,7 @@ const Sider: React.FC<SiderProps> = ({ onSessionClick, collapsed = false }) => {
         console.error('Navigation failed:', error);
       });
     } else {
-      Promise.resolve(navigate('/settings/agent')).catch((error) => {
+      Promise.resolve(navigate('/settings/skills')).catch((error) => {
         console.error('Navigation failed:', error);
       });
     }

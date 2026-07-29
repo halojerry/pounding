@@ -464,18 +464,35 @@ async function ensureBootstrapMcpServersInDb(configFile: ConfigFile): Promise<vo
   // available offline (no npx download needed at runtime).
   preinstallChromeDevtoolsMcp();
 
-  const missing = [...defaultServers, imageServer].filter((server) => !existingByName.has(server.name));
+  // Prefer imageServer (with resolved env vars) over the generic entry from
+  // buildDefaultMcpServers. image-gen appears in both arrays; dedup before import
+  // to avoid the second entry (enabled=false for fresh installs) overwriting the first.
+  const allServers = [imageServer, ...defaultServers];
+  const seenMissing = new Set<string>();
+  const dedupedServers = allServers.filter((server) => {
+    if (seenMissing.has(server.name)) return false;
+    seenMissing.add(server.name);
+    return true;
+  });
+  const missing = dedupedServers.filter((server) => !existingByName.has(server.name));
   let imageServerUpdated = false;
 
   if (missing.length > 0) {
     await mcpService.batchImportServers.invoke({ servers: missing });
+    // Refresh existingByName so the fix-up loop below sees freshly imported
+    // servers. Without this, on a fresh install existingByName is empty and
+    // the enable loop is a no-op.
+    const refreshed = await mcpService.listServers.invoke();
+    for (const server of refreshed ?? []) {
+      existingByName.set(server.name, server);
+    }
   }
 
   // Ensure existing builtin MCP servers are enabled (in case they were
   // previously created with enabled=false by an older migration).
   // Deduplicate — image-gen may appear in both defaultServers and imageServer.
   const seen = new Set<string>();
-  const uniqueServers = [...defaultServers, imageServer].filter((server) => {
+  const uniqueServers = [imageServer, ...defaultServers].filter((server) => {
     if (seen.has(server.name)) return false;
     seen.add(server.name);
     return true;

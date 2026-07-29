@@ -544,7 +544,7 @@ function createMacArtifactsWithPrepackaged(appDir, targetArch) {
   const appPath = path.join(appDir, appName);
 
   execSync(
-    `bunx electron-builder --config packages/desktop/electron-builder.yml --mac dmg zip --${targetArch} --prepackaged "${appPath}" --publish=never`,
+    `bunx electron-builder --config packages/desktop/electron-builder.yml --mac dmg zip --${targetArch} --prepackaged "${appPath}" --publish=always`,
     {
       stdio: 'inherit',
       shell: process.platform === 'win32',
@@ -809,9 +809,9 @@ try {
 
   // 6. 运行 electron-builder 生成分发包（DMG/ZIP/EXE等）
   // Run electron-builder to create distributables (DMG/ZIP/EXE, etc.)
-  // Always disable auto-publish to avoid electron-builder's implicit tag-based publishing
-  // Publishing is handled by a separate release job in CI
-  const publishArg = '--publish=never';
+  // Generate update metadata (latest.yml etc.) without requiring publish credentials.
+  // The yml files are needed by the release job; actual upload to COS is handled separately.
+  const publishArg = '--publish=always';
 
   // Set compression level based on environment
   // 7za -mx accepts numeric values: 0 (store) to 9 (ultra)

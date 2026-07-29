@@ -126,6 +126,50 @@ echo "==> Validating required metadata ..."
 
 VERSION="${MOCK_VERSION:-$(node -p "require('./package.json').version")}"
 MISSING=0
+
+# Generate latest.yml from Windows x64 build artifacts if not found
+if [ -z "$WIN_X64_LATEST" ] || [ ! -f "$WIN_X64_LATEST" ]; then
+  WIN_EXE=$(find "$ARTIFACTS_DIR" -type f \( -name "POUNDING-*-win-x64.exe" -o -name "POUNDING-*-Setup-x64.exe" -o -name "POUNDING Setup *.exe" \) | sort | head -n 1 || true)
+  if [ -n "$WIN_EXE" ]; then
+    echo "Generating latest.yml from $WIN_EXE ..."
+    WIN_SIZE=$(stat -f%z "$WIN_EXE" 2>/dev/null || stat -c%s "$WIN_EXE" 2>/dev/null || echo 0)
+    WIN_SHA=$(shasum -a 512 "$WIN_EXE" 2>/dev/null | awk '{print $1}' || true)
+    cat > "$OUTPUT_DIR/latest.yml" << YMLEOF
+version: $VERSION
+files:
+  - url: $(basename "$WIN_EXE")
+    sha512: $WIN_SHA
+    size: $WIN_SIZE
+path: $(basename "$WIN_EXE")
+sha512: $WIN_SHA
+releaseDate: $(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
+YMLEOF
+    echo "Generated latest.yml for version $VERSION"
+  fi
+fi
+
+# Generate latest-mac.yml from macOS arm64 build artifacts if not found
+if [ -z "$MAC_ARM64_LATEST" ] || [ ! -f "$MAC_ARM64_LATEST" ]; then
+  MAC_DMG=$(find "$ARTIFACTS_DIR" -type f -name "POUNDING-*-mac-arm64.dmg" | sort | head -n 1 || true)
+  [ -z "$MAC_DMG" ] && MAC_DMG=$(find "$ARTIFACTS_DIR" -type f -name "POUNDING-*-arm64.dmg" | sort | head -n 1 || true)
+  if [ -n "$MAC_DMG" ]; then
+    echo "Generating latest-mac.yml from $MAC_DMG ..."
+    MAC_SIZE=$(stat -f%z "$MAC_DMG" 2>/dev/null || stat -c%s "$MAC_DMG" 2>/dev/null || echo 0)
+    MAC_SHA=$(shasum -a 512 "$MAC_DMG" 2>/dev/null | awk '{print $1}' || true)
+    cat > "$OUTPUT_DIR/latest-mac.yml" << YMLEOF
+version: $VERSION
+files:
+  - url: $(basename "$MAC_DMG")
+    sha512: $MAC_SHA
+    size: $MAC_SIZE
+path: $(basename "$MAC_DMG")
+sha512: $MAC_SHA
+releaseDate: $(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
+YMLEOF
+    echo "Generated latest-mac.yml for version $VERSION"
+  fi
+fi
+
 for required in latest.yml latest-mac.yml; do
   if [ ! -f "$OUTPUT_DIR/$required" ]; then
     echo "::error::Missing required updater metadata: $required"

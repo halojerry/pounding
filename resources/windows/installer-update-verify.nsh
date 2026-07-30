@@ -8,7 +8,7 @@ Var /GLOBAL AionUiUpdatedAppExitWaitResult
 Var /GLOBAL AionUiActiveMarkerExecResult
 Var /GLOBAL AionUiActiveMarkerResult
 
-!define AIONUI_ACTIVE_INSTALLER_MARKER "aionui-installer-active.marker"
+!define AIONUI_ACTIVE_INSTALLER_MARKER "pounding-installer-active.marker"
 
 !macro AIONUI_BRING_UPDATED_INSTALLER_TO_FRONT
   ${If} ${isUpdated}
@@ -170,7 +170,7 @@ Var /GLOBAL AionUiActiveMarkerResult
 
 !macro AIONUI_VERIFY_CORE_APP_FILES
   !insertmacro AIONUI_LOG_EVENT "verify-install start instDir=$INSTDIR"
-  !insertmacro AIONUI_VERIFY_REQUIRED_FILE "$INSTDIR\AionUi.exe" "AionUi.exe"
+  !insertmacro AIONUI_VERIFY_REQUIRED_FILE "$INSTDIR\POUNDING.exe" "POUNDING.exe"
   !insertmacro AIONUI_VERIFY_REQUIRED_FILE "$INSTDIR\ffmpeg.dll" "ffmpeg.dll"
   !insertmacro AIONUI_VERIFY_REQUIRED_FILE "$INSTDIR\libEGL.dll" "libEGL.dll"
   !insertmacro AIONUI_VERIFY_REQUIRED_FILE "$INSTDIR\libGLESv2.dll" "libGLESv2.dll"

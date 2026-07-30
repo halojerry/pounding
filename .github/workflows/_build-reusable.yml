@@ -705,7 +705,7 @@ jobs:
             out/*.msi
             out/*.dmg
             out/*.deb
-            out/POUNDING-*-mac-*.zip
+            out/*.zip
             out/*.yml
           if-no-files-found: error
           retention-days: 7

@@ -120,6 +120,7 @@ extraResources:
 win:
   target:
     - nsis
+    - zip
     #    - msi
   icon: resources/app.ico # Use the checked-in Windows icon resource for executable metadata/icon patching
   artifactName: ${productName}-${version}-${os}-${arch}.${ext}

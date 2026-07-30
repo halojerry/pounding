@@ -789,11 +789,11 @@ try {
   }
 
   // 5. Prepare aioncore binary (for packaged runtime usage)
+  const projectRoot = path.resolve(__dirname, '..');
+  writeGeneratedSentryDsnInclude(projectRoot);
   if (!skipPrepare) {
     const { preparePoundingcore } = require('../packages/shared-scripts/src/prepare-poundingcore.js');
     const { resolvePoundingcoreVersion } = require('./resolvePoundingcoreVersion.js');
-    const projectRoot = path.resolve(__dirname, '..');
-    writeGeneratedSentryDsnInclude(projectRoot);
     preparePoundingcore({
       projectRoot,
       platform: process.platform,

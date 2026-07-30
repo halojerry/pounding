@@ -789,16 +789,20 @@ try {
   }
 
   // 5. Prepare aioncore binary (for packaged runtime usage)
-  const { preparePoundingcore } = require('../packages/shared-scripts/src/prepare-poundingcore.js');
-  const { resolvePoundingcoreVersion } = require('./resolvePoundingcoreVersion.js');
-  const projectRoot = path.resolve(__dirname, '..');
-  writeGeneratedSentryDsnInclude(projectRoot);
-  preparePoundingcore({
-    projectRoot,
-    platform: process.platform,
-    arch: targetArch,
-    version: resolvePoundingcoreVersion(projectRoot),
-  });
+  if (!skipPrepare) {
+    const { preparePoundingcore } = require('../packages/shared-scripts/src/prepare-poundingcore.js');
+    const { resolvePoundingcoreVersion } = require('./resolvePoundingcoreVersion.js');
+    const projectRoot = path.resolve(__dirname, '..');
+    writeGeneratedSentryDsnInclude(projectRoot);
+    preparePoundingcore({
+      projectRoot,
+      platform: process.platform,
+      arch: targetArch,
+      version: resolvePoundingcoreVersion(projectRoot),
+    });
+  } else {
+    console.log('⚡ --skip-prepare: Skipping poundingcore & managed-resources preparation (CI already prepared)');
+  }
 
   // 6. Prepare hub resources (index.json + extension zips for offline fallback)
   if (!skipHub) {

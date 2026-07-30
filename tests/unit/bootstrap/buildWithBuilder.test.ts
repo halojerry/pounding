@@ -136,7 +136,7 @@ childProcess.execSync = function mockedExecSync(command) {
     const queryScript = readFileSync(resolve(repoRoot, 'resources/windows/support/query-lockers.ps1'), 'utf8');
     const captureMacro = script.match(/!macro AIONUI_CAPTURE_FAILED_PATH_LOCKERS[\s\S]*?!macroend/)?.[0];
 
-    expect(script).toContain('aionui-query-lockers.ps1');
+    expect(script).toContain('pounding-query-lockers.ps1');
     expect(captureMacro).toContain('AIONUI_QUERY_LOCKERS');
     expect(captureMacro).not.toContain('AIONUI_QUERY_LOCKERS_INLINE_LEGACY');
     expect(queryScript).toContain('$CurrentOutDir');

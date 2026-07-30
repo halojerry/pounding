@@ -400,7 +400,6 @@ jobs:
       - name: Build with electron-builder (Windows)
         if: startsWith(matrix.platform, 'windows')
         id: windows-build
-        continue-on-error: true
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -410,6 +409,9 @@ jobs:
           try {
             Write-Host "Running Windows build command: $Command"
             iex $Command
+            if ($LASTEXITCODE -ne 0) {
+              throw "Build command failed with exit code $LASTEXITCODE"
+            }
             Write-Host "Windows build completed successfully"
           } catch {
             $BuildFailed = $true
@@ -705,7 +707,7 @@ jobs:
             out/*.deb
             out/POUNDING-*-mac-*.zip
             out/*.yml
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 7
 
   build-summary:

@@ -30,19 +30,18 @@ describe('release packaging configuration', () => {
     expect(macBlock).toContain('    - zip');
   });
 
-  it('does not build Windows zip artifacts', () => {
+  it('builds Windows zip artifacts', () => {
     const config = readProjectFile('packages/desktop/electron-builder.yml');
     const winBlock = yamlBlock(config, 'win');
 
     expect(winBlock).toContain('    - nsis');
-    expect(winBlock).not.toContain('    - zip');
+    expect(winBlock).toContain('    - zip');
   });
 
-  it('uploads mac zip artifacts without a stale Windows zip glob', () => {
+  it('uploads all zip artifacts with a generic out/*.zip glob', () => {
     const workflow = readProjectFile('.github/workflows/_build-reusable.yml');
 
-    expect(workflow).toContain('out/POUNDING-*-mac-*.zip');
-    expect(workflow).not.toContain('out/POUNDING-*-win32-*.zip');
+    expect(workflow).toContain('out/*.zip');
   });
 
   it('retries mac prepackaged builds with both dmg and zip targets', () => {

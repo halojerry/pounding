@@ -44,22 +44,12 @@ type ManagedCliDescriptor = {
 
 const NPM_DEFAULT_REGISTRY = 'https://registry.npmjs.org';
 const NPM_MIRROR_REGISTRY = 'https://registry.npmmirror.com';
-const PYPI_TUNA_INDEX_URL = 'https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple';
+const PYPI_TUNA_INDEX_URL = 'https://pypi.tuna.tsinghua.edu.cn/simple';
 const PYPI_DEFAULT_INDEX_URL = 'https://pypi.org/simple';
-
-// POUNDING COS mirror (Guangzhou CDN) for install scripts.
-// Same bucket used by OfficeCLI. Hosted copies of bun/uv installers
-// provide a fast, reliable fallback for users behind restrictive networks.
-const COS_BASE = 'https://yss-1256275613.cos.ap-guangzhou.myqcloud.com';
-const COS_BUN_INSTALL_UNIX = `${COS_BASE}/pounding/cli/bun/install.sh`;
-const COS_BUN_INSTALL_WIN = `${COS_BASE}/pounding/cli/bun/install.ps1`;
-const COS_UV_INSTALL_UNIX = `${COS_BASE}/pounding/cli/uv/install.sh`;
-const COS_UV_INSTALL_WIN = `${COS_BASE}/pounding/cli/uv/install.ps1`;
 const HERMES_HOME_DIR = path.join(os.homedir(), '.hermes');
 const HERMES_VENV_DIR = path.join(HERMES_HOME_DIR, 'hermes-agent', 'venv');
 const HERMES_BIN_DIR = path.join(os.homedir(), '.local', 'bin');
 const HERMES_SHIM_PATH = path.join(HERMES_BIN_DIR, process.platform === 'win32' ? 'hermes.cmd' : 'hermes');
-const UV_BIN_PATH = path.join(os.homedir(), '.local', 'bin', process.platform === 'win32' ? 'uv.exe' : 'uv');
 const OPENCODE_CONFIG_ENV_NAME = 'OPENCODE_CONFIG';
 const XDG_CONFIG_HOME_ENV_NAME = 'XDG_CONFIG_HOME';
 const BUN_HOME_DIR = process.env.BUN_INSTALL?.trim() || path.join(os.homedir(), '.bun');
@@ -166,10 +156,6 @@ function getNpmEnv(registry: string): NodeJS.ProcessEnv {
 
 function getNpmCommand(): string {
   return process.env.npm_execpath && fs.existsSync(process.env.npm_execpath) ? process.env.npm_execpath : 'npm';
-}
-
-function getBunCommand(): string {
-  return process.env.BUN_BINARY?.trim() || 'bun';
 }
 
 function ensureDir(dirPath: string): void {
@@ -444,155 +430,33 @@ async function uninstallNpmPackage(packageName: string): Promise<void> {
   }
 }
 
-function getLocalBunBinaryPath(): string {
-  return fs.existsSync(BUN_BIN_PATH) ? BUN_BIN_PATH : BUN_SHIM_PATH;
-}
-
-function getLocalUvBinaryPath(): string {
-  return UV_BIN_PATH;
-}
-
-function getPythonLaunchers(): string[] {
-  return process.platform === 'win32' ? ['py', 'python'] : ['python3', 'python'];
-}
-
-function getPythonUserScriptsDir(userBase: string): string {
-  return path.join(userBase, process.platform === 'win32' ? 'Scripts' : 'bin');
-}
-
-function resolvePipIndexUrls(): string[] {
-  const configured = process.env.PIP_INDEX_URL?.trim();
-  if (configured) return [configured, PYPI_TUNA_INDEX_URL, PYPI_DEFAULT_INDEX_URL];
-  return [PYPI_TUNA_INDEX_URL, PYPI_DEFAULT_INDEX_URL];
-}
-
-async function installUvViaPythonUserSite(pythonCommand: string): Promise<string> {
-  let lastError: unknown;
-  for (const indexUrl of resolvePipIndexUrls()) {
-    try {
-      await runCommand(
-        pythonCommand,
-        ['-m', 'pip', 'install', '--user', '--disable-pip-version-check', '-i', indexUrl, 'uv'],
-        {
-          env: {
-            PIP_INDEX_URL: indexUrl,
-          },
-        }
-      );
-      lastError = undefined;
-      break;
-    } catch (error) {
-      lastError = error;
-    }
+function resolveManagedNpm(): string {
+  // Use the managed Node.js runtime's npm (already bundled in managed-resources).
+  // Skips the need to download bun — everything is offline from the installer.
+  const nodeForShim = resolveNodeForShim();
+  if (nodeForShim) {
+    const npmBin =
+      process.platform === 'win32'
+        ? path.join(path.dirname(nodeForShim), 'npm.cmd')
+        : path.join(path.dirname(nodeForShim), 'npm');
+    if (fs.existsSync(npmBin)) return npmBin;
   }
-  if (lastError) {
-    throw lastError instanceof Error ? lastError : new Error(String(lastError));
-  }
-  const userBase = (await runCommandOutput(pythonCommand, ['-c', 'import site; print(site.USER_BASE)'])).trim();
-  if (!userBase) {
-    throw new Error(`Failed to resolve USER_BASE for ${pythonCommand}`);
-  }
-  const uvBinary = path.join(getPythonUserScriptsDir(userBase), process.platform === 'win32' ? 'uv.exe' : 'uv');
-  if (!fs.existsSync(uvBinary)) {
-    throw new Error(`uv binary not found after pip install at ${uvBinary}`);
-  }
-  return uvBinary;
-}
-
-async function ensureBunInstalled(): Promise<string> {
-  if (await commandExists(getBunCommand())) return getBunCommand();
-  if (isAbsoluteExecutablePath(BUN_BIN_PATH) || isAbsoluteExecutablePath(BUN_SHIM_PATH)) {
-    return getLocalBunBinaryPath();
-  }
-  // Try npm first (works with npmmirror for Chinese users)
-  if (await commandExists('npm')) {
-    await installNpmPackage('bun');
-    if (await commandExists(getBunCommand())) return getBunCommand();
-    if (isAbsoluteExecutablePath(BUN_BIN_PATH) || isAbsoluteExecutablePath(BUN_SHIM_PATH)) {
-      return getLocalBunBinaryPath();
-    }
-  }
-  // Fallback: direct install via script — try COS mirror first, then official
-  if (process.platform !== 'win32') {
-    try {
-      const shell = process.env.SHELL || '/bin/bash';
-      await runCommand(
-        shell,
-        [
-          '-c',
-          `curl -fsSL ${COS_BUN_INSTALL_UNIX} -o /tmp/pounding-bun-install.sh && bash /tmp/pounding-bun-install.sh || curl -fsSL https://bun.sh/install | bash`,
-        ],
-        {
-          env: { BUN_INSTALL: BUN_HOME_DIR },
-        }
-      );
-      if (await commandExists(getBunCommand())) return getBunCommand();
-      if (isAbsoluteExecutablePath(BUN_BIN_PATH) || isAbsoluteExecutablePath(BUN_SHIM_PATH)) {
-        return getLocalBunBinaryPath();
-      }
-    } catch {
-      /* fall through */
-    }
-  }
-  throw new Error('Bun is required for this operation and could not be auto-installed.');
-}
-
-async function ensureUvInstalled(): Promise<string> {
-  const configuredUv = process.env.UV_BINARY?.trim() || 'uv';
-  if (await commandExists(configuredUv)) return configuredUv;
-  if (isAbsoluteExecutablePath(getLocalUvBinaryPath())) return getLocalUvBinaryPath();
-  // Try Python pip install first (tsinghua mirror for China)
-  let lastError: unknown;
-  for (const pythonCommand of getPythonLaunchers()) {
-    if (!(await commandExists(pythonCommand))) continue;
-    try {
-      return await installUvViaPythonUserSite(pythonCommand);
-    } catch (error) {
-      lastError = error;
-    }
-  }
-  // Fallback: direct install via standalone installer — try COS mirror first
-  try {
-    if (process.platform === 'win32') {
-      await runCommand('powershell', [
-        '-c',
-        `try { irm ${COS_UV_INSTALL_WIN} | iex } catch { irm https://astral.sh/uv/install.ps1 | iex }`,
-      ]);
-    } else {
-      const shell = process.env.SHELL || '/bin/bash';
-      await runCommand(shell, [
-        '-c',
-        `curl -fsSL ${COS_UV_INSTALL_UNIX} -o /tmp/pounding-uv-install.sh && sh /tmp/pounding-uv-install.sh || curl -LsSf https://astral.sh/uv/install.sh | sh`,
-      ]);
-    }
-    const localUv = getLocalUvBinaryPath();
-    if (isAbsoluteExecutablePath(localUv)) return localUv;
-    if (await commandExists('uv')) return 'uv';
-  } catch {
-    /* fall through */
-  }
-  throw new Error(
-    lastError instanceof Error
-      ? `Failed to auto-install uv: ${lastError.message}`
-      : 'uv is required for Hermes installation and could not be auto-installed.'
-  );
+  // Fallback to system npm (dev environment or unmanaged installation)
+  if (fs.existsSync('/usr/bin/npm')) return '/usr/bin/npm';
+  return getNpmCommand();
 }
 
 async function getGlobalJsCommand(): Promise<string> {
-  try {
-    return await ensureBunInstalled();
-  } catch {
-    if (await commandExists('npm')) return getNpmCommand();
-    throw new Error('Neither bun nor npm is available to install global JavaScript CLIs.');
-  }
+  const managedNpm = resolveManagedNpm();
+  if (fs.existsSync(managedNpm)) return managedNpm;
+  throw new Error('No npm available to install JavaScript CLIs.');
 }
 
-async function installBunPackage(packageName: string): Promise<void> {
-  const bunCommand = await ensureBunInstalled();
+async function installNpmPackage(packageName: string): Promise<void> {
   let lastError: unknown;
   for (const registry of [NPM_MIRROR_REGISTRY, NPM_DEFAULT_REGISTRY]) {
     try {
-      await runCommand(bunCommand, ['add', '-g', packageName], {
+      await runCommand(getNpmCommand(), ['install', '-g', packageName], {
         env: getNpmEnv(registry),
       });
       return;
@@ -603,22 +467,16 @@ async function installBunPackage(packageName: string): Promise<void> {
   throw lastError instanceof Error ? lastError : new Error(`Failed to install ${packageName}`);
 }
 
-async function uninstallBunPackage(packageName: string): Promise<void> {
+async function uninstallNpmPackage(packageName: string): Promise<void> {
   try {
-    const bunCommand = (await commandExists(getBunCommand()))
-      ? getBunCommand()
-      : isAbsoluteExecutablePath(BUN_BIN_PATH) || isAbsoluteExecutablePath(BUN_SHIM_PATH)
-        ? getLocalBunBinaryPath()
-        : null;
-    if (!bunCommand) return;
-    await runCommand(bunCommand, ['remove', '-g', packageName]);
+    await runCommand(getNpmCommand(), ['uninstall', '-g', packageName]);
   } catch {
-    // ignore uninstall miss
+    /* best effort */
   }
 }
 
 async function uninstallGlobalPackage(packageName: string): Promise<void> {
-  await Promise.allSettled([uninstallBunPackage(packageName), uninstallNpmPackage(packageName)]);
+  await Promise.allSettled([uninstallNpmPackage(packageName), uninstallNpmPackage(packageName)]);
 }
 
 function writeHermesShim(): void {
@@ -649,26 +507,46 @@ exec "${hermesExe}" "$@"
   }
 }
 
+function resolvePython3Binary(): string | null {
+  // Try bundled Python from managed-resources first (offline path)
+  const bundledResourcesDir = resolveBundledResourcesDir();
+  if (bundledResourcesDir) {
+    const pythonBinDir = path.join(bundledResourcesDir, 'runtimes', 'python', 'python', 'bin');
+    const pythonBinary = path.join(pythonBinDir, process.platform === 'win32' ? 'python3.exe' : 'python3');
+    if (fs.existsSync(pythonBinary)) return pythonBinary;
+  }
+  // Fallback to system python3
+  return process.env.PYTHON_BINARY || 'python3';
+}
+
 async function installHermes(): Promise<void> {
-  const uvBinary = await ensureUvInstalled();
+  const pythonBinary = resolvePython3Binary();
+  if (!pythonBinary)
+    throw new Error('Python3 not found. Bundled Python runtime is missing and no system python3 available.');
+
   const packageName = 'hermes-agent[acp]';
   const indexUrls = ['https://pypi.tuna.tsinghua.edu.cn/simple', 'https://pypi.org/simple'];
 
   ensureDir(path.dirname(HERMES_VENV_DIR));
-  await runCommand(uvBinary, ['venv', '--clear', HERMES_VENV_DIR]);
+  await runCommand(pythonBinary, ['-m', 'venv', '--clear', HERMES_VENV_DIR]);
+  const venvPython =
+    process.platform === 'win32'
+      ? path.join(HERMES_VENV_DIR, 'Scripts', 'python.exe')
+      : path.join(HERMES_VENV_DIR, 'bin', 'python3');
+
   let lastError: unknown;
   for (const indexUrl of indexUrls) {
     try {
-      await runCommand(
-        uvBinary,
-        ['pip', 'install', '--python', path.join(HERMES_VENV_DIR, 'bin', 'python'), '-U', packageName],
-        {
-          env: {
-            UV_INDEX_URL: indexUrl,
-            PIP_INDEX_URL: indexUrl,
-          },
-        }
-      );
+      await runCommand(venvPython, [
+        '-m',
+        'pip',
+        'install',
+        '--disable-pip-version-check',
+        '-i',
+        indexUrl,
+        '-U',
+        packageName,
+      ]);
       writeHermesShim();
       return;
     } catch (error) {
@@ -745,7 +623,7 @@ async function installOpenCode(): Promise<void> {
   ensureDir(BUN_HOME_DIR);
   ensureDir(BUN_GLOBAL_NODE_MODULES_DIR);
   try {
-    await installBunPackage('opencode-ai');
+    await installNpmPackage('opencode-ai');
     if (await commandExists('opencode')) {
       writeOpencodeShim();
       return;
@@ -757,13 +635,13 @@ async function installOpenCode(): Promise<void> {
     }
   }
 
-  await installBunPackage(getOpencodePlatformPackage());
+  await installNpmPackage(getOpencodePlatformPackage());
   writeOpencodeShim();
 }
 
 async function uninstallOpenCode(): Promise<void> {
-  await uninstallBunPackage('opencode-ai');
-  await uninstallBunPackage(getOpencodePlatformPackage());
+  await uninstallNpmPackage('opencode-ai');
+  await uninstallNpmPackage(getOpencodePlatformPackage());
   safeRm(getOpencodeBinaryTargetPath());
   safeRm(path.join(BUN_GLOBAL_NODE_MODULES_DIR, 'opencode-ai'));
   safeRm(path.join(BUN_GLOBAL_NODE_MODULES_DIR, getOpencodePlatformPackage()));
@@ -794,12 +672,7 @@ const DESCRIPTORS: Record<ManagedCliInstallTarget, ManagedCliDescriptor> = {
       path.join(BUN_BIN_DIR, process.platform === 'win32' ? 'claude.cmd' : 'claude'),
     ],
     install: async () => {
-      const command = await getGlobalJsCommand();
-      if (command === getNpmCommand()) {
-        await installNpmPackage('@anthropic-ai/claude-code');
-        return;
-      }
-      await installBunPackage('@anthropic-ai/claude-code');
+      await installNpmPackage('@anthropic-ai/claude-code');
     },
     uninstall: async () => {
       await uninstallGlobalPackage('@anthropic-ai/claude-code');
@@ -820,12 +693,7 @@ const DESCRIPTORS: Record<ManagedCliInstallTarget, ManagedCliDescriptor> = {
       path.join(BUN_BIN_DIR, process.platform === 'win32' ? 'openclaw.cmd' : 'openclaw'),
     ],
     install: async () => {
-      const command = await getGlobalJsCommand();
-      if (command === getNpmCommand()) {
-        await installNpmPackage('openclaw');
-        return;
-      }
-      await installBunPackage('openclaw');
+      await installNpmPackage('openclaw');
     },
     uninstall: async () => {
       await uninstallGlobalPackage('openclaw');

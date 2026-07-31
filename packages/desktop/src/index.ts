@@ -483,13 +483,13 @@ function markBackendReady(backendPort: number, source: string): void {
   (globalThis as typeof globalThis & { __backendStartupFailed?: boolean }).__backendStartupFailed = false;
   void ensureAdminUserOnce(backendPort);
   scheduleBackendMigrations();
-}
 
   // Auto-install managed CLI tools from bundled resources (offline-first).
-  // This ensures claude, hermes, opencode, and openclaw are
-  // available before the user creates their first conversation.
+  // Uses the managed Node.js runtime (already bundled in the installer) so
+  // no network download is needed — claude and openclaw install via npm,
+  // hermes installs via the bundled Python runtime.
   void import('./process/bridge/managedCliInstallerBridge')
-    .then(({ installManagedCliBatch }) => installManagedCliBatch(['hermes', 'openclaw', 'claude', 'opencode']))
+    .then(({ installManagedCliBatch }) => installManagedCliBatch(['hermes', 'openclaw', 'claude']))
     .then(() => {
       console.log('[POUNDING] Managed CLI tools ready');
     })

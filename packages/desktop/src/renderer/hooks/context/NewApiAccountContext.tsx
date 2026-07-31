@@ -51,7 +51,7 @@ function refreshProviderCaches(): void {
   void mutateSWR('model.config.welcome');
 }
 
-const AUTO_INSTALL_TARGETS: ManagedRuntimeCliTarget[] = ['hermes', 'openclaw', 'claude', 'opencode'];
+const AUTO_INSTALL_TARGETS: ManagedRuntimeCliTarget[] = ['hermes', 'openclaw', 'claude'];
 
 const DEFAULT_PREP_STATUS: NewApiManagedCliPrepStatus = {
   inProgress: false,

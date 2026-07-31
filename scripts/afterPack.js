@@ -52,42 +52,48 @@ function verifyManagedResources(resourcesDir, runtimeKey, electronPlatformName) 
   const baseDir = path.join(resourcesDir, 'bundled-poundingcore', runtimeKey, 'managed-resources');
   const missing = [];
 
-  // Verify Node.js runtime: at least one version with valid node binary
-  const nodeRoot = path.join(baseDir, 'node');
-  const nodeVersions = readDirectories(nodeRoot);
+  // Read the managed-resources manifest contract (schema v2).
+  // Using the manifest is more robust than hardcoding paths because the
+  // directory layout (cli/claude/ vs acp/claude-agent-acp/) can vary.
+  const manifestPath = path.join(baseDir, 'manifest.json');
+  const manifest = readJsonFile(manifestPath);
 
-  if (nodeVersions.length === 0) {
-    missing.push('managed-resources/node (no node runtime found)');
+  if (!manifest) {
+    throw new Error(`Managed resources manifest missing or invalid: ${manifestPath}`);
+  }
+
+  // Verify Node.js runtime using manifest contract
+  if (manifest.node && typeof manifest.node.root === 'string' && typeof manifest.node.executable === 'string') {
+    const nodeExePath = path.join(baseDir, manifest.node.root, manifest.node.executable);
+    if (!fs.existsSync(nodeExePath)) {
+      missing.push(`managed-resources/${manifest.node.root}/${manifest.node.executable}`);
+    }
   } else {
-    const nodeBin = electronPlatformName === 'win32' ? 'node.exe' : path.join('bin', 'node');
-    const hasNode = nodeVersions.some((v) => fs.existsSync(path.join(nodeRoot, v, nodeBin)));
-    if (!hasNode) {
-      missing.push(`managed-resources/node/*/${nodeBin}`);
+    // Fallback: scan node/ directory (backward compat with older manifests)
+    const nodeRoot = path.join(baseDir, 'node');
+    const nodeVersions = readDirectories(nodeRoot);
+    if (nodeVersions.length === 0) {
+      missing.push('managed-resources/node (no node runtime found)');
+    } else {
+      const nodeBin = electronPlatformName === 'win32' ? 'node.exe' : path.join('bin', 'node');
+      const hasNode = nodeVersions.some((v) => fs.existsSync(path.join(nodeRoot, v, nodeBin)));
+      if (!hasNode) {
+        missing.push(`managed-resources/node/*/${nodeBin}`);
+      }
     }
   }
 
-  // Verify Claude ACP (required by NSIS installer verification; E1030 without it)
-  const claudeAcpRoot = path.join(baseDir, 'acp', 'claude-agent-acp');
-  const claudeVersions = readDirectories(claudeAcpRoot);
+  // Verify Claude CLI using manifest contract (required by NSIS verification; E1030 without it)
+  const clis = Array.isArray(manifest.clis) ? manifest.clis : [];
+  const claudeEntry = clis.find((c) => c && c.name === 'claude');
 
-  if (claudeVersions.length === 0) {
-    missing.push('managed-resources/acp/claude-agent-acp (missing)');
+  if (!claudeEntry) {
+    missing.push('managed-resources: claude entry missing from manifest.clis');
   } else {
-    let claudeOk = false;
-    for (const version of claudeVersions) {
-      const platformRoot = path.join(claudeAcpRoot, version, runtimeKey);
-      const manifestPath = path.join(platformRoot, 'manifest.json');
-      const manifest = readJsonFile(manifestPath);
-      if (manifest && typeof manifest.entrypoint === 'string') {
-        const entrypointPath = path.join(platformRoot, manifest.entrypoint);
-        if (fs.existsSync(entrypointPath)) {
-          claudeOk = true;
-          break;
-        }
-      }
-    }
-    if (!claudeOk) {
-      missing.push(`managed-resources/acp/claude-agent-acp/*/${runtimeKey} (invalid contract)`);
+    const platDir = claudeEntry.platformDirectory || runtimeKey;
+    const claudeExePath = path.join(baseDir, claudeEntry.root, platDir, claudeEntry.executable);
+    if (!fs.existsSync(claudeExePath)) {
+      missing.push(`managed-resources/${claudeEntry.root}/${platDir}/${claudeEntry.executable}`);
     }
   }
 

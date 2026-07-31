@@ -368,6 +368,104 @@ vendor_clis() {
   vendor_cli_one "openclaw" "openclaw" "${OPENCLAW_VERSION}"
 }
 
+# ── 6. Hermes (Python wheel offline bundle) ──────────────────────────────
+
+vendor_hermes() {
+  local dest="${OUT_DIR}/runtimes/hermes"
+  if [ -f "${dest}/.version" ] && [ "$(cat "${dest}/.version")" = "${HERMES_VERSION}" ]; then
+    echo "  hermes: already vendored (v${HERMES_VERSION})"
+    return 0
+  fi
+
+  echo "  hermes: downloading wheels"
+
+  # Strategy 1: vendored or system uv (preferred)
+  local uv_bin=""
+  for candidate in \
+    "${OUT_DIR}/runtimes/uv/uv" \
+    "${OUT_DIR}/runtimes/uv/uv.exe" \
+    "${HOME}/.local/bin/uv" \
+    "${HOME}/.cargo/bin/uv"; do
+    if [ -x "${candidate}" ]; then
+      uv_bin="${candidate}"
+      break
+    fi
+  done
+  if [ -z "${uv_bin}" ] && command -v uv >/dev/null 2>&1; then
+    uv_bin="uv"
+  fi
+
+  if [ -n "${uv_bin}" ]; then
+    if "${uv_bin}" pip download --help >/dev/null 2>&1; then
+      echo "    using uv: ${uv_bin}"
+      rm -rf "${dest}"
+      mkdir -p "${dest}"
+
+      "${uv_bin}" pip download "hermes-agent[acp]>=${HERMES_VERSION}" \
+        --dest "${dest}" 2>&1 | tail -3 || {
+        echo "    uv pip download FAILED (will try pip)"
+        rm -rf "${dest}"
+        uv_bin=""
+      }
+
+      if [ -n "${uv_bin}" ] && [ -d "${dest}" ] && ls "${dest}"/*.whl >/dev/null 2>&1; then
+        echo "${HERMES_VERSION}" > "${dest}/.version"
+        echo "  hermes: done via uv ($(ls "${dest}"/*.whl 2>/dev/null | wc -l) wheels)"
+        return 0
+      fi
+    else
+      echo "    uv too old (no pip download), will try pip"
+    fi
+  fi
+
+  # Strategy 2: system Python + pip
+  local python_bin=""
+  for candidate in python3 python; do
+    if command -v "${candidate}" >/dev/null 2>&1; then
+      python_bin="${candidate}"
+      break
+    fi
+  done
+
+  if [ -n "${python_bin}" ]; then
+    local plat_tag=""
+    case "${TARGET}" in
+      darwin-arm64) plat_tag="macosx_11_0_arm64" ;;
+      darwin-x64)   plat_tag="macosx_10_9_x86_64" ;;
+      linux-x64)    plat_tag="manylinux2014_x86_64" ;;
+      linux-arm64)  plat_tag="manylinux2014_aarch64" ;;
+      win32-x64)    plat_tag="win_amd64" ;;
+      win32-arm64)  plat_tag="win_arm64" ;;
+    esac
+
+    echo "    using pip (${python_bin}), platform=${plat_tag}"
+    rm -rf "${dest}"
+    mkdir -p "${dest}"
+
+    "${python_bin}" -m pip download "hermes-agent[acp]>=${HERMES_VERSION}" \
+      --dest "${dest}" \
+      --python-version 3.12 \
+      --platform "${plat_tag}" \
+      --only-binary :all: 2>&1 | tail -5 || {
+      echo "    pip download FAILED (non-fatal)"
+      rm -rf "${dest}"
+      echo "${HERMES_VERSION}" > "${dest}/.version"
+      return 0
+    }
+
+    if [ -d "${dest}" ] && ls "${dest}"/*.whl >/dev/null 2>&1; then
+      echo "${HERMES_VERSION}" > "${dest}/.version"
+      echo "  hermes: done via pip ($(ls "${dest}"/*.whl 2>/dev/null | wc -l) wheels)"
+      return 0
+    fi
+  fi
+
+  echo "  hermes: no working Python/uv found (non-fatal)"
+  rm -rf "${dest}"
+  echo "${HERMES_VERSION}" > "${dest}/.version"
+  return 0
+}
+
 # ── Main ─────────────────────────────────────────────────────────────────
 
 echo ""
@@ -380,6 +478,8 @@ echo ""
 vendor_acp
 echo ""
 vendor_clis
+echo ""
+vendor_hermes
 echo ""
 
 echo "==> Vendor done: ${OUT_DIR}"

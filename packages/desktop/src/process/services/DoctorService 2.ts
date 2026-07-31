@@ -81,7 +81,7 @@ async function repairViaBackend(target: string): Promise<RepairResult> {
  */
 function resolveCliTarget(agentName: string, backend: string | null): ManagedCliInstallTarget | null {
   const normalized = (agentName + (backend ?? '')).toLowerCase();
-  const targets: ManagedCliInstallTarget[] = ['hermes', 'openclaw', 'claude', 'codex', 'opencode'];
+  const targets: ManagedCliInstallTarget[] = ['hermes', 'openclaw', 'claude', 'opencode'];
   for (const target of targets) {
     if (normalized.includes(target)) return target;
   }

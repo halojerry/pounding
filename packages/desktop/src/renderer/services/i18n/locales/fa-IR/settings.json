@@ -1253,7 +1253,6 @@
   "runtimeResource": {
     "node": "زمان اجرای مدیریت‌شده Node",
     "acpTool": "ابزار مدیریت‌شده ACP",
-    "codexAcp": "جزء زمان اجرای Codex ACP",
     "claudeAgentAcp": "جزء زمان اجرای Claude ACP"
   },
   "runtimeScope": {

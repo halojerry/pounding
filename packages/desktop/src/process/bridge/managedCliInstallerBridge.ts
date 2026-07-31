@@ -46,6 +46,15 @@ const NPM_DEFAULT_REGISTRY = 'https://registry.npmjs.org';
 const NPM_MIRROR_REGISTRY = 'https://registry.npmmirror.com';
 const PYPI_TUNA_INDEX_URL = 'https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple';
 const PYPI_DEFAULT_INDEX_URL = 'https://pypi.org/simple';
+
+// POUNDING COS mirror (Guangzhou CDN) for install scripts.
+// Same bucket used by OfficeCLI. Hosted copies of bun/uv installers
+// provide a fast, reliable fallback for users behind restrictive networks.
+const COS_BASE = 'https://yss-1256275613.cos.ap-guangzhou.myqcloud.com';
+const COS_BUN_INSTALL_UNIX = `${COS_BASE}/pounding/cli/bun/install.sh`;
+const COS_BUN_INSTALL_WIN = `${COS_BASE}/pounding/cli/bun/install.ps1`;
+const COS_UV_INSTALL_UNIX = `${COS_BASE}/pounding/cli/uv/install.sh`;
+const COS_UV_INSTALL_WIN = `${COS_BASE}/pounding/cli/uv/install.ps1`;
 const HERMES_HOME_DIR = path.join(os.homedir(), '.hermes');
 const HERMES_VENV_DIR = path.join(HERMES_HOME_DIR, 'hermes-agent', 'venv');
 const HERMES_BIN_DIR = path.join(os.homedir(), '.local', 'bin');
@@ -503,13 +512,20 @@ async function ensureBunInstalled(): Promise<string> {
       return getLocalBunBinaryPath();
     }
   }
-  // Fallback: direct install via official script (macOS/Linux only)
+  // Fallback: direct install via script — try COS mirror first, then official
   if (process.platform !== 'win32') {
     try {
       const shell = process.env.SHELL || '/bin/bash';
-      await runCommand(shell, ['-c', 'curl -fsSL https://bun.sh/install | bash'], {
-        env: { BUN_INSTALL: BUN_HOME_DIR },
-      });
+      await runCommand(
+        shell,
+        [
+          '-c',
+          `curl -fsSL ${COS_BUN_INSTALL_UNIX} -o /tmp/pounding-bun-install.sh && bash /tmp/pounding-bun-install.sh || curl -fsSL https://bun.sh/install | bash`,
+        ],
+        {
+          env: { BUN_INSTALL: BUN_HOME_DIR },
+        }
+      );
       if (await commandExists(getBunCommand())) return getBunCommand();
       if (isAbsoluteExecutablePath(BUN_BIN_PATH) || isAbsoluteExecutablePath(BUN_SHIM_PATH)) {
         return getLocalBunBinaryPath();
@@ -535,13 +551,19 @@ async function ensureUvInstalled(): Promise<string> {
       lastError = error;
     }
   }
-  // Fallback: direct install via standalone installer (no Python needed)
+  // Fallback: direct install via standalone installer — try COS mirror first
   try {
     if (process.platform === 'win32') {
-      await runCommand('powershell', ['-c', 'irm https://astral.sh/uv/install.ps1 | iex']);
+      await runCommand('powershell', [
+        '-c',
+        `try { irm ${COS_UV_INSTALL_WIN} | iex } catch { irm https://astral.sh/uv/install.ps1 | iex }`,
+      ]);
     } else {
       const shell = process.env.SHELL || '/bin/bash';
-      await runCommand(shell, ['-c', 'curl -LsSf https://astral.sh/uv/install.sh | sh']);
+      await runCommand(shell, [
+        '-c',
+        `curl -fsSL ${COS_UV_INSTALL_UNIX} -o /tmp/pounding-uv-install.sh && sh /tmp/pounding-uv-install.sh || curl -LsSf https://astral.sh/uv/install.sh | sh`,
+      ]);
     }
     const localUv = getLocalUvBinaryPath();
     if (isAbsoluteExecutablePath(localUv)) return localUv;

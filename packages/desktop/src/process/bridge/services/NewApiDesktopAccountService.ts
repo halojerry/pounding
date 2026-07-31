@@ -2068,9 +2068,6 @@ async function syncManagedProviderRuntimeConfigs(
     },
     {
       cliTarget: 'hermes',
-    },
-    {
-      cliTarget: 'hermes',
       run: (providerWithModel) => writeHermesConfigForProviderSync(providerWithModel, provider.models),
     },
     {

@@ -14,7 +14,7 @@ import { httpRequest } from '@/common/adapter/httpBridge';
 import type { ManagedCliInstallTarget } from '@/common/types/agent/managedCliInstaller';
 import styles from './index.module.css';
 
-const ALL_TARGETS: ManagedCliInstallTarget[] = ['hermes', 'openclaw', 'claude'];
+const ALL_TARGETS: ManagedCliInstallTarget[] = ['hermes', 'openclaw', 'claude', 'opencode'];
 
 type AgentStatus = { name: string; backend: string | null; available: boolean; reason: string | null };
 

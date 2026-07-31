@@ -216,6 +216,52 @@ jobs:
             curl -fI --retry 5 --retry-delay 2 --retry-connrefused "$url"
           done
 
+      - name: Sync CLI mirrors to COS
+        env:
+          COS_BUCKET: ${{ secrets.TENCENT_COS_BUCKET }}
+          COS_REGION: ${{ secrets.TENCENT_COS_REGION }}
+          COS_SECRET_ID: ${{ secrets.TENCENT_COS_SECRET_ID }}
+          COS_SECRET_KEY: ${{ secrets.TENCENT_COS_SECRET_KEY }}
+        run: |
+          set -euo pipefail
+
+          coscli_cmd() {
+            ./coscli "$@" \
+              -e "cos.${COS_REGION}.myqcloud.com" \
+              -i "$COS_SECRET_ID" \
+              -k "$COS_SECRET_KEY" \
+              --init-skip=true \
+              --disable-log=true
+          }
+
+          mkdir -p cli-mirrors/bun cli-mirrors/uv
+
+          # Download latest bun install scripts
+          echo "Downloading bun install scripts..."
+          curl -fsSL --retry 3 --retry-delay 2 -o cli-mirrors/bun/install.sh   https://bun.sh/install
+          curl -fsSL --retry 3 --retry-delay 2 -o cli-mirrors/bun/install.ps1  https://bun.sh/install.ps1
+
+          # Download latest uv install scripts
+          echo "Downloading uv install scripts..."
+          curl -fsSL --retry 3 --retry-delay 2 -o cli-mirrors/uv/install.sh   https://astral.sh/uv/install.sh
+          curl -fsSL --retry 3 --retry-delay 2 -o cli-mirrors/uv/install.ps1  https://astral.sh/uv/install.ps1
+
+          # Verify files are non-empty
+          for f in cli-mirrors/bun/install.sh cli-mirrors/bun/install.ps1 cli-mirrors/uv/install.sh cli-mirrors/uv/install.ps1; do
+            if [ ! -s "$f" ]; then
+              echo "::error::$f is empty or missing"
+              exit 1
+            fi
+            echo "  ✓ $f ($(wc -c < "$f") bytes)"
+          done
+
+          # Upload to COS (overwrites previous)
+          COS_PATH="cos://${COS_BUCKET}/pounding/cli/"
+          echo "Uploading to ${COS_PATH}..."
+          coscli_cmd cp cli-mirrors/ "$COS_PATH" -r
+
+          echo "✓ CLI mirrors synced"
+
       - name: Summary
         env:
           VERSION: ${{ steps.version.outputs.version }}

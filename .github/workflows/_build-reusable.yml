@@ -374,7 +374,7 @@ jobs:
           # copies from there into the app bundle below.
           mkdir -p vendor/managed-resources
           bash scripts/prepare-vendor.sh vendor/managed-resources "${{ matrix.platform == 'macos-arm64' && 'darwin-arm64' || matrix.platform == 'macos-x64' && 'darwin-x64' || matrix.platform == 'windows-x64' && 'win32-x64' || matrix.platform == 'windows-arm64' && 'win32-arm64' }}"
-        continue-on-error: true # non-fatal: if npm/pip fails, CLIs can still be network-installed
+        continue-on-error: false # vendor failure should fail the build — incomplete managed-resources cause E1030
 
       - name: Prepare packaged backend binary
         id: prepare-backend
@@ -426,6 +426,7 @@ jobs:
               Get-ChildItem "$env:LOCALAPPDATA\electron-builder\logs" -Name
             }
             "result=failure" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            exit 1
           } else {
             "result=success" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           }

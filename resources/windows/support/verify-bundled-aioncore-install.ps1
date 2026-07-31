@@ -382,10 +382,10 @@ for ($attempt = 1; $attempt -le 5; $attempt++) {
 
   $summary = ($failures | ConvertTo-Json -Compress -Depth 5)
   if ($attempt -lt 5) {
-    Write-VerifyLog "verify-bundled-aioncore result=retry classification=resource_pending_landing runtime=$RuntimeKey attempt=$attempt failures=$summary"
+	    Write-VerifyLog "verify-bundled-poundingcore result=retry classification=resource_pending_landing runtime=$RuntimeKey attempt=$attempt failures=$summary"
     Start-Sleep -Milliseconds 500
   } else {
-    Write-VerifyLog "verify-bundled-aioncore result=fail runtime=$RuntimeKey failures=$summary"
+	    Write-VerifyLog "verify-bundled-poundingcore result=fail runtime=$RuntimeKey failures=$summary"
   }
 }
 

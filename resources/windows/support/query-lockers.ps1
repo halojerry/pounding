@@ -79,10 +79,10 @@ try {
     $topLevel = @(Get-ChildItem -LiteralPath $targetPathFull -Force -File -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
     $knownRelative = @(
       'POUNDING.exe',
-      'Uninstall AionUi.exe',
+      'Uninstall POUNDING.exe',
       'resources\app.asar',
       'resources\app-update.yml',
-      'resources\bundled-aioncore\win32-x64\aioncore.exe'
+      'resources\bundled-poundingcore\win32-x64\poundingcore.exe'
     )
     $known = @(
       $knownRelative |

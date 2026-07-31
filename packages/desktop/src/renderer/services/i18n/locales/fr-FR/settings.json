@@ -1253,7 +1253,6 @@
   "runtimeResource": {
     "node": "le runtime du nœud géré",
     "acpTool": "l'outil ACP managé",
-    "codexAcp": "le composant d'exécution du Codex ACP",
     "claudeAgentAcp": "le composant d'exécution Claude ACP"
   },
   "runtimeScope": {

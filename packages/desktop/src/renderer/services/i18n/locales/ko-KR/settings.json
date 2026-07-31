@@ -1274,7 +1274,6 @@
   "runtimeResource": {
     "node": "the managed Node runtime",
     "acpTool": "the managed ACP tool",
-    "codexAcp": "the Codex ACP runtime component",
     "claudeAgentAcp": "the Claude ACP runtime component"
   },
   "updateReadyInstall": "{{version}} 준비 완료, 지금 설치",

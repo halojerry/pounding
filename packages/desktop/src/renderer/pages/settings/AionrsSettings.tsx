@@ -48,6 +48,7 @@ function selectDefaultModel(models: string[]): string | undefined {
 const CLI_TARGET_LABELS: Record<ManagedRuntimeCliTarget, string> = {
   claude: 'Claude',
   hermes: 'Hermes',
+  opencode: 'OpenCode',
   openclaw: 'OpenClaw',
 };
 

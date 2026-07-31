@@ -1219,7 +1219,6 @@
   "runtimeResource": {
     "node": "el runtime de Node administrado",
     "acpTool": "la herramienta ACP administrada",
-    "codexAcp": "el componente de runtime ACP de Codex",
     "claudeAgentAcp": "el componente de runtime ACP de Claude"
   },
   "runtimeScope": {

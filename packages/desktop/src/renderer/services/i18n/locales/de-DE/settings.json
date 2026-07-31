@@ -1221,7 +1221,6 @@
   "runtimeResource": {
     "node": "die verwaltete Node-Laufzeit",
     "acpTool": "das verwaltete ACP-Tool",
-    "codexAcp": "die Codex ACP-Laufzeitkomponente",
     "claudeAgentAcp": "die Claude ACP-Laufzeitkomponente"
   },
   "runtimeScope": {

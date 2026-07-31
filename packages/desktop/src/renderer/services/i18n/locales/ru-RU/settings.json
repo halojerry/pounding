@@ -1272,7 +1272,6 @@
   "runtimeResource": {
     "node": "управляемая среда Node",
     "acpTool": "управляемый ACP-инструмент",
-    "codexAcp": "компонент среды выполнения Codex ACP",
     "claudeAgentAcp": "компонент среды выполнения Claude ACP"
   },
   "updateReadyInstall": "{{version}} готова, установить сейчас",

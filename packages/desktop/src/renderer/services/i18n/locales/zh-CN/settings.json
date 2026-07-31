@@ -1254,7 +1254,6 @@
   "runtimeResource": {
     "node": "托管 Node 运行环境",
     "acpTool": "托管 ACP 运行组件",
-    "codexAcp": "Codex ACP 运行组件",
     "claudeAgentAcp": "Claude ACP 运行组件"
   },
   "runtimeScope": {

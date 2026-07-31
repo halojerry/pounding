@@ -407,29 +407,6 @@ function materializeFromBundled(descriptor: ManagedCliDescriptor, bundledDir: st
   }
 }
 
-async function installNpmPackage(packageName: string): Promise<void> {
-  let lastError: unknown;
-  for (const registry of [NPM_MIRROR_REGISTRY, NPM_DEFAULT_REGISTRY]) {
-    try {
-      await runCommand(getNpmCommand(), ['install', '-g', packageName], {
-        env: getNpmEnv(registry),
-      });
-      return;
-    } catch (error) {
-      lastError = error;
-    }
-  }
-  throw lastError instanceof Error ? lastError : new Error(`Failed to install ${packageName}`);
-}
-
-async function uninstallNpmPackage(packageName: string): Promise<void> {
-  try {
-    await runCommand(getNpmCommand(), ['uninstall', '-g', packageName]);
-  } catch {
-    // ignore uninstall miss
-  }
-}
-
 function resolveManagedNpm(): string {
   // Use the managed Node.js runtime's npm (already bundled in managed-resources).
   // Skips the need to download bun — everything is offline from the installer.
@@ -698,6 +675,16 @@ const DESCRIPTORS: Record<ManagedCliInstallTarget, ManagedCliDescriptor> = {
     uninstall: async () => {
       await uninstallGlobalPackage('openclaw');
     },
+  },
+  opencode: {
+    target: 'opencode',
+    detectCommand: 'opencode',
+    detectPaths: [
+      path.join(HERMES_BIN_DIR, process.platform === 'win32' ? 'opencode.cmd' : 'opencode'),
+      path.join(BUN_BIN_DIR, process.platform === 'win32' ? 'opencode.cmd' : 'opencode'),
+    ],
+    install: installOpenCode,
+    uninstall: uninstallOpenCode,
   },
 };
 

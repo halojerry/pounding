@@ -1003,7 +1003,7 @@ function writeProvidersToCcSwitchDb(
 
     // N.B.: The ORDER matters for the CLI_ID_REGEX used in this function. If you add or remove app_types, ensure that the
     // corresponding Regular Expression is updated with the CLI ID before adding the app_type value to this array.
-    const TARGET_APP_TYPES = ['claude', 'hermes', 'openclaw'] as const;
+    const TARGET_APP_TYPES = ['claude', 'hermes', 'opencode', 'openclaw'] as const;
 
     const insertStmt = db.prepare(
       `INSERT INTO providers (id, app_type, name, settings_config)
@@ -1642,7 +1642,11 @@ function resolveCodexWireApi(_profile: ProviderSyncProfile): string {
 }
 
 function resolveCodexBaseUrl(_profile: ProviderSyncProfile): string {
-  // Codex support has been removed. Return default.
+  // Route Codex through the local API proxy so Requests API format gets
+  // translated to Chat Completions API format for the POUNDING API.
+  //
+  // Codex has been removed from POUNDING. The resolveCodexBaseUrl function
+  // is retained as dead code for future reference.
   return 'http://127.0.0.1:18792/v1';
 }
 
@@ -2101,12 +2105,6 @@ async function syncManagedProviderRuntimeConfigs(
     writePoundingConfig(apiKey, provider.base_url || undefined);
   }
 
-  // Start/ensure the Codex API proxy is ready BEFORE writing CLI configs.
-  // Previous fire-and-forget caused a race: when API key changed (re-login),
-  // the proxy kills the old process and writes a new port file, but
-  // writeCodexConfigForProviderSync runs in parallel and may read the stale
-  // port before the new proxy is ready → Codex config.toml points to a dead
-  // port → UNKNOWN_UPSTREAM_ERROR on next conversation turn.
   await Promise.all(
     cliTasks.map(async ({ cliTarget: target, run }) => {
       const providerWithModel = buildProviderWithModel(provider, resolveManagedCliModelId(provider, prefs, target));

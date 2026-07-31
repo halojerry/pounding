@@ -951,7 +951,7 @@ export type CliAvailabilityReport = {
 };
 
 export async function verifyAllClisAvailable(): Promise<CliAvailabilityReport> {
-  const targets: ManagedCliInstallTarget[] = ['hermes', 'openclaw', 'claude'];
+  const targets: ManagedCliInstallTarget[] = ['hermes', 'openclaw', 'claude', 'opencode'];
   const missing: string[] = [];
   const details: CliAvailabilityReport['details'] = {};
 

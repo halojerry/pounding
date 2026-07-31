@@ -7,6 +7,7 @@
 import { execFile, execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { getEnvAwareName } from '@/common/config/appEnv';
 import { migrateConfigStorage, migrateLegacyMcpConfigToDb, migrateProviders } from '@/common/config/configMigration';
 import { httpRequest } from '@/common/adapter/httpBridge';
 import { mcpService } from '@/common/adapter/ipcBridge';
@@ -182,10 +183,9 @@ function copyDirectorySync(src: string, dest: string): void {
 function resolveManagedNodeRoot(): string {
   // Uses the same managed node runtime as AionCore — probed via 'node' binary
   // in the managed runtime directory. Falls back to system node.
-  // Use getDataPath() to correctly resolve the data directory in both dev
-  // (~/.pounding-dev) and production (~/.pounding) environments.
-  const dataPath = getDataPath();
-  const managedRoot = path.join(dataPath, 'runtime', 'node');
+  const homedir = require('os').homedir();
+  const dataDirName = getEnvAwareName('.pounding');
+  const managedRoot = path.join(homedir, dataDirName, 'runtime', 'node');
   if (fs.existsSync(managedRoot)) {
     const versions = fs.readdirSync(managedRoot).filter((d) => d.startsWith('node-v'));
     if (versions.length > 0) {
@@ -454,27 +454,7 @@ async function ensureBootstrapMcpServersInDb(configFile: ConfigFile): Promise<vo
   logImageGenerationEnvResolution(imageEnvResolution, 'bootstrap');
   const imageServer = buildBuiltinImageGenerationServer(imageEnvResolution, imageConfig);
   const defaultServers = buildDefaultMcpServers();
-
-  // Materialize the compiled image-gen MCP script to the data directory so
-  // the Rust ACP injection path (factory/acp.rs) can find it at
-  // {data_dir}/builtin-mcp/image-gen-server.js.
-  materializeBuiltinMcpScript('builtin-mcp-image-gen', 'image-gen-server.js');
-
-  // Pre-install chrome-devtools-mcp into the managed Node runtime so it's
-  // available offline (no npx download needed at runtime).
-  preinstallChromeDevtoolsMcp();
-
-  // Prefer imageServer (with resolved env vars) over the generic entry from
-  // buildDefaultMcpServers. image-gen appears in both arrays; dedup before import
-  // to avoid the second entry (enabled=false for fresh installs) overwriting the first.
-  const allServers = [imageServer, ...defaultServers];
-  const seenMissing = new Set<string>();
-  const dedupedServers = allServers.filter((server) => {
-    if (seenMissing.has(server.name)) return false;
-    seenMissing.add(server.name);
-    return true;
-  });
-  const missing = dedupedServers.filter((server) => !existingByName.has(server.name));
+  const missing = [imageServer, ...defaultServers].filter((server) => !existingByName.has(server.name));
   let imageServerUpdated = false;
 
   if (missing.length > 0) {

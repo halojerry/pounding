@@ -4,12 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import {
-  CODEX_MODE_NATIVE_DEFAULT,
-  CODEX_MODE_NATIVE_FULL_ACCESS,
-  CODEX_MODE_READ_ONLY,
-} from '@/common/types/codex/codexModes';
-
 /**
  * Agent mode option interface
  * 代理模式选项接口
@@ -66,16 +60,6 @@ export const AGENT_MODES: Record<string, AgentModeOption[]> = {
     { value: 'default', label: 'Default' },
     { value: 'auto_edit', label: 'Auto-Accept Edits' },
     { value: 'yolo', label: 'YOLO' },
-  ],
-  codex: [
-    { value: CODEX_MODE_READ_ONLY, label: 'Read Only' },
-    { value: CODEX_MODE_NATIVE_DEFAULT, label: 'Default' },
-    { value: CODEX_MODE_NATIVE_FULL_ACCESS, label: 'Full Access' },
-  ],
-  cursor: [
-    { value: 'agent', label: 'Agent', description: 'Full agent capabilities with tool access' },
-    { value: 'plan', label: 'Plan', description: 'Read-only mode for planning and designing before implementation' },
-    { value: 'ask', label: 'Ask', description: 'Q&A mode - no edits or command execution' },
   ],
   snow: [
     { value: 'default', label: 'Agent', description: 'Full agent mode with tool access' },

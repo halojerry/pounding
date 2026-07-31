@@ -13,7 +13,7 @@ const SET_MODEL_PREFIX_PATTERN = /^set model to\s+/i;
 // imageModelAllowlist.ts for the built-in image generation tool.
 const IMAGE_GEN_MODEL_PATTERN = /(image|banana|imagine|video)/i;
 
-export const MANAGED_RUNTIME_CLI_TARGETS = ['claude', 'hermes', 'openclaw'] as const;
+export const MANAGED_RUNTIME_CLI_TARGETS = ['claude', 'hermes', 'opencode', 'openclaw'] as const;
 export const MANAGED_NEWAPI_PROVIDER_ID = 'desktop-newapi-managed-provider';
 export const MANAGED_NEWAPI_PROVIDER_NAME = 'New API';
 export const MANAGED_NEWAPI_PROVIDER_DISPLAY_NAME = 'POUNDING API';

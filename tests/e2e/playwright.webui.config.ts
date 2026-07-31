@@ -20,7 +20,7 @@ export default defineConfig({
       use: {
         browserName: 'chromium',
         launchOptions: {
-          channel: 'chrome',
+          channel: 'chrome', // Use system Chrome (no Chromium download)
         },
       },
     },

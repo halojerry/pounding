@@ -1,7 +1,7 @@
 /**
  * L2: WebUI Smoke Tests — no login required.
  *
- * Start WebUI first: cd POUNDING && bun run webui
+ * Start WebUI first: bun run webui
  */
 import { test, expect } from '@playwright/test';
 
@@ -18,12 +18,12 @@ test.describe('Out-of-Box WebUI', () => {
     expect(errors.filter((e) => !e.includes('ResizeObserver') && !e.includes('hydration'))).toHaveLength(0);
   });
 
-  test('TC2.2: POUNDING branding, no POUNDING residue', async ({ page }) => {
+  test('TC2.2: POUNDING branding, no AionUi residue', async ({ page }) => {
     await page.goto(BASE);
     await page.waitForLoadState('domcontentloaded', { timeout: 30_000 });
 
     const bodyText = await page.textContent('body');
-    expect(bodyText).not.toContain('POUNDING');
+    expect(bodyText).not.toContain('AionUi');
   });
 
   test('TC2.3: page has a title', async ({ page }) => {
@@ -42,6 +42,6 @@ test.describe('Out-of-Box WebUI', () => {
     const bodyText = await page.textContent('body');
     const len = bodyText?.length || 0;
     console.log(`  Body length: ${len}`);
-    expect(len).toBeGreaterThan(50);
+    expect(len).toBeGreaterThan(50); // Page should have meaningful content
   });
 });

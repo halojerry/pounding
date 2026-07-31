@@ -9,8 +9,6 @@ import { ipcBridge } from '@/common';
 import type { ICreateConversationParams } from '@/common/adapter/ipcBridge';
 import type { IProvider, TProviderWithModel } from '@/common/config/storage';
 import type { Assistant } from '@/common/types/agent/assistantTypes';
-import { DEFAULT_CODEX_MODELS } from '@/common/types/codex/codexModels';
-import { CODEX_MODE_NATIVE_FULL_ACCESS, normalizeCodexMode } from '@/common/types/codex/codexModes';
 import { resolveLocaleKey } from '@/common/utils';
 import {
   buildAgentConversationParams,
@@ -30,7 +28,6 @@ type ModePreference = {
 
 const LEGACY_YOLO_MODE_MAP: Partial<Record<string, string>> = {
   claude: 'bypassPermissions',
-  codex: CODEX_MODE_NATIVE_FULL_ACCESS,
   qwen: 'yolo',
 };
 
@@ -49,8 +46,7 @@ async function resolvePreferredMode(backend: string): Promise<string | undefined
     preference = acpConfig?.[backend as string];
   }
 
-  const normalizedPreferredMode =
-    backend === 'codex' ? normalizeCodexMode(preference?.preferredMode) : preference?.preferredMode;
+  const normalizedPreferredMode = preference?.preferredMode;
   if (normalizedPreferredMode && modeOptions.some((option) => option.value === normalizedPreferredMode)) {
     return normalizedPreferredMode;
   }
@@ -78,10 +74,6 @@ async function resolvePreferredAcpModelId(backend: string): Promise<string | und
   const handshakeModelId = handshakeModels?.current_model_id;
   if (typeof handshakeModelId === 'string' && handshakeModelId.trim().length > 0) {
     return handshakeModelId;
-  }
-
-  if (backend === 'codex' && DEFAULT_CODEX_MODELS.length > 0) {
-    return DEFAULT_CODEX_MODELS[0]?.id;
   }
 
   return undefined;

@@ -32,6 +32,78 @@ function requirePackagedResource(resourcesDir, relativePath, missing) {
   }
 }
 
+function readDirectories(root) {
+  if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) return [];
+  return fs
+    .readdirSync(root, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name);
+}
+
+function readJsonFile(filePath) {
+  try {
+    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+function verifyManagedResources(resourcesDir, runtimeKey, electronPlatformName) {
+  const baseDir = path.join(resourcesDir, 'bundled-poundingcore', runtimeKey, 'managed-resources');
+  const missing = [];
+
+  // Read the managed-resources manifest contract (schema v2).
+  // Using the manifest is more robust than hardcoding paths because the
+  // directory layout (cli/claude/ vs acp/claude-agent-acp/) can vary.
+  const manifestPath = path.join(baseDir, 'manifest.json');
+  const manifest = readJsonFile(manifestPath);
+
+  if (!manifest) {
+    throw new Error(`Managed resources manifest missing or invalid: ${manifestPath}`);
+  }
+
+  // Verify Node.js runtime using manifest contract
+  if (manifest.node && typeof manifest.node.root === 'string' && typeof manifest.node.executable === 'string') {
+    const nodeExePath = path.join(baseDir, manifest.node.root, manifest.node.executable);
+    if (!fs.existsSync(nodeExePath)) {
+      missing.push(`managed-resources/${manifest.node.root}/${manifest.node.executable}`);
+    }
+  } else {
+    // Fallback: scan node/ directory (backward compat with older manifests)
+    const nodeRoot = path.join(baseDir, 'node');
+    const nodeVersions = readDirectories(nodeRoot);
+    if (nodeVersions.length === 0) {
+      missing.push('managed-resources/node (no node runtime found)');
+    } else {
+      const nodeBin = electronPlatformName === 'win32' ? 'node.exe' : path.join('bin', 'node');
+      const hasNode = nodeVersions.some((v) => fs.existsSync(path.join(nodeRoot, v, nodeBin)));
+      if (!hasNode) {
+        missing.push(`managed-resources/node/*/${nodeBin}`);
+      }
+    }
+  }
+
+  // Verify Claude CLI using manifest contract (required by NSIS verification; E1030 without it)
+  const clis = Array.isArray(manifest.clis) ? manifest.clis : [];
+  const claudeEntry = clis.find((c) => c && c.name === 'claude');
+
+  if (!claudeEntry) {
+    missing.push('managed-resources: claude entry missing from manifest.clis');
+  } else {
+    // root already includes version + platform subdirectory (e.g. cli/claude/2.1.215/win32-x64)
+    const claudeExePath = path.join(baseDir, claudeEntry.root, claudeEntry.executable);
+    if (!fs.existsSync(claudeExePath)) {
+      missing.push(`managed-resources/${claudeEntry.root}/${claudeEntry.executable}`);
+    }
+  }
+
+  if (missing.length > 0) {
+    throw new Error(`Managed resources incomplete for ${runtimeKey}: ${missing.join(', ')}`);
+  }
+
+  console.log(`   ✓ Managed resources verified for ${runtimeKey}`);
+}
+
 function verifyBundledResources(resourcesDir, electronPlatformName, targetArch) {
   const runtimeKey = `${electronPlatformName}-${targetArch}`;
   const missing = [];
@@ -47,6 +119,13 @@ function verifyBundledResources(resourcesDir, electronPlatformName, targetArch) 
   if (missing.length > 0) {
     throw new Error(`Packaged app is missing required resource(s): ${missing.join(', ')}`);
   }
+
+  // Deep-verify managed-resources contents.
+  // The NSIS installer verification script (verify-bundled-aioncore-install.ps1)
+  // requires at minimum a valid Node.js runtime and Claude ACP contract.
+  // Catching incomplete resources here fails the build early instead of
+  // letting users hit E1030 at install time.
+  verifyManagedResources(resourcesDir, runtimeKey, electronPlatformName);
 
   console.log(`   ✓ Bundled resources verified for ${runtimeKey}`);
 }

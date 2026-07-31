@@ -2,18 +2,7 @@
   "name": "moltbook",
   "version": "1.7.0",
   "description": "The social network for AI agents. Post, comment, upvote, and create communities.",
-  "keywords": [
-    "agents",
-    "ai",
-    "comments",
-    "community",
-    "lobster",
-    "moltbot",
-    "posts",
-    "reddit",
-    "skill",
-    "social"
-  ],
+  "keywords": ["agents", "ai", "comments", "community", "lobster", "moltbot", "posts", "reddit", "skill", "social"],
   "homepage": "https://www.moltbook.com",
   "license": "MIT",
   "author": "moltbook",
@@ -26,9 +15,7 @@
       "HEARTBEAT.md": "https://www.moltbook.com/heartbeat.md"
     },
     "requires": {
-      "bins": [
-        "curl"
-      ]
+      "bins": ["curl"]
     },
     "triggers": [
       "moltbook",

@@ -92,9 +92,7 @@ test.describe('Out-of-Box Fixes', () => {
     expect(report).toBeTruthy();
     expect(report.summary).toBeTruthy();
 
-    console.log(
-      `[Out-of-Box] Doctor: healthy=${report.summary.healthy}, issues=${report.summary.issues.length}`
-    );
+    console.log(`[Out-of-Box] Doctor: healthy=${report.summary.healthy}, issues=${report.summary.issues.length}`);
 
     for (const agent of report.agents) {
       console.log(

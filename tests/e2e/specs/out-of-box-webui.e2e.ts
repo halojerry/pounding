@@ -8,7 +8,6 @@ import { test, expect } from '@playwright/test';
 const BASE = 'http://localhost:25809';
 
 test.describe('Out-of-Box WebUI', () => {
-
   test('TC2.1: page loads without uncaught errors', async ({ page }) => {
     const errors: string[] = [];
     page.on('pageerror', (err) => errors.push(err.message));
@@ -16,7 +15,7 @@ test.describe('Out-of-Box WebUI', () => {
     await page.goto(BASE);
     await page.waitForLoadState('domcontentloaded', { timeout: 30_000 });
 
-    expect(errors.filter(e => !e.includes('ResizeObserver') && !e.includes('hydration'))).toHaveLength(0);
+    expect(errors.filter((e) => !e.includes('ResizeObserver') && !e.includes('hydration'))).toHaveLength(0);
   });
 
   test('TC2.2: POUNDING branding, no AionUi residue', async ({ page }) => {

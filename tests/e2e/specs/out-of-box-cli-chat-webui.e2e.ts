@@ -42,7 +42,6 @@ async function sendMessage(page: any, text: string) {
 }
 
 test.describe('Out-of-Box CLI Chat (L3)', () => {
-
   test('L3.1: Login succeeds', async ({ page }) => {
     await login(page);
     const hash = await page.evaluate(() => window.location.hash);

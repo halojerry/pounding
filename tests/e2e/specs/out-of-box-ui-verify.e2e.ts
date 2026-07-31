@@ -15,8 +15,8 @@ test.describe('UI Verification', () => {
     browser = await chromium.connectOverCDP(CDP_URL);
     // Find the POUNDING app page
     const contexts = browser.contexts();
-    const pages = contexts.flatMap(c => c.pages());
-    page = pages.find(p => p.url().includes('5173')) || pages[0];
+    const pages = contexts.flatMap((c) => c.pages());
+    page = pages.find((p) => p.url().includes('5173')) || pages[0];
     if (!page.url().includes('5173')) {
       await page.goto(VITE_URL + '/#/guid');
     }
@@ -63,7 +63,7 @@ test.describe('UI Verification', () => {
     }
 
     page.off('console', handler);
-    const configErrors = errors.filter(e => e.includes('config_not_observed'));
+    const configErrors = errors.filter((e) => e.includes('config_not_observed'));
     expect(configErrors).toHaveLength(0);
   });
 
@@ -79,7 +79,9 @@ test.describe('UI Verification', () => {
   });
 
   test('TC4: model switch without error', async () => {
-    const modelSelector = page.locator('[data-testid="model-selector"], .model-selector, [class*="model-select"]').first();
+    const modelSelector = page
+      .locator('[data-testid="model-selector"], .model-selector, [class*="model-select"]')
+      .first();
     if (await modelSelector.isVisible()) {
       await modelSelector.click();
       await page.waitForTimeout(500);
@@ -98,7 +100,10 @@ test.describe('UI Verification', () => {
     const toggle = page.locator('[data-testid="desktop-theme-toggle"]');
     if (await toggle.isVisible()) {
       // Check current theme
-      const getTheme = () => page.evaluate(() => document.documentElement.getAttribute('data-theme') || localStorage.getItem('arco-theme') || '');
+      const getTheme = () =>
+        page.evaluate(
+          () => document.documentElement.getAttribute('data-theme') || localStorage.getItem('arco-theme') || ''
+        );
       const initial = await getTheme();
 
       // Toggle

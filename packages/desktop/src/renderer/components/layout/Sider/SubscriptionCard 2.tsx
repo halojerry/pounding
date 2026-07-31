@@ -26,9 +26,7 @@ const SubscriptionCard: React.FC<SubscriptionCardProps> = ({ sub, onRecharge }) 
       {/* 今日进度 */}
       <div className='mb-12px'>
         <div className='flex justify-between text-13px mb-4px'>
-          <span className='font-medium'>
-            今日 {formatRmb(sub.dailyRemain / QUOTA_PER_RMB)}
-          </span>
+          <span className='font-medium'>今日 {formatRmb(sub.dailyRemain / QUOTA_PER_RMB)}</span>
           <span className={sub.isDaily ? 'text-[rgb(var(--danger-5))]' : 'text-t-secondary'}>
             {sub.dailyPct.toFixed(1)}%
           </span>
@@ -38,9 +36,7 @@ const SubscriptionCard: React.FC<SubscriptionCardProps> = ({ sub, onRecharge }) 
             className='h-full transition-all duration-500'
             style={{
               width: `${sub.dailyPct.toFixed(1)}%`,
-              background: sub.isDaily
-                ? 'rgb(var(--danger-5))'
-                : 'rgb(var(--primary-6))',
+              background: sub.isDaily ? 'rgb(var(--danger-5))' : 'rgb(var(--primary-6))',
             }}
           />
         </div>
@@ -50,9 +46,7 @@ const SubscriptionCard: React.FC<SubscriptionCardProps> = ({ sub, onRecharge }) 
       <div>
         <div className='flex justify-between text-12px text-t-secondary mb-4px'>
           <span>总额 {formatRmb(sub.totalRemain / QUOTA_PER_RMB)}</span>
-          <span>
-            {nextReset.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })} 重置
-          </span>
+          <span>{nextReset.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })} 重置</span>
         </div>
         <div className='h-4px rd-999px bg-fill-2 overflow-hidden'>
           <div

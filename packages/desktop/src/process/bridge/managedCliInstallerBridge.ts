@@ -530,13 +530,20 @@ async function ensureBunInstalled(): Promise<string> {
       return getLocalBunBinaryPath();
     }
   }
-	  // Fallback: direct install via script — try COS mirror first, then official
-	  if (process.platform !== 'win32') {
-	    try {
-	      const shell = process.env.SHELL || '/bin/bash';
-	      await runCommand(shell, ['-c', `curl -fsSL ${COS_BUN_INSTALL_UNIX} -o /tmp/pounding-bun-install.sh && bash /tmp/pounding-bun-install.sh || curl -fsSL https://bun.sh/install | bash`], {
-	        env: { BUN_INSTALL: BUN_HOME_DIR },
-	      });
+  // Fallback: direct install via script — try COS mirror first, then official
+  if (process.platform !== 'win32') {
+    try {
+      const shell = process.env.SHELL || '/bin/bash';
+      await runCommand(
+        shell,
+        [
+          '-c',
+          `curl -fsSL ${COS_BUN_INSTALL_UNIX} -o /tmp/pounding-bun-install.sh && bash /tmp/pounding-bun-install.sh || curl -fsSL https://bun.sh/install | bash`,
+        ],
+        {
+          env: { BUN_INSTALL: BUN_HOME_DIR },
+        }
+      );
       if (await commandExists(getBunCommand())) return getBunCommand();
       if (isAbsoluteExecutablePath(BUN_BIN_PATH) || isAbsoluteExecutablePath(BUN_SHIM_PATH)) {
         return getLocalBunBinaryPath();
@@ -562,14 +569,20 @@ async function ensureUvInstalled(): Promise<string> {
       lastError = error;
     }
   }
-	  // Fallback: direct install via standalone installer — try COS mirror first
-	  try {
-	    if (process.platform === 'win32') {
-	      await runCommand('powershell', ['-c', `try { irm ${COS_UV_INSTALL_WIN} | iex } catch { irm https://astral.sh/uv/install.ps1 | iex }`]);
-	    } else {
-	      const shell = process.env.SHELL || '/bin/bash';
-	      await runCommand(shell, ['-c', `curl -fsSL ${COS_UV_INSTALL_UNIX} -o /tmp/pounding-uv-install.sh && sh /tmp/pounding-uv-install.sh || curl -LsSf https://astral.sh/uv/install.sh | sh`]);
-	    }
+  // Fallback: direct install via standalone installer — try COS mirror first
+  try {
+    if (process.platform === 'win32') {
+      await runCommand('powershell', [
+        '-c',
+        `try { irm ${COS_UV_INSTALL_WIN} | iex } catch { irm https://astral.sh/uv/install.ps1 | iex }`,
+      ]);
+    } else {
+      const shell = process.env.SHELL || '/bin/bash';
+      await runCommand(shell, [
+        '-c',
+        `curl -fsSL ${COS_UV_INSTALL_UNIX} -o /tmp/pounding-uv-install.sh && sh /tmp/pounding-uv-install.sh || curl -LsSf https://astral.sh/uv/install.sh | sh`,
+      ]);
+    }
     const localUv = getLocalUvBinaryPath();
     if (isAbsoluteExecutablePath(localUv)) return localUv;
     if (await commandExists('uv')) return 'uv';

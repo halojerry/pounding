@@ -14,7 +14,6 @@ import settings from './settings.json';
 import messages from './messages.json';
 import mcp from './mcp.json';
 import acp from './acp.json';
-import codex from './codex.json';
 import tools from './tools.json';
 import google from './google.json';
 import cron from './cron.json';
@@ -36,7 +35,6 @@ export default {
   messages,
   mcp,
   acp,
-  codex,
   tools,
   google,
   cron,

@@ -373,8 +373,13 @@ jobs:
           # Output to vendor/managed-resources/ — preparePoundingcore.js
           # copies from there into the app bundle below.
           mkdir -p vendor/managed-resources
-          bash scripts/prepare-vendor.sh vendor/managed-resources "${{ matrix.platform == 'macos-arm64' && 'darwin-arm64' || matrix.platform == 'macos-x64' && 'darwin-x64' || matrix.platform == 'windows-x64' && 'win32-x64' || matrix.platform == 'windows-arm64' && 'win32-arm64' }}"
-        continue-on-error: true # non-fatal: if npm/pip fails, CLIs can still be network-installed
+          if bash scripts/prepare-vendor.sh vendor/managed-resources "${{ matrix.platform == 'macos-arm64' && 'darwin-arm64' || matrix.platform == 'macos-x64' && 'darwin-x64' || matrix.platform == 'windows-x64' && 'win32-x64' || matrix.platform == 'windows-arm64' && 'win32-arm64' }}"; then
+            echo "vendor-ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "vendor-ok=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=Vendor Incomplete::Managed runtimes vendor step failed — some CLIs may need network install on first launch"
+          fi
+        continue-on-error: true # non-fatal: if upstream downloads fail, CLIs can still be network-installed
 
       - name: Prepare packaged backend binary
         id: prepare-backend
@@ -426,6 +431,7 @@ jobs:
               Get-ChildItem "$env:LOCALAPPDATA\electron-builder\logs" -Name
             }
             "result=failure" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            exit 1
           } else {
             "result=success" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           }

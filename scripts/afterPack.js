@@ -32,6 +32,72 @@ function requirePackagedResource(resourcesDir, relativePath, missing) {
   }
 }
 
+function readDirectories(root) {
+  if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) return [];
+  return fs
+    .readdirSync(root, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name);
+}
+
+function readJsonFile(filePath) {
+  try {
+    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+function verifyManagedResources(resourcesDir, runtimeKey, electronPlatformName) {
+  const baseDir = path.join(resourcesDir, 'bundled-poundingcore', runtimeKey, 'managed-resources');
+  const missing = [];
+
+  // Verify Node.js runtime: at least one version with valid node binary
+  const nodeRoot = path.join(baseDir, 'node');
+  const nodeVersions = readDirectories(nodeRoot);
+
+  if (nodeVersions.length === 0) {
+    missing.push('managed-resources/node (no node runtime found)');
+  } else {
+    const nodeBin = electronPlatformName === 'win32' ? 'node.exe' : path.join('bin', 'node');
+    const hasNode = nodeVersions.some((v) => fs.existsSync(path.join(nodeRoot, v, nodeBin)));
+    if (!hasNode) {
+      missing.push(`managed-resources/node/*/${nodeBin}`);
+    }
+  }
+
+  // Verify Claude ACP (required by NSIS installer verification; E1030 without it)
+  const claudeAcpRoot = path.join(baseDir, 'acp', 'claude-agent-acp');
+  const claudeVersions = readDirectories(claudeAcpRoot);
+
+  if (claudeVersions.length === 0) {
+    missing.push('managed-resources/acp/claude-agent-acp (missing)');
+  } else {
+    let claudeOk = false;
+    for (const version of claudeVersions) {
+      const platformRoot = path.join(claudeAcpRoot, version, runtimeKey);
+      const manifestPath = path.join(platformRoot, 'manifest.json');
+      const manifest = readJsonFile(manifestPath);
+      if (manifest && typeof manifest.entrypoint === 'string') {
+        const entrypointPath = path.join(platformRoot, manifest.entrypoint);
+        if (fs.existsSync(entrypointPath)) {
+          claudeOk = true;
+          break;
+        }
+      }
+    }
+    if (!claudeOk) {
+      missing.push(`managed-resources/acp/claude-agent-acp/*/${runtimeKey} (invalid contract)`);
+    }
+  }
+
+  if (missing.length > 0) {
+    throw new Error(`Managed resources incomplete for ${runtimeKey}: ${missing.join(', ')}`);
+  }
+
+  console.log(`   ✓ Managed resources verified for ${runtimeKey}`);
+}
+
 function verifyBundledResources(resourcesDir, electronPlatformName, targetArch) {
   const runtimeKey = `${electronPlatformName}-${targetArch}`;
   const missing = [];
@@ -47,6 +113,13 @@ function verifyBundledResources(resourcesDir, electronPlatformName, targetArch) 
   if (missing.length > 0) {
     throw new Error(`Packaged app is missing required resource(s): ${missing.join(', ')}`);
   }
+
+  // Deep-verify managed-resources contents.
+  // The NSIS installer verification script (verify-bundled-aioncore-install.ps1)
+  // requires at minimum a valid Node.js runtime and Claude ACP contract.
+  // Catching incomplete resources here fails the build early instead of
+  // letting users hit E1030 at install time.
+  verifyManagedResources(resourcesDir, runtimeKey, electronPlatformName);
 
   console.log(`   ✓ Bundled resources verified for ${runtimeKey}`);
 }

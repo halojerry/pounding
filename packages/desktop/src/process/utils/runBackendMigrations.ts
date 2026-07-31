@@ -7,6 +7,7 @@
 import { execFile } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { getEnvAwareName } from '@/common/config/appEnv';
 import { migrateConfigStorage, migrateLegacyMcpConfigToDb, migrateProviders } from '@/common/config/configMigration';
 import { httpRequest } from '@/common/adapter/httpBridge';
 import { mcpService } from '@/common/adapter/ipcBridge';
@@ -166,7 +167,6 @@ function resolveManagedNodeRoot(): string {
   // Uses the same managed node runtime as AionCore — probed via 'node' binary
   // in the managed runtime directory. Falls back to system node.
   const homedir = require('os').homedir();
-  const { getEnvAwareName } = require('@/common/config/appEnv');
   const dataDirName = getEnvAwareName('.pounding');
   const managedRoot = path.join(homedir, dataDirName, 'runtime', 'node');
   if (fs.existsSync(managedRoot)) {

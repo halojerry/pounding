@@ -51,7 +51,7 @@ function refreshProviderCaches(): void {
   void mutateSWR('model.config.welcome');
 }
 
-const AUTO_INSTALL_TARGETS: ManagedRuntimeCliTarget[] = ['hermes', 'openclaw', 'claude', 'codex', 'opencode'];
+const AUTO_INSTALL_TARGETS: ManagedRuntimeCliTarget[] = ['hermes', 'openclaw', 'claude', 'opencode'];
 
 const DEFAULT_PREP_STATUS: NewApiManagedCliPrepStatus = {
   inProgress: false,
@@ -130,18 +130,10 @@ export const NewApiAccountProvider: React.FC<React.PropsWithChildren> = ({ child
     const completedTargets: ManagedRuntimeCliTarget[] = [];
     try {
       for (const target of AUTO_INSTALL_TARGETS) {
-        // Check if already installed (from bundle preinstall)
-        if (isDesktopRuntime) {
-          try {
-            const alreadyInstalled = await ipcBridge.managedCliInstaller.isInstalled.invoke({ target });
-            if (alreadyInstalled) {
-              completedTargets.push(target);
-              continue;
-            }
-          } catch {
-            // IPC call failed (bridge may not be ready), fall through to install
-          }
-        }
+        // Always call installManagedCli — it handles the "already installed" case
+        // internally by calling syncAfterInstall (which writes configs). This is
+        // critical after login because configs need API credentials that weren't
+        // available during the startup auto-install.
         const stage = target === 'hermes' ? 'installing_hermes' : 'installing_openclaw';
         setPrepStatus(
           buildPrepStatus({

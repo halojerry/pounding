@@ -28,7 +28,6 @@ import type { CreateProviderRequest, UpdateProviderRequest } from '@/common/type
 import { getProviderAuthType } from '@/common/utils/platformAuthType';
 import { AuthType } from '@office-ai/aioncli-core';
 import { ProcessConfig, getSystemDir } from '@process/utils/initStorage';
-import { readCodexProxyPort, ensureCodexProxyRunning } from '@process/services/CodexProxyManager';
 import { createRequire } from 'node:module';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -972,7 +971,7 @@ function writeProvidersToCcSwitchDb(
 
     // N.B.: The ORDER matters for the CLI_ID_REGEX used in this function. If you add or remove app_types, ensure that the
     // corresponding Regular Expression is updated with the CLI ID before adding the app_type value to this array.
-    const TARGET_APP_TYPES = ['claude', 'codex', 'hermes', 'opencode', 'openclaw'] as const;
+    const TARGET_APP_TYPES = ['claude', 'hermes', 'opencode', 'openclaw'] as const;
 
     const insertStmt = db.prepare(
       `INSERT INTO providers (id, app_type, name, settings_config)
@@ -1624,21 +1623,9 @@ function resolveCodexBaseUrl(_profile: ProviderSyncProfile): string {
   // Route Codex through the local API proxy so Requests API format gets
   // translated to Chat Completions API format for the POUNDING API.
   //
-  // The proxy is started by CodexProxyManager before this function is called
-  // (see syncManagedProviderRuntimeConfigs ordering). Read the actual port
-  // from the well-known port file to handle port conflicts transparently.
-  //
-  // Fallback to 18792 only if the port file is missing (proxy failed to start
-  // or was killed). In that case Codex won't work regardless of the port value.
-  const proxyPort = readCodexProxyPort();
-  if (proxyPort === null) {
-    console.warn(
-      '[POUNDING] Codex proxy port file not found — proxy may have failed to start. ' +
-        'Falling back to default port 18792. Codex CLI will be unavailable until proxy is restarted.'
-    );
-    return 'http://127.0.0.1:18792/v1';
-  }
-  return `http://127.0.0.1:${proxyPort}/v1`;
+  // Codex has been removed from POUNDING. The resolveCodexBaseUrl function
+  // is retained as dead code for future reference.
+  return 'http://127.0.0.1:18792/v1';
 }
 
 function writeCodexConfigForProviderSync(provider: TProviderWithModel, modelList: string[]): void {
@@ -2101,18 +2088,6 @@ async function syncManagedProviderRuntimeConfigs(
   if (apiKey) {
     writePoundingConfig(apiKey, provider.base_url || undefined);
   }
-
-  // Start the Codex API proxy and WAIT for it to become ready.
-  // Fire-and-forget: proxy is started at backend-ready time (index.ts:311).
-  // If API key changed (re-login), ensureCodexProxyRunning detects this
-  // internally and triggers an async restart. The restart handler at
-  // CodexProxyManager.ts:327 already calls reconcileManagedRuntimeState
-  // to fix any stale port references in Codex config.toml.
-  // No need to block login on this — the config write uses the port file
-  // (which exists from the proxy started at backend-ready time).
-  ensureCodexProxyRunning().catch((error) => {
-    console.warn('[POUNDING] Codex proxy restart failed (Codex will be unavailable):', error);
-  });
 
   await Promise.all(
     cliTasks.map(async ({ cliTarget: target, run }) => {

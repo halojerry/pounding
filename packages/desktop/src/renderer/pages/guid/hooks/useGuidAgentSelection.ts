@@ -4,8 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { DEFAULT_CODEX_MODELS } from '@/common/types/codex/codexModels';
-import { CODEX_MODE_NATIVE_FULL_ACCESS, normalizeCodexMode } from '@/common/types/codex/codexModes';
 import type { IProvider } from '@/common/config/storage';
 import { configService } from '@/common/config/configService';
 import type { Assistant } from '@/common/types/agent/assistantTypes';
@@ -463,7 +461,7 @@ export const useGuidAgentSelection = ({
         if (cancelled) return;
 
         // 1. Use preferredMode if valid
-        const normalizedPreferred = configKey === 'codex' ? normalizeCodexMode(preferred) : preferred;
+        const normalizedPreferred = preferred;
         if (normalizedPreferred) {
           const modes = getAgentModes(configKey);
           if (modes.some((m) => m.value === normalizedPreferred)) {
@@ -477,7 +475,6 @@ export const useGuidAgentSelection = ({
           const yoloValues: Record<string, string> = {
             claude: 'bypassPermissions',
             gemini: 'yolo',
-            codex: CODEX_MODE_NATIVE_FULL_ACCESS,
             qwen: 'yolo',
           };
           _setSelectedMode(yoloValues[configKey] || 'yolo');
@@ -505,17 +502,6 @@ export const useGuidAgentSelection = ({
     const metadataAgents = availableAgentsData as unknown as AgentMetadata[] | undefined;
     const matched = metadataAgents?.find((a) => (a.backend ?? a.agent_type) === backend);
     const handshakeModels = matched?.handshake?.available_models as AcpModelInfo | undefined;
-
-    // Fallback for codex: when the backend has not yet observed a session
-    // (e.g., first launch before any warmup), use the hardcoded default list
-    // so the Guid page shows a model selector immediately.
-    if (!handshakeModels && backend === 'codex' && DEFAULT_CODEX_MODELS.length > 0) {
-      return {
-        current_model_id: DEFAULT_CODEX_MODELS[0].id,
-        current_model_label: DEFAULT_CODEX_MODELS[0].label,
-        available_models: DEFAULT_CODEX_MODELS.map((m) => ({ id: m.id, label: m.label })),
-      } satisfies AcpModelInfo;
-    }
 
     // Source 2: Managed POUNDING API provider models.
     // Merge into handshake models so CLIs show all available POUNDING API

@@ -13,7 +13,7 @@ const SET_MODEL_PREFIX_PATTERN = /^set model to\s+/i;
 // imageModelAllowlist.ts for the built-in image generation tool.
 const IMAGE_GEN_MODEL_PATTERN = /(image|banana|imagine|video)/i;
 
-export const MANAGED_RUNTIME_CLI_TARGETS = ['claude', 'codex', 'hermes', 'opencode', 'openclaw'] as const;
+export const MANAGED_RUNTIME_CLI_TARGETS = ['claude', 'hermes', 'opencode', 'openclaw'] as const;
 export const MANAGED_NEWAPI_PROVIDER_ID = 'desktop-newapi-managed-provider';
 export const MANAGED_NEWAPI_PROVIDER_NAME = 'New API';
 export const MANAGED_NEWAPI_PROVIDER_DISPLAY_NAME = 'POUNDING API';
@@ -45,7 +45,6 @@ export function sanitizeManagedRuntimeModelValue(value: string | null | undefine
 
 const MANAGED_RUNTIME_CLI_BACKEND_ALIASES: Record<ManagedRuntimeCliTarget, string[]> = {
   claude: ['claude', 'anthropic'],
-  codex: ['codex'],
   hermes: ['hermes'],
   opencode: ['opencode'],
   openclaw: ['openclaw', 'openclaw-gateway'],
@@ -120,9 +119,6 @@ export function buildManagedRuntimeModelId(cliTarget: ManagedRuntimeCliTarget, m
       // session/new resume and later prompts because the Claude ACP session
       // expects the slot id, not the underlying hosted model name.
       return 'default';
-    case 'codex':
-      // Codex config.toml uses the raw model name directly (no provider prefix).
-      return normalizedModelId;
     case 'hermes':
       return `custom:${normalizedModelId}`;
     case 'opencode':
@@ -141,9 +137,6 @@ export function resolveManagedModelIdFromRuntime(
   if (!normalizedModelId) return undefined;
 
   switch (cliTarget) {
-    case 'codex':
-      // Codex config.toml model field is the raw model name.
-      return normalizedModelId;
     case 'hermes':
       return normalizedModelId.startsWith('custom:')
         ? normalizedModelId.slice('custom:'.length) || undefined

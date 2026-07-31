@@ -166,7 +166,9 @@ function resolveManagedNodeRoot(): string {
   // Uses the same managed node runtime as AionCore — probed via 'node' binary
   // in the managed runtime directory. Falls back to system node.
   const homedir = require('os').homedir();
-  const managedRoot = path.join(homedir, '.pounding-dev', 'runtime', 'node');
+  const { getEnvAwareName } = require('@/common/config/appEnv');
+  const dataDirName = getEnvAwareName('.pounding');
+  const managedRoot = path.join(homedir, dataDirName, 'runtime', 'node');
   if (fs.existsSync(managedRoot)) {
     const versions = fs.readdirSync(managedRoot).filter((d) => d.startsWith('node-v'));
     if (versions.length > 0) {
@@ -320,7 +322,7 @@ async function ensureBootstrapMcpServersInDb(configFile: ConfigFile): Promise<vo
   logImageGenerationEnvResolution(imageEnvResolution, 'bootstrap');
   const imageServer = buildBuiltinImageGenerationServer(imageEnvResolution, imageConfig);
   const defaultServers = buildDefaultMcpServers();
-  const missing = [...defaultServers, imageServer].filter((server) => !existingByName.has(server.name));
+  const missing = [imageServer, ...defaultServers].filter((server) => !existingByName.has(server.name));
   let imageServerUpdated = false;
 
   if (missing.length > 0) {
@@ -331,7 +333,7 @@ async function ensureBootstrapMcpServersInDb(configFile: ConfigFile): Promise<vo
   // previously created with enabled=false by an older migration).
   // Deduplicate — image-gen may appear in both defaultServers and imageServer.
   const seen = new Set<string>();
-  const uniqueServers = [...defaultServers, imageServer].filter((server) => {
+  const uniqueServers = [imageServer, ...defaultServers].filter((server) => {
     if (seen.has(server.name)) return false;
     seen.add(server.name);
     return true;

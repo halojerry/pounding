@@ -35,7 +35,6 @@ import { wasLaunchedAtLogin } from '@process/bridge/applicationBridge';
 import { onLanguageChanged } from './process/bridge/systemSettingsBridge';
 import { setInitialLanguage } from '@process/services/i18n';
 import { setupApplicationMenu } from './process/utils/appMenu';
-import { ensureCodexProxyRunning, stopCodexProxy } from './process/services/CodexProxyManager';
 import { startWebHost } from '@aionui/web-host';
 import { initializeZoomFactor, setupZoomForWindow } from './process/utils/zoom';
 import {
@@ -368,25 +367,11 @@ function markBackendReady(backendPort: number, source: string): void {
   void ensureAdminUserOnce(backendPort);
   scheduleBackendMigrations();
 
-  // Start the codex-api-proxy so Codex CLI works out-of-the-box.
-  // Don't block startup — the proxy starts asynchronously.
-  void ensureCodexProxyRunning()
-    .then((result) => {
-      if (result) {
-        console.log(`[POUNDING] Codex API proxy running on port ${result.port}`);
-      } else {
-        console.warn('[POUNDING] Codex API proxy could not be started — Codex CLI will not work');
-      }
-    })
-    .catch((err) => {
-      console.warn('[POUNDING] Codex API proxy startup failed:', err.message || err);
-    });
-
   // Auto-install managed CLI tools from bundled resources (offline-first).
-  // This ensures claude, codex, hermes, opencode, and openclaw are
+  // This ensures claude, hermes, opencode, and openclaw are
   // available before the user creates their first conversation.
   void import('./process/bridge/managedCliInstallerBridge')
-    .then(({ installManagedCliBatch }) => installManagedCliBatch(['hermes', 'openclaw', 'claude', 'codex', 'opencode']))
+    .then(({ installManagedCliBatch }) => installManagedCliBatch(['hermes', 'openclaw', 'claude', 'opencode']))
     .then(() => {
       console.log('[POUNDING] Managed CLI tools ready');
     })
@@ -994,7 +979,6 @@ installQuitCleanup({
 });
 
 app.on('will-quit', () => {
-  stopCodexProxy();
   console.log('[POUNDING] will-quit — all cleanup should be complete');
 });
 

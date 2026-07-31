@@ -90,10 +90,10 @@ function verifyManagedResources(resourcesDir, runtimeKey, electronPlatformName) 
   if (!claudeEntry) {
     missing.push('managed-resources: claude entry missing from manifest.clis');
   } else {
-    const platDir = claudeEntry.platformDirectory || runtimeKey;
-    const claudeExePath = path.join(baseDir, claudeEntry.root, platDir, claudeEntry.executable);
+    // root already includes version + platform subdirectory (e.g. cli/claude/2.1.215/win32-x64)
+    const claudeExePath = path.join(baseDir, claudeEntry.root, claudeEntry.executable);
     if (!fs.existsSync(claudeExePath)) {
-      missing.push(`managed-resources/${claudeEntry.root}/${platDir}/${claudeEntry.executable}`);
+      missing.push(`managed-resources/${claudeEntry.root}/${claudeEntry.executable}`);
     }
   }
 

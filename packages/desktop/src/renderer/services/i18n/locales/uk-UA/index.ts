@@ -35,7 +35,7 @@ export default {
   messages,
   mcp,
   acp,
-  
+
   tools,
   google,
   cron,

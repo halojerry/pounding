@@ -987,7 +987,7 @@ function writeProvidersToCcSwitchDb(
 
     // N.B.: The ORDER matters for the CLI_ID_REGEX used in this function. If you add or remove app_types, ensure that the
     // corresponding Regular Expression is updated with the CLI ID before adding the app_type value to this array.
-    const TARGET_APP_TYPES = ['claude', 'codex', 'hermes', 'opencode', 'openclaw'] as const;
+    const TARGET_APP_TYPES = ['claude', 'hermes', 'opencode', 'openclaw'] as const;
 
     const insertStmt = db.prepare(
       `INSERT INTO providers (id, app_type, name, settings_config)
@@ -1039,14 +1039,6 @@ function buildCcSwitchSettingsConfig(profile: ProviderSyncProfile, appType: stri
       return {
         env: buildClaudeRuntimeProviderEnv(profile),
         model: 'default',
-      };
-    case 'codex':
-      return {
-        model: modelId,
-        model_provider: profile.managedProviderId,
-        base_url: resolveCodexBaseUrl(profile),
-        wire_api: 'responses',
-        auth: { OPENAI_API_KEY: apiKey },
       };
     case 'hermes':
       return {
@@ -2075,8 +2067,7 @@ async function syncManagedProviderRuntimeConfigs(
       run: (providerWithModel) => writeClaudeSettingsForProviderSync(providerWithModel, provider.models),
     },
     {
-      cliTarget: 'codex',
-      run: (providerWithModel) => writeCodexConfigForProviderSync(providerWithModel, provider.models),
+      cliTarget: 'hermes',
     },
     {
       cliTarget: 'hermes',
@@ -2372,9 +2363,6 @@ function clearManagedRuntimeForCliTargetSync(cliTarget: ManagedRuntimeCliTarget)
   switch (cliTarget) {
     case 'claude':
       clearClaudeSettingsForProviderSync();
-      break;
-    case 'codex':
-      clearCodexManagedProviderModel(managedProviderId);
       break;
     case 'hermes':
       clearHermesConfigForProviderSync();

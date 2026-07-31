@@ -801,32 +801,6 @@ const DESCRIPTORS: Record<ManagedCliInstallTarget, ManagedCliDescriptor> = {
       await uninstallGlobalPackage('@anthropic-ai/claude-code');
     },
   },
-  codex: {
-    target: 'codex',
-    detectCommand: 'codex',
-    detectPaths: [
-      path.join(HERMES_BIN_DIR, process.platform === 'win32' ? 'codex.cmd' : 'codex'),
-      path.join(
-        process.env.HOME || os.homedir(),
-        '.codex',
-        '.npm-global',
-        'bin',
-        process.platform === 'win32' ? 'codex.cmd' : 'codex'
-      ),
-      path.join(BUN_BIN_DIR, process.platform === 'win32' ? 'codex.cmd' : 'codex'),
-    ],
-    install: async () => {
-      const command = await getGlobalJsCommand();
-      if (command === getNpmCommand()) {
-        await installNpmPackage('@openai/codex');
-        return;
-      }
-      await installBunPackage('@openai/codex');
-    },
-    uninstall: async () => {
-      await uninstallGlobalPackage('@openai/codex');
-    },
-  },
   hermes: {
     target: 'hermes',
     detectCommand: 'hermes',
@@ -1009,7 +983,7 @@ export type CliAvailabilityReport = {
 };
 
 export async function verifyAllClisAvailable(): Promise<CliAvailabilityReport> {
-  const targets: ManagedCliInstallTarget[] = ['hermes', 'openclaw', 'claude', 'codex', 'opencode'];
+  const targets: ManagedCliInstallTarget[] = ['hermes', 'openclaw', 'claude', 'opencode'];
   const missing: string[] = [];
   const details: CliAvailabilityReport['details'] = {};
 

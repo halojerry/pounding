@@ -49,6 +49,15 @@ export const MANAGED_CLI_CAPABILITIES: Record<ManagedRuntimeCliTarget, ManagedCl
     resume: 'not_applicable',
     configSource: { kind: 'static_json' },
   },
+  opencode: {
+    target: 'opencode',
+    label: 'OpenCode',
+    protocol: 'acp',
+    secretMode: 'env_referenced',
+    hotSwitch: 'supported',
+    resume: 'supported',
+    configSource: { kind: 'managed_json_via_env', envOverrideKey: 'OPENCODE_CONFIG' },
+  },
 };
 
 export function getManagedCliCapability(target: ManagedRuntimeCliTarget): ManagedCliCapability {

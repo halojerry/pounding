@@ -2047,10 +2047,6 @@ async function syncManagedProviderRuntimeConfigs(
       run: (providerWithModel) => writeClaudeSettingsForProviderSync(providerWithModel, provider.models),
     },
     {
-      cliTarget: 'codex',
-      run: (providerWithModel) => writeCodexConfigForProviderSync(providerWithModel, provider.models),
-    },
-    {
       cliTarget: 'hermes',
       run: (providerWithModel) => writeHermesConfigForProviderSync(providerWithModel, provider.models),
     },
@@ -2330,9 +2326,6 @@ function clearManagedRuntimeForCliTargetSync(cliTarget: ManagedRuntimeCliTarget)
   switch (cliTarget) {
     case 'claude':
       clearClaudeSettingsForProviderSync();
-      break;
-    case 'codex':
-      clearCodexManagedProviderModel(managedProviderId);
       break;
     case 'hermes':
       clearHermesConfigForProviderSync();

@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -8,6 +8,7 @@ import type { IMessageText } from '@/common/chat/chatLib';
 import { AIONUI_FILES_MARKER } from '@/common/config/constants';
 import { useConversationContextSafe } from '@/renderer/hooks/context/ConversationContext';
 import { useLayoutContext } from '@/renderer/hooks/context/LayoutContext';
+import { useLocalFilePreview } from '@/renderer/pages/conversation/Preview/hooks/useLocalFilePreview';
 import { iconColors } from '@/renderer/styles/colors';
 import { Alert, Message, Tooltip } from '@arco-design/web-react';
 import { Copy } from '@icon-park/react';
@@ -47,37 +48,78 @@ export const formatMessageTime = (timestamp: number): string => {
   return time;
 };
 import MessageCronBadge from './MessageCronBadge';
-import { getAgentLogo } from '@/renderer/utils/model/agentLogo';
+import { resolveAgentLogo, useAgentLogos } from '@/renderer/utils/model/agentLogo';
 import TeammateMessageAvatar from './TeammateMessageAvatar';
+import { useTeammateColor } from '@/renderer/pages/team/identity/TeamIdentityContext';
 
 const CODE_STYLE = { marginTop: 4, marginBlock: 4 };
 
-const LEGACY_FILES_MARKER = '[[AION_FILES]]';
+type ParsedFileMarker = {
+  text: string;
+  files: string[];
+};
 
-const parseFileMarker = (content: string) => {
-  let markerIndex = content.indexOf(AIONUI_FILES_MARKER);
-  let markerLength = AIONUI_FILES_MARKER.length;
-  // Fallback: also support the legacy marker from older conversations
-  if (markerIndex === -1) {
-    markerIndex = content.indexOf(LEGACY_FILES_MARKER);
-    markerLength = LEGACY_FILES_MARKER.length;
+const URL_SCHEME_PATTERN = /^[a-z][a-z0-9+.-]*:\/\//i;
+const MARKDOWN_ATTACHMENT_LINE_PATTERN = /^(#{1,6}\s|[-*+]\s|\d+[.)]\s|>\s?|```|~~~|\|)/;
+
+const parseFileMarker = (content: string, canParseFileMarker: boolean): ParsedFileMarker => {
+  if (!canParseFileMarker) {
+    return { text: content, files: [] };
   }
-  if (markerIndex === -1) {
-    return { text: content, files: [] as string[] };
+
+  const lines = content.split(/\r?\n/);
+  let markerLineIndex = -1;
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    if (lines[index].trim() === AIONUI_FILES_MARKER) {
+      markerLineIndex = index;
+      break;
+    }
   }
-  const text = content.slice(0, markerIndex).trimEnd();
-  const afterMarker = content.slice(markerIndex + markerLength).trim();
-  const files = afterMarker
-    ? afterMarker
-        .split('\n')
-        .map((line) => line.trim())
-        .filter(Boolean)
-    : [];
-  return { text, files };
+
+  if (markerLineIndex === -1) {
+    return { text: content, files: [] };
+  }
+
+  const files = lines
+    .slice(markerLineIndex + 1)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (!files.length || files.some((file_path) => !isLocalMessageFilePath(file_path))) {
+    return { text: content, files: [] };
+  }
+
+  return {
+    text: lines.slice(0, markerLineIndex).join('\n').trimEnd(),
+    files,
+  };
 };
 
 const isAbsoluteMessageFilePath = (file_path: string): boolean =>
-  file_path.startsWith('/') || /^[A-Za-z]:/.test(file_path);
+  file_path.startsWith('/') || file_path.startsWith('\\\\') || /^[A-Za-z]:[\\/]/.test(file_path);
+
+const isWorkspaceRelativeMessageFilePath = (file_path: string): boolean => {
+  const normalizedFilePath = file_path.replace(/\\/g, '/');
+  return (
+    normalizedFilePath.startsWith('./') ||
+    normalizedFilePath.startsWith('../') ||
+    normalizedFilePath.includes('/') ||
+    /(?:^|\/)[^/]+\.[^./\s][^/]*$/.test(normalizedFilePath)
+  );
+};
+
+const isLocalMessageFilePath = (file_path: string): boolean => {
+  const trimmedFilePath = file_path.trim();
+  if (
+    !trimmedFilePath ||
+    URL_SCHEME_PATTERN.test(trimmedFilePath) ||
+    MARKDOWN_ATTACHMENT_LINE_PATTERN.test(trimmedFilePath)
+  ) {
+    return false;
+  }
+
+  return isAbsoluteMessageFilePath(trimmedFilePath) || isWorkspaceRelativeMessageFilePath(trimmedFilePath);
+};
 
 export const resolveMessageFilePath = (file_path: string, workspace?: string): string => {
   if (!file_path || isAbsoluteMessageFilePath(file_path) || !workspace) {
@@ -105,6 +147,7 @@ const useFormatContent = (content: string) => {
 };
 
 const MessageText: React.FC<{ message: IMessageText; showCopyRow?: boolean }> = ({ message, showCopyRow = true }) => {
+  const logos = useAgentLogos();
   // Filter think tags from content before rendering
   // 在渲染前过滤 think 标签
   const contentToRender = useMemo(() => {
@@ -122,16 +165,20 @@ const MessageText: React.FC<{ message: IMessageText; showCopyRow?: boolean }> = 
     return content;
   }, [message.content.content]);
 
-  const { text, files } = parseFileMarker(contentToRender);
-  const { data, json } = useFormatContent(text);
   const { t } = useTranslation();
   const [showCopyAlert, setShowCopyAlert] = useState(false);
   const isUserMessage = message.position === 'right';
   const isTeammateMessage = message.position === 'left' && message.content.teammateMessage === true;
+  const { text, files } = useMemo(
+    () => parseFileMarker(contentToRender, isUserMessage),
+    [contentToRender, isUserMessage]
+  );
+  const { data, json } = useFormatContent(text);
   const shouldRenderPlainText = isUserMessage;
   const conversationContext = useConversationContextSafe();
   const layout = useLayoutContext();
   const isMobile = layout?.isMobile ?? false;
+  const handleLocalFileLink = useLocalFilePreview(conversationContext?.workspace);
   const resolvedFiles = useMemo(
     () => files.map((file_path) => resolveMessageFilePath(file_path, conversationContext?.workspace)),
     [conversationContext?.workspace, files]
@@ -189,7 +236,9 @@ const MessageText: React.FC<{ message: IMessageText; showCopyRow?: boolean }> = 
   const senderName = message.content.senderName;
   const senderAgentType = message.content.senderAgentType;
   const senderConversationId = message.content.senderConversationId;
-  const fallbackBackendLogo = senderAgentType ? getAgentLogo(senderAgentType) : null;
+  const fallbackBackendLogo = senderAgentType ? resolveAgentLogo(logos, { backend: senderAgentType }) : null;
+  // 团队 teammate 消息：按发送者会话取身份色，做气泡左色条 + 彩色发送者名；非团队场景为 undefined。
+  const teammateColor = useTeammateColor(isTeammateMessage ? senderConversationId : undefined);
 
   return (
     <>
@@ -202,11 +251,16 @@ const MessageText: React.FC<{ message: IMessageText; showCopyRow?: boolean }> = 
               senderConversationId={senderConversationId}
               backendLogo={fallbackBackendLogo}
             />
-            <span className='text-12px text-t-secondary'>{senderName}</span>
+            <span
+              className='text-12px'
+              style={teammateColor ? { color: teammateColor } : { color: 'var(--text-secondary)' }}
+            >
+              {senderName}
+            </span>
           </div>
         )}
         {files.length > 0 && (
-          <div className={classNames('mt-6px', { 'self-end': isUserMessage })}>
+          <div className={classNames('mt-6px min-w-0 max-w-full', { 'self-end': isUserMessage })}>
             {resolvedFiles.length === 1 ? (
               <div className='flex items-center gap-8px'>
                 <div
@@ -256,7 +310,7 @@ const MessageText: React.FC<{ message: IMessageText; showCopyRow?: boolean }> = 
           </div>
         )}
         <div
-          className={classNames('min-w-0 [&>p:first-child]:mt-0px [&>p:last-child]:mb-0px md:max-w-780px', {
+          className={classNames('min-w-0 [&>p:first-child]:mt-0px [&>p:last-child]:mb-0px', {
             'bg-aou-2 p-6px md:p-8px': isUserMessage || cronMeta,
             'bg-3 p-6px md:p-8px': isTeammateMessage,
             'w-full': !(isUserMessage || cronMeta || isTeammateMessage),
@@ -265,7 +319,10 @@ const MessageText: React.FC<{ message: IMessageText; showCopyRow?: boolean }> = 
             ...(isUserMessage || cronMeta
               ? { borderRadius: '8px 0 8px 8px', color: 'var(--text-primary)' }
               : isTeammateMessage
-                ? { borderRadius: '0 8px 8px 8px' }
+                ? {
+                    borderRadius: '0 8px 8px 8px',
+                    ...(teammateColor ? { borderLeft: `3px solid ${teammateColor}` } : {}),
+                  }
                 : undefined),
           }}
         >
@@ -279,12 +336,15 @@ const MessageText: React.FC<{ message: IMessageText; showCopyRow?: boolean }> = 
               <div data-testid='message-text-content'>
                 <MarkdownView
                   codeStyle={CODE_STYLE}
+                  onLocalFileLink={handleLocalFileLink}
                 >{`\`\`\`json\n${JSON.stringify(data, null, 2)}\n\`\`\``}</MarkdownView>
               </div>
             </CollapsibleContent>
           ) : (
             <div data-testid='message-text-content'>
-              <MarkdownView codeStyle={CODE_STYLE}>{data}</MarkdownView>
+              <MarkdownView codeStyle={CODE_STYLE} onLocalFileLink={handleLocalFileLink}>
+                {data}
+              </MarkdownView>
             </div>
           )}
         </div>

@@ -1,10 +1,10 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import ReactMarkdown from 'react-markdown';
+import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 
 import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
@@ -22,7 +22,10 @@ import { useTranslation } from 'react-i18next';
 import { convertLatexDelimiters } from '@renderer/utils/chat/latexDelimiters';
 import LocalImageView from '@renderer/components/media/LocalImageView';
 import CodeBlock from './CodeBlock';
+import LocalFileLink from './LocalFileLink';
 import ShadowView from './ShadowView';
+import { resolveLocalFileLinkPath, resolveLocalFileLinkReference } from './markdownUtils';
+import type { LocalFileLinkReference } from './markdownUtils';
 
 const REMARK_PLUGINS = [remarkGfm, remarkMath, remarkBreaks];
 
@@ -38,6 +41,7 @@ type MarkdownViewProps = {
   codeStyle?: React.CSSProperties;
   className?: string;
   onRef?: (el?: HTMLDivElement | null) => void;
+  onLocalFileLink?: (path: string, reference?: LocalFileLinkReference) => void | Promise<void>;
   /** Enable raw HTML rendering in markdown content. Use with caution — only for trusted sources. */
   allowHtml?: boolean;
   /** Callback when an image is clicked. Receives the image src. */
@@ -45,7 +49,7 @@ type MarkdownViewProps = {
 };
 
 const MarkdownView: React.FC<MarkdownViewProps> = React.memo(
-  ({ hiddenCodeCopyButton, codeStyle, className, onRef, allowHtml, onImageClick, children: childrenProp }) => {
+  ({ hiddenCodeCopyButton, codeStyle, className, onRef, onLocalFileLink, allowHtml, children: childrenProp }) => {
     const { t } = useTranslation();
 
     const normalizedChildren = useMemo(() => {
@@ -87,14 +91,21 @@ const MarkdownView: React.FC<MarkdownViewProps> = React.memo(
             hiddenCodeCopyButton={hiddenCodeCopyButton}
           />
         ),
-        a: ({ node: _node, ...rest }: Record<string, unknown>) => (
-          <a
-            {...(rest as React.AnchorHTMLAttributes<HTMLAnchorElement>)}
-            target='_blank'
-            rel='noreferrer'
-            onClick={handleLinkClick}
-          />
-        ),
+        a: ({ node: _node, ...rest }: Record<string, unknown>) => {
+          const anchorProps = rest as React.AnchorHTMLAttributes<HTMLAnchorElement>;
+          const rawHref = typeof anchorProps.href === 'string' ? anchorProps.href : '';
+          const localFileReference = resolveLocalFileLinkReference(rawHref);
+          if (localFileReference) {
+            return (
+              <LocalFileLink reference={localFileReference} onOpen={onLocalFileLink}>
+                {anchorProps.children}
+              </LocalFileLink>
+            );
+          }
+          return (
+            <a {...anchorProps} href={anchorProps.href} target='_blank' rel='noreferrer' onClick={handleLinkClick} />
+          );
+        },
         table: ({ node: _node, ...rest }: Record<string, unknown>) => (
           <div style={{ overflowX: 'auto', maxWidth: '100%' }}>
             <table
@@ -125,10 +136,10 @@ const MarkdownView: React.FC<MarkdownViewProps> = React.memo(
             const src = decodeURIComponent(imgProps.src || '');
             return <LocalImageView src={src} alt={imgProps.alt || ''} className={imgProps.className} />;
           }
-          return <img {...imgProps} />;
+          return <img {...imgProps} alt={imgProps.alt || ''} />;
         },
       }),
-      [codeStyle, hiddenCodeCopyButton, handleLinkClick]
+      [codeStyle, hiddenCodeCopyButton, handleLinkClick, onLocalFileLink]
     );
 
     const rehypePlugins = useMemo(() => (allowHtml ? [rehypeRaw, rehypeKatex] : [rehypeKatex]), [allowHtml]);
@@ -137,7 +148,12 @@ const MarkdownView: React.FC<MarkdownViewProps> = React.memo(
       <div className={classNames('relative w-full', className)}>
         <ShadowView>
           <div ref={onRef} className='markdown-shadow-body'>
-            <ReactMarkdown remarkPlugins={REMARK_PLUGINS} rehypePlugins={rehypePlugins} components={components}>
+            <ReactMarkdown
+              remarkPlugins={REMARK_PLUGINS}
+              rehypePlugins={rehypePlugins}
+              components={components}
+              urlTransform={(url) => (resolveLocalFileLinkPath(url) ? url : defaultUrlTransform(url))}
+            >
               {normalizedChildren}
             </ReactMarkdown>
           </div>

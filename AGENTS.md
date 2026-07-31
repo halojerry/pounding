@@ -1,4 +1,4 @@
-# AionUi - Project Guide
+# POUNDING - Project Guide
 
 All contributors (human and AI) must follow [CONTRIBUTING.md](CONTRIBUTING.md) before opening a PR. ([Chinese version](CONTRIBUTING.zh.md))
 
@@ -6,7 +6,7 @@ All contributors (human and AI) must follow [CONTRIBUTING.md](CONTRIBUTING.md) b
 
 ### File & Directory Structure
 
-- **Directory size limit**: A single directory must not exceed **10** direct children (files + subdirectories). Split by responsibility when approaching this limit.
+- **Directory size limit**: Prefer ≤ **10** direct children per directory; new or substantially reorganized directories must satisfy this.
 
 See [docs/contributing/file-structure.md](docs/contributing/file-structure.md) for complete rules. Agents must also follow the `architecture` skill (`.claude/skills/architecture/SKILL.md`) when creating files or modules.
 
@@ -47,7 +47,7 @@ Formatting rules (Oxfmt, Prettier-compatible):
 
 ### Internationalization (i18n)
 
-All user-facing text must use i18n keys — never hardcode strings. Languages and modules are defined in `packages/desktop/src/common/config/i18n-config.json`.
+New or changed user-facing text must use i18n keys; do not introduce hardcoded strings. Languages and modules are defined in `packages/desktop/src/common/config/i18n-config.json`.
 
 See the `i18n` skill (`.claude/skills/i18n/SKILL.md`) for complete workflow, key naming, and validation steps.
 
@@ -65,7 +65,7 @@ See [docs/architecture/overview.md](docs/architecture/overview.md) for details.
 
 ## Testing
 
-**Framework**: Vitest 4 (`vitest.config.ts`). Coverage target ≥ 80%.
+**Framework**: Vitest 4 (`vitest.config.ts`). Project coverage target is ≥ 80%; ordinary changes should add focused tests for changed behavior.
 
 ```bash
 bun run test              # run all tests
@@ -75,6 +75,14 @@ bun run test:coverage     # with coverage report
 See the `testing` skill (`.claude/skills/testing/SKILL.md`) for complete workflow and quality rules.
 
 ## Workflow
+
+### Scope & Enforcement
+
+- **Hard blockers**: process boundary violations, TypeScript errors, failing tests, unsafe IPC usage, missing i18n for new or changed user-facing text, and raw interactive HTML in new UI.
+- **Current-change requirements**: naming, CSS, file placement, tests, docs, directory size, and single-file-directory rules apply to files created or meaningfully modified by the current change.
+- **Ratchet rules**: existing directory size or single-file-directory violations do not require cleanup during ordinary feature work or bugfixes, but the current change must not make them worse.
+- **No scope expansion**: implementation plans and reviews must not create extra tasks, phases, or acceptance criteria for cleanup unless the user asks for that scope.
+- **Ignored working docs**: `docs/superpowers/` is intentionally gitignored for local Superpowers specs and plans. Do not force-add or otherwise commit files from this directory.
 
 ### During Development
 
@@ -95,7 +103,7 @@ node scripts/check-i18n.js
 
 ### Before Pushing
 
-Always use `just push` instead of `git push`:
+AI agents must not push unless explicitly asked. When pushing, use `just push`, never `git push`:
 
 ```bash
 just push                          # lint → format-check → typecheck → test → git push
@@ -120,152 +128,28 @@ prek run --from-ref origin/main --to-ref HEAD
 
 > `prek` is read-only — it reports but does not fix. If it reports issues, run the auto-fix commands above, commit, then re-run.
 
-The `oss-pr` skill runs this automatically during PR creation.
-
 ### Commit & PR Format
 
-Commit format: `<type>(<scope>): <subject>` in English. Types: feat, fix, refactor, chore, docs, test, style, perf.
+Commits and PR titles must follow the Conventional Commit format defined in [CONTRIBUTING.md](CONTRIBUTING.md):
+
+```text
+<type>(<scope>): <subject>
+```
+
+Allowed types: `feat`, `fix`, `perf`, `refactor`, `docs`, `style`, `chore`, `test`, `ci`, `build`.
+
+When opening a PR, fill in the PR body using [.github/pull_request_template.md](.github/pull_request_template.md) and complete its checklists honestly (only check items you actually ran or verified).
 
 **NEVER add AI signatures** (Co-Authored-By, Generated with, etc.).
 
-For pull request creation, see the `oss-pr` skill (`.claude/skills/oss-pr/SKILL.md`).
-
-## Branch Strategy (POUNDING Fork)
-
-### Three-Tier Repository Structure
-
-```
-iOfficeAI/AionUi (上游)
-    ↓ sync-upstream (此仓库的 workflow)
-halojerry/AionUi (开发仓库 — 此仓库，POUNDING 保护层)
-    ↓ sync-downstream (pounding 发布仓库的 workflow)
-halojerry/pounding (发布仓库 — 最终产物，桌面应用发布)
-```
-
-**`halojerry/pounding` 是最终发布仓库**，只接收 `halojerry/AionUi` 的稳定代码。
-**永远不要**从 `iOfficeAI/AionUi` 直接同步到 `halojerry/pounding`。
-
-### Sync Downstream (Dev → Release)
-
-代码从开发仓库同步到发布仓库由 `halojerry/pounding` 的 `sync-downstream.yml` 负责。
-该 workflow 从 `halojerry/AionUi`（此仓库）拉取代码，经过 branding 检查后创建 PR。
-
-**触发方式**: 在 `halojerry/pounding` 仓库手动 `workflow_dispatch` → `sync-downstream.yml`。
-
-**流程**:
-
-1. 验证目标分支（阻止直接同步到 main/dev）
-2. 运行 `check-branding.sh` 作为预检门禁
-3. Fast-forward 合并到 `feature/downstream-sync` 分支
-4. 再次运行 branding 检查
-5. 创建 PR 供人工审核
-
-**发布仓库永远不直接从 iOfficeAI 同步** — 所有上游变更必须先经过此开发仓库处理。
-
-**main is the stable POUNDING release branch. NEVER merge upstream directly into main.**
-
-```
-upstream (iOfficeAI/AionUi)
-    ↓ workflow_dispatch: sync-upstream
-feature/upstream-sync
-    ↓ manual PR (resolve conflicts, preserve POUNDING branding)
-dev (integration & verification)
-    ↓
-release/pounding-v*.*.x (final verification)
-    ↓
-main (stable — triggers release builds via tag)
-```
-
-**Rules for all agents:**
-
-- Upstream syncs go to `feature/upstream-sync` — the `sync-upstream.yml` workflow is locked to feature branches, it will refuse `main` or `dev` as targets.
-- After upstream sync, manually diff and restore all POUNDING branding (see checklist below).
-- POUNDING-specific features are developed on `feature/*` branches, PR'd to `dev`.
-- Tag format: `v<version>-Pounding` (e.g. `v2.1.5-Pounding`).
-- **NEVER run `git merge upstream/main` into main directly.**
-
-### Upstream Sync Process (detailed)
-
-**Trigger**: Manual `workflow_dispatch` via GitHub Actions → `sync-upstream.yml`.
-
-**What the workflow does automatically**:
-
-1. Validates target branch is NOT `main` or `dev` (refuses direct sync)
-2. Fetches from `iOfficeAI/AionUi` upstream
-3. Fast-forward merges (`--ff-only`) into `feature/upstream-sync` (or custom target branch)
-4. If conflicts: job fails, manual resolution required
-5. On success: creates a PR from sync branch → `dev` with upstream commit summary
-
-**Manual steps after sync (MANDATORY)**:
-
-1. Check the auto-created PR diff — look for POUNDING branding overwrites
-2. Run `bash scripts/check-branding.sh` locally
-3. Restore ALL items in the Branding Checklist below that were overwritten
-4. Pay special attention to: `electron-builder.yml`, `locales/*/login.json`, `locales/*/common.json`
-5. Rebuild and smoke-test: `bun run dev`
-6. Merge PR to `dev` only after all checks pass
-
-**Known pitfalls**:
-
-- `electron-builder.yml` `productName`/`appId` often gets overwritten to `AionUi`/`com.aionui.app`
-- Locale files in `pt-BR/`, `tr-TR/` etc. are the most likely to revert to `"brand": "AionUi"`
-- New upstream files may reference `iOfficeAI/AionUi` — grep and replace
-- The merge may introduce new dependencies or config formats — test `bun run dev` before merging
-
-**Before merging to main (release)**:
-
-- Version bump via `bump-version` skill
-- Tag: `v<version>-Pounding`
-- This triggers `build-and-release.yml` → COS upload + GitHub Release
-
-## POUNDING Branding Checklist
-
-When merging ANY upstream changes, verify these are not overwritten:
-
-| Category        | Key Files                                               | What to Check                                                                    |
-| --------------- | ------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| App identity    | `electron-builder.yml`                                  | `productName: POUNDING`, `appId: com.pounding.app`, `detectUpdateChannel: false` |
-| App icons       | `resources/app.{ico,icns,png}`                          | Red square POUNDING icon (23KB/173KB/47KB)                                       |
-| Login page      | `locales/*/login.json`                                  | `"brand": "POUNDING"`                                                            |
-| Tray menu       | `locales/*/common.json`                                 | `"Show POUNDING"`, `"About POUNDING"`, `backendStartup.*` without "AionUi"       |
-| UI logo         | `PoundingInteractiveLogo.tsx`                           | Must exist and import POUNDING heart/eyes/nose assets                            |
-| NSIS installer  | `resources/windows-installer-*.nsh`                     | `"POUNDING installer"`, `halojerry/AionUi/releases`                              |
-| UI links        | `AboutModalContent.tsx`, `QuickActionButtons.tsx`, etc. | All `iOfficeAI/AionUi` → `halojerry/AionUi`                                      |
-| COS auto-update | `electron-builder.yml`, `build-and-release.yml`         | `pounding/releases/latest` paths                                                 |
-| install-web.sh  | `scripts/install-web.sh`                                | MIRROR URL includes `/pounding/` prefix                                          |
-| Dealer kit      | `scripts/pack-usb-zip.sh`                               | `dealer-kit.zip` with PORTABLE + dealer-config.json                              |
-| Portable mode   | `configureChromium.ts`                                  | PORTABLE detection + storage choice dialog                                       |
-| Sentry          | `sentry.ts`                                             | `brand: 'POUNDING'`, project `pounding`                                          |
-| Build scripts   | `afterPack.js`, `build-with-builder.js`                 | No `AionUi` fallback, no `AionUi.exe` hardcoding                                 |
-| CLI mirrors     | `managedCliInstallerBridge.ts`                          | Chinese mirrors (npmmirror + tsinghua) as primary                                |
-
-## POUNDING Custom Features
-
-Features unique to the POUNDING fork that must be preserved:
-
-| Feature              | Key Files                                                                 |
-| -------------------- | ------------------------------------------------------------------------- |
-| USB portable/dealer  | `configureChromium.ts`, `dealer-kit.zip`, `useDealerConfig.ts`            |
-| COS auto-update      | `electron-builder.yml` publish config, `build-and-release.yml` COS mirror |
-| Chinese CLI mirrors  | `managedCliInstallerBridge.ts` (npmmirror + tsinghua PyPI)                |
-| CC-Switch model sync | `NewApiDesktopAccountService.ts`, `managedRuntimeCli.ts`                  |
-| install-web.sh       | `/pounding/` COS prefix, `_VERSION_WAS_SET` fix                           |
-| Feedback → Sentry    | `sentry.ts`, `index.ts` Sentry.init with POUNDING tags                    |
-
 ## Skills Index
 
-| Skill             | Purpose                                                                               | Triggers                                                                                   |
-| ----------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| **architecture**  | File & directory structure conventions for all process types                          | Creating files, adding modules, architectural decisions                                    |
-| **i18n**          | Internationalization workflow and standards                                           | Adding user-facing text, modifying `locales/` or `packages/desktop/src/common/config/i18n` |
-| **testing**       | Testing workflow and quality standards                                                | Writing tests, adding features, before claiming completion                                 |
-| **oss-pr**        | Full commit + PR workflow: branch management, quality checks, issue linking, PR       | Creating pull requests, after committing, `/oss-pr`                                        |
-| **bump-version**  | Version bump workflow: update package.json, checks, branch, PR, tag release           | Bumping version, `/bump-version`                                                           |
-| **pr-review**     | Local PR code review with full project context, no truncation limits                  | Reviewing a PR, user says "review PR", `/pr-review`                                        |
-| **pr-fix**        | Fix all issues from a pr-review report, create a follow-up PR, and verify each fix    | After pr-review, user says "fix all issues", `/pr-fix`                                     |
-| **pr-verify**     | Verify and merge bot:ready-to-merge PRs with impact analysis and test supplementation | Verifying PRs, merging ready PRs, `/pr-verify`                                             |
-| **pr-ship**       | End-to-end PR lifecycle: create, CI wait, review, fix, merge in one invocation        | `/pr-ship`, after development is done, resume shepherding a PR                             |
-| **pr-automation** | PR automation orchestrator: poll PRs, review, fix, and merge via label state machine  | Invoked by daemon script (`pr-automation.sh`), `/pr-automation`                            |
+| Skill            | Purpose                                                                     | Triggers                                                                                               |
+| ---------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| **architecture** | File & directory structure conventions for all process types                | Creating files, adding modules, architectural decisions                                                |
+| **i18n**         | Internationalization workflow and standards                                 | Adding or changing user-facing text, modifying `locales/` or `packages/desktop/src/common/config/i18n` |
+| **testing**      | Testing workflow and quality standards                                      | Writing tests, changing runtime behavior, fixing bugs, or claiming behavior is verified                |
+| **bump-version** | Version bump workflow: update package.json, checks, branch, PR, tag release | Bumping version, `/bump-version`                                                                       |
 
 > Skills are located in `.claude/skills/` and contain project conventions that apply to **all** agents and contributors.
 
@@ -335,13 +219,13 @@ Lessons from POUNDING branding/fix sessions. When debugging similar symptoms, ch
 
 **Key files**: `SiderFooter.tsx`, `useDealerConfig.ts`, `applicationBridge.ts`, `pack-usb-zip.sh`
 
-### pt-BR locale: AionUi branding residue
+### pt-BR locale: POUNDING branding residue
 
-**Symptom**: pt-BR users see "AionUi" instead of "POUNDING" in login page, tray menu, and backend startup errors.
+**Symptom**: pt-BR users see "POUNDING" instead of "POUNDING" in login page, tray menu, and backend startup errors.
 
-**Root cause**: 5 strings in `locales/pt-BR/login.json` and `locales/pt-BR/common.json` were never updated from upstream AionUi branding.
+**Root cause**: 5 strings in `locales/pt-BR/login.json` and `locales/pt-BR/common.json` were never updated from upstream POUNDING branding.
 
-**Fix**: Replaced all "AionUi"→"POUNDING" and "AionCore"→"poundingcore" in pt-BR locale files.
+**Fix**: Replaced all "POUNDING"→"POUNDING" and "AionCore"→"poundingcore" in pt-BR locale files.
 
 **Key files**: `locales/pt-BR/login.json`, `locales/pt-BR/common.json`
 
@@ -349,7 +233,7 @@ Lessons from POUNDING branding/fix sessions. When debugging similar symptoms, ch
 
 **Symptom**: Branding regressions (pt-BR, iOfficeAI comments, Sentry config) go undetected after upstream syncs.
 
-**Fix**: Created `scripts/check-branding.sh` (37 checks for AionUi, 11 for AionCore) and added `branding-check` job to CI (`pr-checks.yml` for AionUi, `ci.yml` for AionCore).
+**Fix**: Created `scripts/check-branding.sh` (37 checks for POUNDING, 11 for AionCore) and added `branding-check` job to CI (`pr-checks.yml` for POUNDING, `ci.yml` for AionCore).
 
 **Key files**: `scripts/check-branding.sh`, `.github/workflows/pr-checks.yml`
 
@@ -389,13 +273,13 @@ The proxy is **auto-started by `CodexProxyManager`** at backend-ready time. `wri
 
 **See also**: [[Codex: UNKNOWN_UPSTREAM_ERROR]], [[Codex: proxy not auto-started]]
 
-### OpenClaw: NOT_PAIRED scope-upgrade deadlock (AionCore fix, AionUi awareness)
+### OpenClaw: NOT_PAIRED scope-upgrade deadlock (AionCore fix, POUNDING awareness)
 
 **Symptom**: OpenClaw conversations permanently fail with `NOT_PAIRED: device identity changed and must be re-approved`.
 
 **Root cause (AionCore)**: Backend and CLI shared device identity → scope upgrade → deadlock. Fixed in AionCore by using separate identity path.
 
-**AionUi relevance**: No TypeScript changes needed for this fix, but the `NewApiDesktopAccountService.ts` `writeOpenClawConfigForProviderSync()` writes the gateway config that the backend reads. When debugging OpenClaw issues, check both `~/.openclaw/openclaw.json` (CLI config) and `~/.pounding/openclaw/identity/device.json` (backend identity).
+**POUNDING relevance**: No TypeScript changes needed for this fix, but the `NewApiDesktopAccountService.ts` `writeOpenClawConfigForProviderSync()` writes the gateway config that the backend reads. When debugging OpenClaw issues, check both `~/.openclaw/openclaw.json` (CLI config) and `~/.pounding/openclaw/identity/device.json` (backend identity).
 
 **Diagnostic**: `openclaw devices list --json --url ws://127.0.0.1:18789 --token "<token>"` shows pending/paired devices and their scopes. A "scope-upgrade" kind with different `approvedScopes` vs `requestedScopes` indicates this issue.
 

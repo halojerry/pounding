@@ -1,12 +1,12 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-vi.mock('@office-ai/platform', () => ({
+vi.mock('@/common/platform/bridge', () => ({
   bridge: {
     buildProvider: vi.fn(() => {
       const handlerMap = new Map<string, Function>();
@@ -24,14 +24,6 @@ vi.mock('@office-ai/platform', () => ({
       on: vi.fn(),
     })),
   },
-  storage: {
-    buildStorage: () => ({
-      getSync: () => undefined,
-      setSync: () => {},
-      get: () => Promise.resolve(undefined),
-      set: () => Promise.resolve(),
-    }),
-  },
 }));
 
 vi.mock('electron', () => ({
@@ -40,6 +32,10 @@ vi.mock('electron', () => ({
     getPath: vi.fn(() => '/test/path'),
     exit: vi.fn(),
     isPackaged: true,
+  },
+  autoUpdater: {
+    on: vi.fn(),
+    removeListener: vi.fn(),
   },
 }));
 
@@ -50,6 +46,7 @@ vi.mock('electron-updater', () => ({
     autoInstallOnAppQuit: true,
     allowPrerelease: false,
     allowDowngrade: false,
+    setFeedURL: vi.fn(),
     on: vi.fn(),
     removeListener: vi.fn(),
     checkForUpdates: vi.fn(),
@@ -62,6 +59,7 @@ vi.mock('electron-updater', () => ({
 vi.mock('electron-log', () => ({
   default: {
     transports: { file: { level: 'info' } },
+    debug: vi.fn(),
     info: vi.fn(),
     error: vi.fn(),
     warn: vi.fn(),
@@ -154,6 +152,7 @@ describe('updateBridge CDN URL rewriting', () => {
       const result = await handler({ repo: 'halojerry/pounding' });
 
       expect(result.success).toBe(true);
+      expect(result.data?.currentVersion).toBe('1.0.0');
       const assets = result.data?.latest?.assets ?? [];
       expect(assets.length).toBe(3);
 
@@ -224,12 +223,13 @@ describe('updateBridge allowlist includes CDN host', () => {
       const handler = lastCall[0];
 
       const result = await handler({
-        url: 'https://github.com/halojerry/pounding/releases/download/v1.9.22/POUNDING-1.9.22-mac-arm64.dmg',
+        downloadId: 'manual-download-1',
+        url: 'https://static.aionui.com/releases/1.9.22/POUNDING-1.9.22-mac-arm64.dmg',
         file_name: 'POUNDING-1.9.22-mac-arm64.dmg',
       });
 
       expect(result.success).toBe(true);
-      expect(result.data?.downloadId).toBeTruthy();
+      expect(result.data?.downloadId).toBe('manual-download-1');
     } finally {
       vi.unstubAllGlobals();
     }
@@ -260,15 +260,26 @@ describe('updateBridge allowlist includes CDN host', () => {
 });
 
 describe('autoUpdate quitAndInstall lifecycle', () => {
+  const originalPlatform = process.platform;
+
+  const setPlatform = (platform: NodeJS.Platform): void => {
+    Object.defineProperty(process, 'platform', {
+      configurable: true,
+      value: platform,
+    });
+  };
+
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
     vi.useFakeTimers();
+    setPlatform('win32');
   });
 
   afterEach(() => {
     vi.clearAllTimers();
     vi.useRealTimers();
+    setPlatform(originalPlatform);
   });
 
   it('waits for the pre-install cleanup before starting the installer', async () => {
@@ -287,7 +298,7 @@ describe('autoUpdate quitAndInstall lifecycle', () => {
     cleanup.resolve();
     await installPromise;
 
-    expect(autoUpdater.quitAndInstall).toHaveBeenCalledWith(true, true);
+    expect(autoUpdater.quitAndInstall).toHaveBeenCalledWith(false, true);
   });
 
   it('does not start the installer when the pre-install cleanup fails', async () => {
@@ -325,5 +336,19 @@ describe('autoUpdate quitAndInstall lifecycle', () => {
     await handlerPromise;
 
     expect(handlerSettled).toBe(true);
+  });
+
+  it('propagates quitAndInstall failures through IPC', async () => {
+    const cleanupError = new Error('native readiness failed');
+    const { autoUpdaterService } = await import('@process/services/autoUpdaterService');
+
+    autoUpdaterService.resetForTest();
+    autoUpdaterService.setBeforeQuitAndInstall(async () => {
+      throw cleanupError;
+    });
+
+    const handler = await getAutoUpdateQuitAndInstallHandler();
+
+    await expect(handler()).rejects.toThrow('native readiness failed');
   });
 });

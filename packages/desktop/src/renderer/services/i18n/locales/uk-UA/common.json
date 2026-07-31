@@ -14,6 +14,7 @@
   "system": "Система",
   "about": "Про нас",
   "back": "Назад до чату",
+  "goBack": "Назад",
   "add": "Додати",
   "edit": "Редагувати",
   "website": "Вебсайт",
@@ -73,14 +74,66 @@
   "backendStartup": {
     "incompatibleRuntime": {
       "title": "Ця система не підтримується вбудованим backend",
-      "description": "POUNDING відкрився, але локальний backend AionCore не може працювати в цій версії Linux. Оновіться до підтримуваного дистрибутива Linux і перезапустіть POUNDING.",
+      "description": "POUNDING відкрився, але локальний backend poundingcore не може працювати в цій версії Linux. Оновіться до підтримуваного дистрибутива Linux і перезапустіть POUNDING.",
       "requiredVersions": "Потрібні символи середовища виконання: {{versions}}"
     },
     "incompleteInstallation": {
       "title": "Встановлення POUNDING неповне",
-      "description": "У цьому встановленні бракує потрібних локальних ресурсів, тому AionCore не може запуститися. Завантажте та перевстановіть останню версію POUNDING.",
+      "description": "У цьому встановленні бракує потрібних локальних ресурсів, тому poundingcore не може запуститися. Завантажте та перевстановіть останню версію POUNDING.",
       "downloadLatest": "Завантажити останню версію",
-      "sendDiagnostics": "Надіслати діагностику"
+      "sendDiagnostics": "Надіслати діагностику",
+      "diagnosticsSent": "Діагностику надіслано",
+      "diagnosticsReportSuccess": "Діагностичний звіт надіслано",
+      "diagnosticsReportFailed": "Не вдалося надіслати діагностичний звіт",
+      "runtimeComponentDescription": "У цій інсталяції бракує потрібних вбудованих компонентів середовища виконання, тому {{resource}} не може запуститися. Перевстановіть найновіший пакет POUNDING. Якщо проблема повториться після перевстановлення, перевірте, чи не помістило програмне забезпечення безпеки або антивірус компоненти POUNDING у карантин."
+    },
+    "packageArchitectureMismatch": {
+      "title": "POUNDING package architecture mismatch",
+      "description": "This POUNDING package is for {{packageArch}}, but this Mac is {{deviceArch}}. You may have downloaded the wrong package. Please download and install the {{expectedArch}} package."
+    },
+    "dataMigration": {
+      "title": "Local data migration failed",
+      "description": "POUNDING opened, but poundingcore stopped while initializing local data. Reinstalling POUNDING may not fix this. Send a diagnostics report or contact support so the local database migration can be inspected.",
+      "sendDiagnostics": "Send diagnostics",
+      "diagnosticsSent": "Diagnostics sent",
+      "diagnosticsReportSuccess": "Diagnostics report sent",
+      "diagnosticsReportFailed": "Failed to send diagnostics report"
+    },
+    "localDataRepair": {
+      "title": "Local data repair failed",
+      "description": "POUNDING відкрився, але poundingcore зупинився під час підготовки локальних даних запуску, як-от записи assistants або агентів. Повторне встановлення POUNDING може не вирішити проблему. Надішліть діагностичний звіт або зверніться до підтримки, щоб можна було перевірити локальну базу даних.",
+      "sendDiagnostics": "Send diagnostics",
+      "diagnosticsSent": "Diagnostics sent",
+      "diagnosticsReportSuccess": "Diagnostics report sent",
+      "diagnosticsReportFailed": "Failed to send diagnostics report"
+    },
+    "startupDirectory": {
+      "title": "Startup directory is unavailable",
+      "description": "POUNDING opened, but poundingcore could not start because the configured work or log directory is missing, unavailable, or blocked by permissions. Check that the configured directories exist and are writable, then restart POUNDING.",
+      "sendDiagnostics": "Send diagnostics",
+      "diagnosticsSent": "Diagnostics sent",
+      "diagnosticsReportSuccess": "Diagnostics report sent",
+      "diagnosticsReportFailed": "Failed to send diagnostics report"
+    },
+    "recoverableDatabaseCorruption": {
+      "title": "Локальні дані пошкоджено",
+      "description": "POUNDING виявив пошкодження локальної бази даних і не може продовжити запуск. Після підтвердження стару базу даних буде збережено як резервну копію, а для продовження запуску буде створено нову локальну базу даних. Історичні локальні дані поки не відображатимуться, стара база даних збережеться як резервна копія.",
+      "confirmRebuild": "Зберегти стару БД і створити нову",
+      "sendDiagnostics": "Надіслати діагностику",
+      "diagnosticsHint": "Надсилання діагностики не змінить локальну базу даних.",
+      "diagnosticsSent": "Діагностику надіслано",
+      "diagnosticsReportSuccess": "Діагностичний звіт надіслано",
+      "diagnosticsReportFailed": "Не вдалося надіслати діагностичний звіт",
+      "rebuildFailed": "Не вдалося зберегти стару БД і створити нову"
+    },
+    "transientConcurrentStartup": {
+      "title": "POUNDING запускається",
+      "description": "Коли це вікно відкрилося, інший процес запуску POUNDING усе ще використовував локальні дані. Це тимчасово, і ваші дані в безпеці — перевстановлення не потрібне. Зачекайте трохи та повторіть спробу або перезапустіть POUNDING.",
+      "sendDiagnostics": "Send diagnostics",
+      "diagnosticsSent": "Diagnostics sent",
+      "diagnosticsReportSuccess": "Diagnostics report sent",
+      "diagnosticsReportFailed": "Failed to send diagnostics report",
+      "diagnosticsHint": "Якщо це повторюється, ви можете надіслати звіт діагностики."
     }
   },
   "fileAttach.addFiles": "Додати файли",
@@ -100,8 +153,11 @@
   "processing": "Обробка...",
   "optional": "(необов'язково)",
   "clear": "Очистити",
+  "cli.prepOffice": "POUNDING готує ваш офіс",
   "unit": {
     "minute_short": "хв",
     "second_short": "с"
-  }
+  },
+  "selectedCount": "Вибрано {{count}}",
+  "selectedSkills": "Вибрані навички"
 }

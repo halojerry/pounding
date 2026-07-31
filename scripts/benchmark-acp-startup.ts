@@ -86,9 +86,9 @@ function agentPillByBackend(backend: string) {
 
 function getLogFilePath(): string {
   const today = new Date().toISOString().slice(0, 10);
-  // Dev mode uses "POUNDING-Dev", production uses "AionUi"
+  // Dev mode uses "POUNDING-Dev", production uses "POUNDING"
   const devPath = path.join(os.homedir(), 'Library', 'Logs', 'POUNDING-Dev', `${today}.log`);
-  const prodPath = path.join(os.homedir(), 'Library', 'Logs', 'AionUi', `${today}.log`);
+  const prodPath = path.join(os.homedir(), 'Library', 'Logs', 'POUNDING', `${today}.log`);
   return fs.existsSync(devPath) ? devPath : prodPath;
 }
 

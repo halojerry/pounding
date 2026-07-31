@@ -23,13 +23,15 @@ export { invokeBridge };
 // Types
 // ============================================================================
 
-export type SkillSource = 'builtin' | 'custom' | 'extension' | 'auto';
+export type SkillSource = 'builtin' | 'custom' | 'cron' | 'extension';
 
 export interface Skill {
   name: string;
   description?: string;
   source: SkillSource;
   location?: string;
+  relative_location?: string;
+  is_auto_inject: boolean;
 }
 
 export interface ExternalSource {
@@ -45,36 +47,15 @@ export interface ExternalSource {
 
 /**
  * Navigate to Skills Hub settings page using UI click
- * Note: /settings/skills-hub redirects to /settings/capabilities?tab=skills
- * The Skills content should be visible by default as it's the first tab.
+ * Note: Skills is a standalone settings entry (`/settings/skills`) since the
+ * capabilities page was split into separate Skills / Tools sider entries.
  */
 export async function goToSkillsHub(page: Page): Promise<void> {
-  // Navigate to Capabilities settings page
-  await navigateTo(page, '#/settings/capabilities');
+  // Navigate to Skills settings page
+  await navigateTo(page, '#/settings/skills');
 
-  // Wait a bit for React Router and Tabs component to initialize
+  // Wait a bit for React Router to settle
   await page.waitForTimeout(500);
-
-  // Try to click Skills tab if it exists and isn't already active
-  const skillsTab = page
-    .locator('.arco-tabs-header-title, .arco-tabs-nav-tab')
-    .filter({ hasText: /Skills|技能/i })
-    .first();
-  const isVisible = await skillsTab.isVisible().catch(() => false);
-
-  if (isVisible) {
-    // Check if tab is already active by looking at aria-selected or active class
-    const isActive = await skillsTab
-      .evaluate((el) => {
-        return el.classList.contains('arco-tabs-nav-tab-active') || el.getAttribute('aria-selected') === 'true';
-      })
-      .catch(() => false);
-
-    if (!isActive) {
-      await skillsTab.click();
-      await page.waitForTimeout(300);
-    }
-  }
 
   // Wait for tab content to load. Dev-mode cold boot needs ~6-15s after
   // navigation before SkillsHub's unconditional `my-skills-section` div
@@ -133,11 +114,11 @@ export async function getExternalSources(page: Page): Promise<ExternalSource[]> 
 }
 
 /**
- * Get auto-injected builtin skills (GET /api/skills/builtin-auto).
+ * Get auto-injected builtin skills from the unified skill catalog.
  */
 export async function getAutoSkills(page: Page): Promise<Skill[]> {
-  const skills = await httpGet<Skill[]>(page, '/api/skills/builtin-auto');
-  return skills ?? [];
+  const skills = await httpGet<Skill[]>(page, '/api/skills');
+  return (skills ?? []).filter((skill) => skill.source === 'builtin' && skill.is_auto_inject);
 }
 
 /**
@@ -191,11 +172,12 @@ export async function createTempExternalSourceDir(): Promise<{ path: string; cle
 }
 
 /**
- * Import a skill via HTTP bridge (POST /api/skills/import-symlink) for test setup.
+ * Import a skill via HTTP bridge (POST /api/skills/import) for test setup.
  */
 export async function importSkillViaBridge(page: Page, skillPath: string): Promise<{ success: boolean; msg?: string }> {
   try {
-    await httpPost(page, '/api/skills/import-symlink', { skillPath });
+    // Backend expects snake_case, matching the renderer's `ipcBridge.fs.importSkills` payload.
+    await httpPost(page, '/api/skills/import', { skill_path: skillPath });
     return { success: true };
   } catch (err) {
     return { success: false, msg: err instanceof Error ? err.message : String(err) };

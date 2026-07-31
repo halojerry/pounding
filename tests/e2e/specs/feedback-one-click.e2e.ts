@@ -61,7 +61,7 @@ test.describe('One-click feedback infrastructure', () => {
     // setShowFeedbackModal(true) in AboutModalContent.
     const bugReportRow = page
       .locator('div')
-      .filter({ hasText: /^Bug Report$|^问题报告$|^バグ報告$|^버그 보고$/ })
+      .filter({ hasText: /^Report Issue$|^反馈问题$|^問題を報告$|^문제 보고$/ })
       .first();
     await expect(bugReportRow).toBeVisible({ timeout: 10_000 });
     await bugReportRow.click();
@@ -75,9 +75,14 @@ test.describe('One-click feedback infrastructure', () => {
     const autoInfo = page.locator('[data-testid="feedback-report-auto-info"]');
     await expect(autoInfo).toBeVisible();
 
-    // Close via the custom close button in the modal header. ModalWrapper is
-    // configured with closable={false} so Escape alone does not dismiss it.
-    const closeBtn = page.locator('.pounding-modal-close-btn').first();
+    // Close via the AionModal header close button (aria-label='Close'). The
+    // modal is configured with closable={false} so Escape alone does not
+    // dismiss it. Scope to the modal that owns the feedback body so we never
+    // match another modal's close button.
+    const closeBtn = page
+      .locator('.arco-modal-wrapper', { has: modalBody })
+      .locator('button[aria-label="Close"]')
+      .first();
     await closeBtn.click();
     await expect(modalBody).toBeHidden({ timeout: 5_000 });
   });

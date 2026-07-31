@@ -1,11 +1,12 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
 import type { IConversationMcpStatus } from '@/common/config/storage';
 import { ConversationProvider } from '@/renderer/hooks/context/ConversationContext';
+import { CHAT_SURFACE_CONTAINER_CLASS } from '@/renderer/pages/conversation/utils/chatSurfaceWidth';
 import { useTeamPermission } from '@/renderer/pages/team/hooks/TeamPermissionContext';
 import type { TeamSendBoxRuntime } from '@/renderer/pages/team/components/teamSendRuntime';
 import FlexFullContainer from '@renderer/components/layout/FlexFullContainer';
@@ -14,6 +15,7 @@ import { ConversationArtifactProvider } from '@renderer/pages/conversation/Messa
 import {
   MessageListLoadingProvider,
   MessageListProvider,
+  MessagePaginationProvider,
   useMessageLstCache,
 } from '@renderer/pages/conversation/Messages/hooks';
 import { usePendingConfirmationsRecovery } from '@renderer/pages/conversation/Messages/usePendingConfirmationsRecovery';
@@ -57,7 +59,10 @@ const AcpChat: React.FC<{
   useMessageLstCache(conversation_id);
   usePendingConfirmationsRecovery(conversation_id);
   const teamPermission = useTeamPermission();
-  const messageState = useAcpMessage(conversation_id, { skipWarmup: Boolean(teamPermission) });
+  const messageState = useAcpMessage(conversation_id, {
+    skipWarmup: Boolean(teamPermission),
+    prepareRuntime: teamPermission?.warmupSession,
+  });
 
   return (
     <ConversationProvider
@@ -74,7 +79,7 @@ const AcpChat: React.FC<{
       }}
     >
       <ConversationArtifactProvider conversation_id={conversation_id}>
-        <div className='flex-1 flex flex-col px-20px min-h-0'>
+        <div className={`${CHAT_SURFACE_CONTAINER_CLASS} flex-1 flex flex-col px-20px min-h-0`}>
           <FlexFullContainer>
             <MessageList className='flex-1' emptySlot={emptySlot} />
           </FlexFullContainer>
@@ -97,4 +102,4 @@ const AcpChat: React.FC<{
   );
 };
 
-export default HOC.Wrapper(MessageListProvider, MessageListLoadingProvider)(AcpChat);
+export default HOC.Wrapper(MessageListProvider, MessageListLoadingProvider, MessagePaginationProvider)(AcpChat);

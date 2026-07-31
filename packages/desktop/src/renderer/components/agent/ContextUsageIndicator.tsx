@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -78,7 +78,7 @@ const ContextUsageIndicator: React.FC<ContextUsageIndicatorProps> = ({
     <div className='p-8px min-w-160px'>
       <div className='text-14px font-medium text-t-primary'>
         {percentage.toFixed(1)}% · {displayTotal} / {displayLimit}{' '}
-        {t('conversation.context_usage.contextUsed', 'context used')}
+        {t('conversation.contextUsage.contextUsed', 'context used')}
       </div>
     </div>
   );

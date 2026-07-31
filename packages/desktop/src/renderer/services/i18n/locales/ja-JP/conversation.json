@@ -1,7 +1,7 @@
 {
   "welcome": {
     "title": "Hi、今日の予定は何ですか？",
-    "placeholder": "メッセージの送信、ファイルの追加、フォルダーの追加、またはスケジュールタスクの作成...",
+    "placeholder": "メッセージの送信、ファイルの追加、フォルダーの追加、スケジュールタスクの作成、または / でコマンド呼び出し...",
     "linkFolder": "フォルダを追加",
     "newConversation": "新しいチャット",
     "selectModel": "モデルを選択",
@@ -34,6 +34,7 @@
     "saveName": "保存",
     "cancelEdit": "キャンセル",
     "rename": "名前を変更",
+    "createCronTask": "スケジュールタスクを作成",
     "renameTitle": "チャット名を変更",
     "renamePlaceholder": "新しい名前を入力してください",
     "renameSuccess": "名前を変更しました",
@@ -71,7 +72,9 @@
     "removeProjectTitle": "プロジェクトを削除",
     "removeProject": "プロジェクトを削除",
     "removeProjectConfirm": "プロジェクト「{{name}}」を削除しますか？プロジェクト内の {{count}} 件の会話も削除されます。",
-    "newConversationInProject": "このプロジェクト内で新しい会話"
+    "newConversationInProject": "このプロジェクト内で新しい会話",
+    "deleting": "削除中...",
+    "reorderPinned": "ドラッグしてピン留め会話の順序を変更"
   },
   "historySearch": {
     "tooltip": "メッセージを検索",
@@ -94,6 +97,11 @@
   "createError": {
     "pathVariants": {
       "WORKSPACE_PATH_UNAVAILABLE": "選択したワークスペースパスは利用できません。ワークスペースパス「{{workspacePath}}」が実在し、アクセス可能であることを確認してください。"
+    },
+    "codes": {
+      "TEAM_ASSISTANT_ID_REQUIRED": "Please select an assistant before creating the team.",
+      "TEAM_ASSISTANT_NOT_FOUND": "Assistant {{assistantId}} is no longer available. Refresh the assistant list and choose another one.",
+      "TEAM_ASSISTANT_FIELD_UNSUPPORTED": "Use assistant_id instead of {{field}}."
     }
   },
   "agentError": {
@@ -109,7 +117,7 @@
       "reconnect_agent": "選択したエージェントを再起動または再接続してから再試行してください。",
       "check_agent_login": "選択したエージェントにログインするか、認証情報を更新してください。",
       "check_agent_installation": "エージェントのインストール状態とローカルコマンド設定を確認してください。",
-      "check_agent_version": "エージェントを更新するか、プロトコルバージョンの不一致を修正してください。",
+      "check_agent_version": "エージェントのプロトコルとバージョンの互換性を確認してください。",
       "check_local_command": "不足しているコマンドをインストールするか、PATH に追加されていることを確認してください。",
       "check_provider_credentials": "設定でモデルプロバイダーの API キーまたはアカウント認証情報を確認してください。",
       "check_provider_billing": "モデルプロバイダーの残高、クレジット、またはクォータを確認してください。",
@@ -119,7 +127,7 @@
       "send_feedback": "チームが調査できるよう、ログを添えてフィードバックを送信してください。"
     },
     "ownership": {
-      "aionui": "アプリ",
+      "pounding": "アプリ",
       "user_agent": "エージェント",
       "user_llm_provider": "モデルプロバイダー",
       "unknown_upstream": "上流"
@@ -153,6 +161,10 @@
         "title": "選択したエージェントの起動に失敗しました",
         "body": "準備が完了する前にエージェントプロセスが終了しました。インストール、ログイン状態、ローカルコマンド設定を確認してください。"
       },
+      "USER_AGENT_OPENCLAW_GATEWAY_UNREACHABLE": {
+        "title": "OpenClaw Gateway に接続できません",
+        "body": "OpenClaw Gateway が実行されていないか、127.0.0.1:18789 に接続できません。\n\nOpenClaw Gateway を起動してから再試行してください。次のコマンドを実行できます:\nopenclaw gateway status\nopenclaw gateway start"
+      },
       "USER_AGENT_DISCONNECTED": {
         "title": "選択したエージェントが切断されました",
         "body": "このメッセージの処理中にエージェント接続が閉じられました。エージェントを再起動または再接続してから再試行してください。"
@@ -163,15 +175,15 @@
       },
       "USER_AGENT_SESSION_NOT_FOUND": {
         "title": "エージェントセッションが失われました",
-        "body": "エージェントがこのセッションを認識できなくなりました。新しいチャットを開始するか、エージェントを再接続してください。"
+        "body": "エージェントは、このセッションが見つからない、または認識されていないと報告しました。"
       },
       "USER_AGENT_UNSUPPORTED_METHOD": {
         "title": "選択したエージェントはこの操作に対応していません",
-        "body": "このエージェントは要求された操作を処理できません。別のエージェントを試すか、現在のエージェントを更新してください。"
+        "body": "エージェントは、要求された ACP メソッドがサポートされていない、または利用できないと報告しました。"
       },
       "USER_AGENT_INVALID_PARAMS": {
         "title": "選択したエージェントがリクエストを拒否しました",
-        "body": "エージェントはリクエスト形式が無効だと報告しました。メッセージを簡略化するか、別のエージェントに切り替えてください。"
+        "body": "エージェントはリクエストパラメータが無効だと報告しました。"
       },
       "USER_AGENT_HANDSHAKE_FAILED": {
         "title": "エージェントのハンドシェイクに失敗しました",
@@ -183,11 +195,27 @@
       },
       "USER_AGENT_ACP_INIT_FAILED": {
         "title": "エージェントプロトコルの初期化に失敗しました",
-        "body": "アプリはこのエージェントとの Agent Client Protocol セッションを初期化できませんでした。エージェントのバージョンを確認して再接続してください。"
+        "body": "アプリはこのエージェントとの Agent Client Protocol セッションを初期化できませんでした。"
+      },
+      "USER_AGENT_PROTOCOL_PARSE_ERROR": {
+        "title": "Agent がプロトコル解析エラーを報告しました",
+        "body": "選択した Agent は、ACP/JSON-RPC メッセージを解析できなかったと報告しました。"
+      },
+      "USER_AGENT_INVALID_REQUEST": {
+        "title": "Agent が無効なプロトコルリクエストを報告しました",
+        "body": "選択した Agent は、ACP/JSON-RPC リクエストオブジェクトが無効だと報告しました。"
+      },
+      "USER_AGENT_RESOURCE_NOT_FOUND": {
+        "title": "Agent が必要なリソースを見つけられません",
+        "body": "選択した Agent は、ファイルなどの必要なリソースが見つからないと報告しました。"
+      },
+      "USER_AGENT_PROTOCOL_ERROR": {
+        "title": "Agent がプロトコルエラーを返しました",
+        "body": "選択した Agent は非標準の ACP エラーコードを返しました。"
       },
       "USER_AGENT_PROTOCOL_MISMATCH": {
         "title": "エージェントプロトコルのバージョンに互換性がありません",
-        "body": "選択したエージェントは互換性のないプロトコルバージョンを使用しています。エージェントを更新するか、互換性のあるエージェントに切り替えてください。"
+        "body": "アプリと選択したエージェントは互換性のある ACP プロトコルバージョンを使用できませんでした。"
       },
       "USER_AGENT_NO_PREVIOUS_SESSION": {
         "title": "以前のエージェントセッションを利用できません",
@@ -204,6 +232,10 @@
       "USER_LLM_PROVIDER_AUTH_FAILED": {
         "title": "モデルプロバイダーの認証に失敗しました",
         "body": "選択したプロバイダーが API キーまたはアカウント認証情報を拒否しました。プロバイダー設定を確認してから再試行してください。"
+      },
+      "USER_LLM_PROVIDER_AWS_SSO_EXPIRED": {
+        "title": "AWS SSO セッションの有効期限が切れています",
+        "body": "AWS SSO セッションの有効期限が切れています。対応する profile で 'aws sso login' を実行してから、もう一度メッセージを送信してください。"
       },
       "USER_LLM_PROVIDER_CONFIG_ERROR": {
         "title": "モデルプロバイダーの設定が無効です",
@@ -268,7 +300,39 @@
       },
       "UNKNOWN_UPSTREAM_ERROR": {
         "title": "上流のエージェントまたはプロバイダーで失敗しました",
-        "body": "アプリは上流エラーを受け取りましたが、確実には分類できませんでした。下の詳細を確認するか、フィードバックを送信してください。"
+        "body": "アプリは上流エラーを受け取りましたが、エージェント、プロバイダー、ネットワーク、ローカル環境のどこから来たかを判定できませんでした。"
+      },
+      "MCP_HTTP_RESPONSE_READ_FAILED": {
+        "title": "Failed to read the team helper response",
+        "body": "POUNDING could not read the local team helper response. Retry once, and if it keeps happening, restart the app."
+      },
+      "MCP_TOOL_REMOTE_ERROR": {
+        "title": "The local team helper rejected the request",
+        "body": "The local team helper returned an error while processing this request. Review the details below and retry after adjusting the team action."
+      },
+      "MCP_TOOL_RESPONSE_UNEXPECTED": {
+        "title": "The team helper returned an unexpected response",
+        "body": "POUNDING received an unexpected response from the local team helper. Retry once, and report it if the problem persists."
+      },
+      "MCP_TCP_READ_FAILED": {
+        "title": "Failed to read from the local team helper",
+        "body": "POUNDING could not read the local team helper TCP response. Retry once, and restart the app if it keeps failing."
+      },
+      "TEAM_SERVICE_UNAVAILABLE": {
+        "title": "Team service is not ready yet",
+        "body": "The local team session is still starting or has been interrupted. Wait a moment and retry."
+      },
+      "TEAM_ASSISTANT_ID_REQUIRED": {
+        "title": "A teammate assistant must be selected",
+        "body": "Choose a real assistant from the available assistant catalog before creating or spawning a teammate."
+      },
+      "TEAM_ASSISTANT_NOT_FOUND": {
+        "title": "The selected assistant is no longer available",
+        "body": "Refresh the assistant catalog, then choose another assistant for this teammate."
+      },
+      "TEAM_ASSISTANT_FIELD_UNSUPPORTED": {
+        "title": "The request used a legacy team identity field",
+        "body": "This team action must use assistant_id instead of legacy backend or agent fields."
       }
     }
   },
@@ -375,7 +439,6 @@
     "apiErrorSwitched": "APIエラー、{{cli}} CLIに自動切り替えしました",
     "confirmationLoadError": "確認ダイアログの読み込みに失敗しました",
     "tryAnotherAgent": "別のエージェントを試す：",
-    "switchedToAgent": "{{agent}}に切り替えました",
     "switchAgentFailed": "エージェントの切り替えに失敗しました",
     "speech": {
       "recordTooltip": "音声入力を開始",
@@ -414,8 +477,8 @@
     "error": "補足質問への回答に失敗しました。"
   },
   "commandQueue": {
-    "title": "キュー中の指示",
-    "clear": "キューをクリア",
+    "title": "ドラフトボックス",
+    "clear": "ドラフトボックスをクリア",
     "edit": "編集",
     "editing": "編集中",
     "editPlaceholder": "実行される前に、この待機中の指示を修正できます。",
@@ -430,7 +493,19 @@
     "queueFull": "キューがいっぱいです。追加する前にいくつか削除してください。",
     "inputTooLong": "キューに追加する指示が長すぎます。短くしてから送信してください。",
     "tooManyFiles": "このキュー中の指示にはファイルが多すぎます。",
-    "queueTooLarge": "キューのデータが大きすぎて安全に保持できません。いくつか削除してください。"
+    "queueTooLarge": "キューのデータが大きすぎて安全に保持できません。いくつか削除してください。",
+    "sendNow": "今すぐ送信",
+    "modeToggle": "送信モードを切り替え",
+    "help": "使い方",
+    "helpIntro": "AI の返信中に送信したメッセージはここに一時保存されます。",
+    "helpAuto": "：各返信が終わるたびに自動で順番に送信します。",
+    "helpManual": "：自動送信せず保管し、各メッセージを「今すぐ送信」で送ります。",
+    "clearConfirmTitle": "送信ドラフトボックスをクリアしますか？",
+    "clearConfirmContent": "保留中のメッセージはすべて削除され、元に戻せません。",
+    "mode": {
+      "auto": "自動送信",
+      "manual": "手動送信"
+    }
   },
   "contextUsage": {
     "contextUsed": "コンテキスト使用量"
@@ -462,7 +537,8 @@
     "label": "思考中..."
   },
   "skills": {
-    "loaded": "ロード済みスキル"
+    "loaded": "ロード済みスキル",
+    "slashHint": "スキル"
   },
   "mcp": {
     "loaded": "ロード済み MCP",
@@ -472,18 +548,22 @@
       "loaded": "読み込み済み",
       "failed": "失敗",
       "unsupported": "非対応"
-    }
+    },
+    "selected": "選択済み MCP"
   },
   "runtimePreparing": {
     "sendboxHint": "実行環境を準備しています。初回起動は少し時間がかかる場合があります。"
   },
   "sendbox": {
-    "hint": "/ でコマンド、@ でファイルを参照"
+    "hint": "/ でコマンド、@ でファイルを参照、↑/↓ でメッセージ履歴"
   },
   "agentTip": {
     "codes": {
       "ACP_EMPTY_TURN": {
         "body": "このリクエストでは、表示できる返信はありませんでした。"
+      },
+      "ACP_EMPTY_TURN_NEEDS_AUTH": {
+        "body": "このリクエストは可視的な応答を生成しませんでした。この Agent はまずサインインが必要かもしれません：{{hint}}。"
       },
       "ACP_EMPTY_TURN_MAX_TOKENS": {
         "body": "このリクエストは、表示できる返信が生成される前にモデルの出力トークン上限に達しました。"

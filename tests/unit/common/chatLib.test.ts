@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -101,6 +101,34 @@ describe('composeMessage', () => {
     expect((list[0] as IMessageThinking).content.status).toBe('done');
     expect((list[0] as IMessageThinking).content.duration).toBe(3200);
   });
+
+  it('merges a completed ACP diff into its running tool call', () => {
+    const running = createToolCallMessage('edit-1');
+    running.content.update = {
+      ...running.content.update,
+      status: 'in_progress',
+      title: 'Edit file',
+      kind: 'edit',
+    };
+    const completed: IMessageAcpToolCall = {
+      ...running,
+      content: {
+        ...running.content,
+        update: {
+          ...running.content.update,
+          status: 'completed',
+          content: [{ type: 'diff', path: '/workspace/file.ts', old_text: 'old', new_text: 'new' }],
+        },
+      },
+    };
+
+    let list = composeMessage(running, []);
+    list = composeMessage(completed, list);
+
+    expect(list).toHaveLength(1);
+    expect((list[0] as IMessageAcpToolCall).content.update.status).toBe('completed');
+    expect((list[0] as IMessageAcpToolCall).content.update.content).toEqual(completed.content.update.content);
+  });
 });
 
 describe('normalizeAgentStreamError', () => {
@@ -158,6 +186,66 @@ describe('normalizeAgentStreamError', () => {
       message: 'The current Agent failed to run in this workspace path.',
       code: 'WORKSPACE_PATH_RUNTIME_UNAVAILABLE',
       workspacePath: '/tmp/Archive ',
+    });
+  });
+
+  it('preserves the rawError diagnostic summary on internal errors', () => {
+    expect(
+      normalizeAgentStreamError({
+        message: 'Something went wrong, please try again.',
+        code: 'AIONUI_INTERNAL_ERROR',
+        rawError: {
+          name: 'Error',
+          message: 'connect ECONNREFUSED',
+          code: 'ECONNREFUSED',
+          status: 500,
+          stack: 'Error: connect ECONNREFUSED\n    at frame',
+        },
+      })
+    ).toEqual({
+      message: 'Something went wrong, please try again.',
+      code: 'AIONUI_INTERNAL_ERROR',
+      rawError: {
+        name: 'Error',
+        message: 'connect ECONNREFUSED',
+        code: 'ECONNREFUSED',
+        status: 500,
+        stack: 'Error: connect ECONNREFUSED\n    at frame',
+      },
+    });
+  });
+
+  it('drops malformed rawError fields and keeps only valid ones', () => {
+    expect(
+      normalizeAgentStreamError({
+        message: 'Something went wrong, please try again.',
+        code: 'AIONUI_INTERNAL_ERROR',
+        rawError: {
+          name: 'Error',
+          message: 42,
+          status: 'not-a-number',
+          extra: 'ignored',
+        },
+      })
+    ).toEqual({
+      message: 'Something went wrong, please try again.',
+      code: 'AIONUI_INTERNAL_ERROR',
+      rawError: {
+        name: 'Error',
+      },
+    });
+  });
+
+  it('omits rawError when it has no usable fields', () => {
+    expect(
+      normalizeAgentStreamError({
+        message: 'Something went wrong, please try again.',
+        code: 'AIONUI_INTERNAL_ERROR',
+        rawError: { unrelated: true },
+      })
+    ).toEqual({
+      message: 'Something went wrong, please try again.',
+      code: 'AIONUI_INTERNAL_ERROR',
     });
   });
 });

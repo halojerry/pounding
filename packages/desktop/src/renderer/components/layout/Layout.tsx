@@ -9,17 +9,22 @@ import { TEAM_MODE_ENABLED } from '@/common/config/constants';
 import PwaPullToRefresh from '@/renderer/components/layout/PwaPullToRefresh';
 import Titlebar from '@/renderer/components/layout/Titlebar';
 import DesktopLoginGate from '@renderer/components/layout/DesktopLoginGate';
+import PoundingInteractiveLogo from '@renderer/components/layout/PoundingInteractiveLogo';
 import EnvConflictBanner from '@renderer/components/settings/EnvConflictBanner';
-import { Layout as ArcoLayout } from '@arco-design/web-react';
+import { Layout as ArcoLayout, Tooltip } from '@arco-design/web-react';
 import { MenuFold, MenuUnfold } from '@icon-park/react';
 import classNames from 'classnames';
 import React, { Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { setGlobalNavigate } from '@/renderer/utils/navigation';
+import { usePreviewContext } from '@renderer/pages/conversation/Preview';
 import { LayoutContext } from '@renderer/hooks/context/LayoutContext';
 import { useNewApiAccount } from '@renderer/hooks/context/NewApiAccountContext';
 import { NavigationHistoryProvider } from '@renderer/hooks/context/NavigationHistoryContext';
 import { useDeepLink } from '@renderer/hooks/system/useDeepLink';
-import { useNotificationClick } from '@renderer/hooks/system/useNotificationClick';
+import { useNotificationClick } from '@renderer/hooks/system/notification/useNotificationClick';
+import { useBrowserNotification } from '@renderer/hooks/system/notification/useBrowserNotification';
 import { useDirectorySelection } from '@renderer/hooks/file/useDirectorySelection';
 import { cleanupSiderTooltips } from '@renderer/utils/ui/siderTooltip';
 import { useConversationShortcuts } from '@renderer/hooks/ui/useConversationShortcuts';
@@ -89,17 +94,66 @@ const Layout: React.FC<{
   const [viewportWidth, setViewportWidth] = useState<number>(() =>
     typeof window === 'undefined' ? 390 : window.innerWidth
   );
-  const [shouldMountUpdateModal, setShouldMountUpdateModal] = useState(false);
   const { onClick } = useDebug();
   const { contextHolder: directorySelectionContextHolder } = useDirectorySelection();
   const { ready: newApiReady, isLoggedIn: isNewApiLoggedIn, status: newApiStatus } = useNewApiAccount();
   useDeepLink();
   useNotificationClick();
+  useBrowserNotification();
   const navigate = useNavigate();
-  useConversationShortcuts({ navigate });
   const location = useLocation();
   const workspaceAvailable =
     location.pathname.startsWith('/conversation/') || (TEAM_MODE_ENABLED && location.pathname.startsWith('/team/'));
+  const toggleSider = useCallback(() => {
+    setCollapsed((previous) => !previous);
+  }, []);
+  useConversationShortcuts({ navigate, toggleSider });
+  // Expose navigate to code running outside the Router tree (e.g. the globally
+  // mounted FeedbackReportModal's "via chat" action).
+  useEffect(() => {
+    setGlobalNavigate(navigate);
+    return () => setGlobalNavigate(null);
+  }, [navigate]);
+  const { t } = useTranslation();
+  // The "POUNDING" wordmark acts as Home / Back-to-Chat, but only from settings routes.
+  // In non-settings routes the user is already "home", so it is a no-op (and not actionable).
+  const isSettingsRoute = location.pathname.startsWith('/settings');
+  // Only wired to the wordmark in the isSettingsRoute branch below, so the
+  // "no-op outside settings" contract is enforced structurally — no internal
+  // route guard needed (the chat-route wordmark is a plain, inert div).
+  const handleBrandHome = useCallback(() => {
+    // Mirror Titlebar's handleBackToChat convention: return to the last non-settings path.
+    let target: string | null = null;
+    try {
+      target = sessionStorage.getItem('aion:last-non-settings-path');
+    } catch {
+      // ignore
+    }
+    if (target && !target.startsWith('/settings')) {
+      void navigate(target);
+      return;
+    }
+    void navigate('/guid');
+  }, [navigate]);
+  // Close preview whenever the user leaves the conversation route entirely
+  // (e.g. switches to a team, /guid, or settings). Within /conversation/:id
+  // the finer-grained closePreviewIfWorkspaceChanged in conversation/index.tsx
+  // handles workspace changes, so we only need to act here on route-type changes.
+  // Use closePreview directly — closePreviewIfWorkspaceChanged skips the call
+  // when lastWorkspaceRef is already null (e.g. on team routes where it was
+  // never updated), which would leave the panel open.
+  const { closePreview: closePreviewOnRouteChange } = usePreviewContext();
+  const routeLayoutMountedRef = useRef(false);
+  useEffect(() => {
+    if (!routeLayoutMountedRef.current) {
+      routeLayoutMountedRef.current = true;
+      return; // skip initial mount — preview starts closed, don't wipe persisted tabs
+    }
+    if (!location.pathname.startsWith('/conversation/')) {
+      closePreviewOnRouteChange();
+    }
+  }, [location.pathname, closePreviewOnRouteChange]);
+
   const collapsedRef = useRef(collapsed);
   const dragStateRef = useRef<{ active: boolean; startX: number; startWidth: number }>({
     active: false,
@@ -174,7 +228,6 @@ const Layout: React.FC<{
 
     // Handle pause all tasks request from tray
     const handlePauseAllTasks = async () => {
-      const { ipcBridge } = await import('@/common');
       const result = await ipcBridge.task.stopAll.invoke();
       if (result?.success) {
         // Navigate to settings page to show task status
@@ -182,13 +235,9 @@ const Layout: React.FC<{
       }
     };
 
-    // Handle check update request from tray
+    // Handle check update request from tray / 托盘请求检查更新
     const handleCheckUpdate = () => {
-      void navigate('/settings/about');
-      // Trigger update modal after a short delay to ensure page is loaded
-      setTimeout(() => {
-        window.dispatchEvent(new CustomEvent('aionui-open-update-modal', { detail: { source: 'tray' } }));
-      }, 100);
+      window.dispatchEvent(new CustomEvent('aionui-open-update-modal', { detail: { source: 'tray' } }));
     };
 
     // Listen for tray events
@@ -311,7 +360,36 @@ const Layout: React.FC<{
                   }
                 )}
               >
-                <div className='text-20px text-t-primary collapsed-hidden font-semibold text-center'>POUNDING</div>
+                <div
+                  data-testid='sider-brand-logo'
+                  className={classNames('shrink-0 size-32px relative', {
+                    '!size-24px': collapsed,
+                  })}
+                  onClick={onClick}
+                >
+                  <PoundingInteractiveLogo className='absolute inset-0 m-auto' compact={collapsed} />
+                </div>
+                {isSettingsRoute ? (
+                  <Tooltip content={t('common.back', { defaultValue: 'Back to Chat' })} position='bottom'>
+                    <div
+                      className='text-16px text-t-primary collapsed-hidden font-semibold cursor-pointer'
+                      role='button'
+                      tabIndex={0}
+                      aria-label={t('common.back', { defaultValue: 'Back to Chat' })}
+                      onClick={handleBrandHome}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          handleBrandHome();
+                        }
+                      }}
+                    >
+                      POUNDING
+                    </div>
+                  </Tooltip>
+                ) : (
+                  <div className='text-16px text-t-primary collapsed-hidden font-semibold'>POUNDING</div>
+                )}
                 {isMobile && !collapsed && (
                   <button
                     type='button'

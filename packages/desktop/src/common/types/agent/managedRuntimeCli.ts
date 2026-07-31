@@ -8,7 +8,7 @@ const ORPHAN_SGR_SUFFIX_PATTERN = /\[(?:\d{1,3}(?:;\d{1,3})*)m\]?$/i;
 const SET_MODEL_PREFIX_PATTERN = /^set model to\s+/i;
 
 // Image generation models should never appear in CLI agent model selectors.
-// CLIs (Claude, Codex, OpenCode, etc.) are text-only coding agents that cannot
+// CLIs (Claude, Hermes, OpenClaw) are text-only coding agents that cannot
 // use image/video generation models. Matches the same pattern used by
 // imageModelAllowlist.ts for the built-in image generation tool.
 const IMAGE_GEN_MODEL_PATTERN = /(image|banana|imagine|video)/i;
@@ -46,7 +46,6 @@ export function sanitizeManagedRuntimeModelValue(value: string | null | undefine
 const MANAGED_RUNTIME_CLI_BACKEND_ALIASES: Record<ManagedRuntimeCliTarget, string[]> = {
   claude: ['claude', 'anthropic'],
   hermes: ['hermes'],
-  opencode: ['opencode'],
   openclaw: ['openclaw', 'openclaw-gateway'],
 };
 
@@ -112,16 +111,9 @@ export function buildManagedRuntimeModelId(cliTarget: ManagedRuntimeCliTarget, m
   switch (cliTarget) {
     case 'claude':
       // Claude's managed runtime is backed by cc-switch slot semantics.
-      // The actual provider model id is written into the selected slot's env
-      // (and reflected back via current_model_label), but runtime switching
-      // itself still accepts slot ids such as `default` / `opus` / `haiku`.
-      // Persisting the raw provider model id into `current_model_id` breaks
-      // session/new resume and later prompts because the Claude ACP session
-      // expects the slot id, not the underlying hosted model name.
       return 'default';
     case 'hermes':
       return `custom:${normalizedModelId}`;
-    case 'opencode':
     case 'openclaw':
       return `${getManagedRuntimeProviderId()}/${normalizedModelId}`;
     default:
@@ -141,7 +133,6 @@ export function resolveManagedModelIdFromRuntime(
       return normalizedModelId.startsWith('custom:')
         ? normalizedModelId.slice('custom:'.length) || undefined
         : undefined;
-    case 'opencode':
     case 'openclaw': {
       const matchedPrefix = getManagedRuntimeProviderIdAliases()
         .map((providerId) => `${providerId}/`)
@@ -202,9 +193,6 @@ function isManagedCliModelCompatible(
   modelId: string,
   cliTarget?: ManagedRuntimeCliTarget
 ): boolean {
-  // All CLIs can use all models from the managed provider.
-  // POUNDING API provides Anthropic-compatible endpoints for Claude,
-  // OpenAI-compatible for others, and the CLI handles protocol translation.
   return true;
 }
 
@@ -218,7 +206,6 @@ export function getManagedCliSelectableModels(
 
   const candidateModels = allModels.filter((modelId) => {
     if (provider.model_enabled?.[modelId] === false) return false;
-    // Exclude image/video generation models — CLIs are text-only coding agents
     if (IMAGE_GEN_MODEL_PATTERN.test(modelId)) return false;
     if (!isManagedCliModelCompatible(provider, modelId, cliTarget)) return false;
     const excluded = hasSpecificModelCapability(provider, modelId, 'excludeFromPrimary');
@@ -229,17 +216,11 @@ export function getManagedCliSelectableModels(
 
   if (candidateModels.length > 0) return candidateModels;
 
-  // Relaxed fallback: drop function_calling + excludeFromPrimary filters, keep
-  // protocol compatibility check so Claude still prefers anthropic models when
-  // available.
   const relaxedModels = allModels.filter(
     (modelId) =>
       provider.model_enabled?.[modelId] !== false && isManagedCliModelCompatible(provider, modelId, cliTarget)
   );
   if (relaxedModels.length > 0) return relaxedModels;
 
-  // Ultimate fallback: drop ALL compatibility filters so every CLI gets at
-  // least one selectable model. Without this, a user whose account only has
-  // OpenAI-protocol models would see zero options for Claude/Hermes/etc.
   return allModels.filter((modelId) => provider.model_enabled?.[modelId] !== false);
 }

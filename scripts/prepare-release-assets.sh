@@ -23,7 +23,10 @@ mkdir -p "$OUTPUT_DIR"
 # 1) Copy all distributables (unique file names)
 # ---------------------------------------------------------------------------
 echo "==> Copying distributables from $ARTIFACTS_DIR ..."
-mapfile -t DISTRIBUTABLES < <(find "$ARTIFACTS_DIR" -type f \( \
+DISTRIBUTABLES=()
+while IFS= read -r file; do
+  DISTRIBUTABLES+=("$file")
+done < <(find "$ARTIFACTS_DIR" -type f \( \
   -name "*.exe" -o \
   -name "*.msi" -o \
   -name "*.dmg" -o \
@@ -31,14 +34,14 @@ mapfile -t DISTRIBUTABLES < <(find "$ARTIFACTS_DIR" -type f \( \
   -name "*.zip" \
 \) | sort)
 
-DUPLICATE_BASENAMES=$(for file in "${DISTRIBUTABLES[@]}"; do basename "$file"; done | sort | uniq -d || true)
+DUPLICATE_BASENAMES=$(for file in ${DISTRIBUTABLES[@]+"${DISTRIBUTABLES[@]}"}; do basename "$file"; done | sort | uniq -d || true)
 if [ -n "$DUPLICATE_BASENAMES" ]; then
   echo "::error::Found duplicate distributable basenames that would be overwritten in flat output:"
   echo "$DUPLICATE_BASENAMES"
   exit 1
 fi
 
-for file in "${DISTRIBUTABLES[@]}"; do
+for file in ${DISTRIBUTABLES[@]+"${DISTRIBUTABLES[@]}"}; do
   cp -f "$file" "$OUTPUT_DIR/"
 done
 
@@ -46,19 +49,22 @@ done
 # 1b) Copy web-cli tarballs (+ sha256 checksums)
 # ---------------------------------------------------------------------------
 echo "==> Copying web-cli tarballs from $ARTIFACTS_DIR ..."
-mapfile -t WEB_CLI_FILES < <(find "$ARTIFACTS_DIR" -type f \( \
+WEB_CLI_FILES=()
+while IFS= read -r file; do
+  WEB_CLI_FILES+=("$file")
+done < <(find "$ARTIFACTS_DIR" -type f \( \
   -name "pounding-web-*.tar.gz" -o \
   -name "pounding-web-*.tar.gz.sha256" \
 \) | sort)
 
-WEB_CLI_DUPS=$(for file in "${WEB_CLI_FILES[@]}"; do basename "$file"; done | sort | uniq -d || true)
+WEB_CLI_DUPS=$(for file in ${WEB_CLI_FILES[@]+"${WEB_CLI_FILES[@]}"}; do basename "$file"; done | sort | uniq -d || true)
 if [ -n "$WEB_CLI_DUPS" ]; then
   echo "::error::Duplicate web-cli artifact basenames:"
   echo "$WEB_CLI_DUPS"
   exit 1
 fi
 
-for file in "${WEB_CLI_FILES[@]}"; do
+for file in ${WEB_CLI_FILES[@]+"${WEB_CLI_FILES[@]}"}; do
   cp -f "$file" "$OUTPUT_DIR/"
 done
 
@@ -78,11 +84,18 @@ fi
 echo "==> Collecting updater metadata ..."
 
 WIN_X64_LATEST=$(find "$ARTIFACTS_DIR" -type f -path "*/windows-build-x64/*" \( -name "latest.yml" -o -name "Pounding.yml" \) | sort | head -n 1 || true)
+# Fallback: download-artifact may flatten directory structure
+[ -z "$WIN_X64_LATEST" ] && WIN_X64_LATEST=$(find "$ARTIFACTS_DIR" -type f -name "latest.yml" -o -name "Pounding.yml" | grep -i "win\|x64\|Setup" | sort | head -n 1 || true)
 WIN_ARM64_LATEST=$(find "$ARTIFACTS_DIR" -type f -path "*/windows-build-arm64/*" \( -name "latest.yml" -o -name "Pounding.yml" \) | sort | head -n 1 || true)
+[ -z "$WIN_ARM64_LATEST" ] && WIN_ARM64_LATEST=$(find "$ARTIFACTS_DIR" -type f -name "latest.yml" -o -name "Pounding.yml" | grep -i "arm64" | sort | head -n 1 || true)
 MAC_X64_LATEST=$(find "$ARTIFACTS_DIR" -type f -path "*/macos-build-x64/*" \( -name "latest-mac.yml" -o -name "Pounding-mac.yml" \) | sort | head -n 1 || true)
+[ -z "$MAC_X64_LATEST" ] && MAC_X64_LATEST=$(find "$ARTIFACTS_DIR" -type f -name "latest-mac.yml" -o -name "Pounding-mac.yml" | grep -i "x64\|intel" | sort | head -n 1 || true)
 MAC_ARM64_LATEST=$(find "$ARTIFACTS_DIR" -type f -path "*/macos-build-arm64/*" \( -name "latest-mac.yml" -o -name "Pounding-mac.yml" \) | sort | head -n 1 || true)
+[ -z "$MAC_ARM64_LATEST" ] && MAC_ARM64_LATEST=$(find "$ARTIFACTS_DIR" -type f -name "latest-mac.yml" -o -name "Pounding-mac.yml" | grep -i "arm64\|silicon" | sort | head -n 1 || true)
 LINUX_X64_LATEST=$(find "$ARTIFACTS_DIR" -type f -path "*/linux-build-x64/*" \( -name "latest-linux.yml" -o -name "Pounding-linux.yml" \) | sort | head -n 1 || true)
+[ -z "$LINUX_X64_LATEST" ] && LINUX_X64_LATEST=$(find "$ARTIFACTS_DIR" -type f -name "latest-linux.yml" -o -name "Pounding-linux.yml" | sort | head -n 1 || true)
 LINUX_ARM64_LATEST=$(find "$ARTIFACTS_DIR" -type f -path "*/linux-build-arm64/*" \( -name "latest-linux-arm64.yml" -o -name "Pounding-linux-arm64.yml" \) | sort | head -n 1 || true)
+[ -z "$LINUX_ARM64_LATEST" ] && LINUX_ARM64_LATEST=$(find "$ARTIFACTS_DIR" -type f -name "latest-linux-arm64.yml" -o -name "Pounding-linux-arm64.yml" | sort | head -n 1 || true)
 
 # ---------------------------------------------------------------------------
 # 3) Publish deterministic canonical metadata for electron-updater
@@ -111,7 +124,52 @@ echo "==> Writing architecture-specific updater metadata ..."
 # ---------------------------------------------------------------------------
 echo "==> Validating required metadata ..."
 
+VERSION="${MOCK_VERSION:-$(node -p "require('./package.json').version")}"
 MISSING=0
+
+# Generate latest.yml from Windows x64 build artifacts if not found
+if [ -z "$WIN_X64_LATEST" ] || [ ! -f "$WIN_X64_LATEST" ]; then
+  WIN_EXE=$(find "$ARTIFACTS_DIR" -type f \( -name "POUNDING-*-win-x64.exe" -o -name "POUNDING-*-Setup-x64.exe" -o -name "POUNDING Setup *.exe" \) | sort | head -n 1 || true)
+  if [ -n "$WIN_EXE" ]; then
+    echo "Generating latest.yml from $WIN_EXE ..."
+    WIN_SIZE=$(stat -f%z "$WIN_EXE" 2>/dev/null || stat -c%s "$WIN_EXE" 2>/dev/null || echo 0)
+    WIN_SHA=$(shasum -a 512 "$WIN_EXE" 2>/dev/null | awk '{print $1}' || true)
+    cat > "$OUTPUT_DIR/latest.yml" << YMLEOF
+version: $VERSION
+files:
+  - url: $(basename "$WIN_EXE")
+    sha512: $WIN_SHA
+    size: $WIN_SIZE
+path: $(basename "$WIN_EXE")
+sha512: $WIN_SHA
+releaseDate: $(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
+YMLEOF
+    echo "Generated latest.yml for version $VERSION"
+  fi
+fi
+
+# Generate latest-mac.yml from macOS arm64 build artifacts if not found
+if [ -z "$MAC_ARM64_LATEST" ] || [ ! -f "$MAC_ARM64_LATEST" ]; then
+  MAC_DMG=$(find "$ARTIFACTS_DIR" -type f -name "POUNDING-*-mac-arm64.dmg" | sort | head -n 1 || true)
+  [ -z "$MAC_DMG" ] && MAC_DMG=$(find "$ARTIFACTS_DIR" -type f -name "POUNDING-*-arm64.dmg" | sort | head -n 1 || true)
+  if [ -n "$MAC_DMG" ]; then
+    echo "Generating latest-mac.yml from $MAC_DMG ..."
+    MAC_SIZE=$(stat -f%z "$MAC_DMG" 2>/dev/null || stat -c%s "$MAC_DMG" 2>/dev/null || echo 0)
+    MAC_SHA=$(shasum -a 512 "$MAC_DMG" 2>/dev/null | awk '{print $1}' || true)
+    cat > "$OUTPUT_DIR/latest-mac.yml" << YMLEOF
+version: $VERSION
+files:
+  - url: $(basename "$MAC_DMG")
+    sha512: $MAC_SHA
+    size: $MAC_SIZE
+path: $(basename "$MAC_DMG")
+sha512: $MAC_SHA
+releaseDate: $(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
+YMLEOF
+    echo "Generated latest-mac.yml for version $VERSION"
+  fi
+fi
+
 for required in latest.yml latest-mac.yml; do
   if [ ! -f "$OUTPUT_DIR/$required" ]; then
     echo "::error::Missing required updater metadata: $required"
@@ -120,11 +178,34 @@ for required in latest.yml latest-mac.yml; do
 done
 
 # ---------------------------------------------------------------------------
-# 5b) Hard validation for web-cli release assets
+# 5b) Hard validation for desktop release assets
+# ---------------------------------------------------------------------------
+echo "==> Validating desktop release assets ..."
+
+for arch in x64 arm64; do
+  for ext in dmg zip; do
+    asset="POUNDING-${VERSION}-mac-${arch}.${ext}"
+    if [ ! -f "$OUTPUT_DIR/$asset" ]; then
+      if [ "$ext" = "zip" ]; then
+        echo "::error::Missing macOS zip artifact: $asset"
+      else
+        echo "::error::Missing macOS DMG artifact: $asset"
+      fi
+      MISSING=1
+    fi
+  done
+done
+
+if [ "$MISSING" -ne 0 ]; then
+  echo "::error::Release asset validation failed; aborting."
+  exit 1
+fi
+
+# ---------------------------------------------------------------------------
+# 5c) Hard validation for web-cli release assets
 # ---------------------------------------------------------------------------
 echo "==> Validating web-cli assets ..."
 
-VERSION="${MOCK_VERSION:-$(node -p "require('./package.json').version")}"
 WEB_PLATFORMS=(
   "darwin-arm64"
   "darwin-x86_64"

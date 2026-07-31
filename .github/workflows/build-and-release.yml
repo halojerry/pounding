@@ -34,6 +34,11 @@ on:
         required: false
         default: true
         type: boolean
+      aff_code:
+        description: 'Dealer affiliate code — when set, injects dealer-config.json into platform zips for invite chain'
+        required: false
+        default: ''
+        type: string
 
 env:
   BUN_INSTALL_REGISTRY: 'https://registry.npmjs.org/'
@@ -100,6 +105,7 @@ jobs:
       )
     with:
       skip_code_quality: true
+      aff_code: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.aff_code || '' }}
       ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.ref || '' }}
       matrix: >-
         {"include":[
@@ -112,7 +118,6 @@ jobs:
 
   pack-web-cli:
     name: Pack Web CLI
-    if: false # Disabled to save CI time — re-enable when web CLI is needed
     uses: ./.github/workflows/pack-web-cli.yml
     needs: code-quality
     with:

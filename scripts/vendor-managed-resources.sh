@@ -14,8 +14,11 @@ VENDOR_DIR="${PROJECT_DIR}/vendor/managed-resources"
 
 NODE_VERSION="${NODE_VERSION:-24.11.0}"
 HERMES_VERSION="${HERMES_VERSION:-0.1.0}"
-OPENCODE_VERSION="${OPENCODE_VERSION:-0.1.0}"
 OPENCLAW_VERSION="${OPENCLAW_VERSION:-0.1.0}"
+PYTHON_BUILD_STANDALONE_RELEASE="${PYTHON_BUILD_STANDALONE_RELEASE:-20250324}"
+PYTHON_VERSION="${PYTHON_VERSION:-3.12.9}"
+UV_VERSION="${UV_VERSION:-0.7.16}"
+CHROME_DEVTOOLS_MCP_VERSION="${CHROME_DEVTOOLS_MCP_VERSION:-1.4.0}"
 
 # Default: all targets. Use --target to limit to one.
 DEFAULT_TARGETS="darwin-arm64,darwin-x64,linux-x64,linux-arm64,win32-x64,win32-arm64"
@@ -59,9 +62,22 @@ node_platform_key() {
     darwin-x64)    echo 'darwin-x64' ;;
     linux-x64)     echo 'linux-x64' ;;
     linux-arm64)   echo 'linux-arm64' ;;
-    win32-x64)     echo 'win32-x64' ;;
-    win32-arm64)   echo 'win32-arm64' ;;
+    win32-x64)     echo 'win-x64' ;;
+    win32-arm64)   echo 'win-arm64' ;;
     *) echo "ERROR: unsupported node platform $1" >&2; exit 1 ;;
+  esac
+}
+
+# Map our target IDs to python-build-standalone target triples.
+python_target_triple() {
+  case "$1" in
+    darwin-arm64)  echo 'aarch64-apple-darwin' ;;
+    darwin-x64)    echo 'x86_64-apple-darwin' ;;
+    linux-x64)     echo 'x86_64-unknown-linux-gnu' ;;
+    linux-arm64)   echo 'aarch64-unknown-linux-gnu' ;;
+    win32-x64)     echo 'x86_64-pc-windows-msvc' ;;
+    win32-arm64)   echo 'aarch64-pc-windows-msvc' ;;
+    *) echo "ERROR: unsupported target $1" >&2; exit 1 ;;
   esac
 }
 
@@ -106,7 +122,186 @@ vendor_node() {
 }
 
 # ---------------------------------------------------------------------------
-# 2. ACP tools (Claude, Codex) — same install logic as prepare-managed-acp-tools.sh
+# 2. Python (portable build from python-build-standalone)
+# ---------------------------------------------------------------------------
+vendor_python() {
+  echo "==> Python v${PYTHON_VERSION} (python-build-standalone)"
+  local release_tag="${PYTHON_BUILD_STANDALONE_RELEASE}"
+  IFS=',' read -r -a targets <<<"${TARGETS}"
+
+  for target in "${targets[@]}"; do
+    local triple
+    triple="$(python_target_triple "${target}")"
+
+    local dir_name="python"
+    local dest="${VENDOR_DIR}/runtimes/python"
+    if [[ -f "${dest}/.version" ]]; then
+      local existing
+      existing="$(cat "${dest}/.version" 2>/dev/null || true)"
+      if [[ "${existing}" == "${PYTHON_VERSION}" ]]; then
+        echo "  ${target}: already vendored (v${PYTHON_VERSION})"
+        continue
+      fi
+    fi
+
+    local archive_name="cpython-${PYTHON_VERSION}+${release_tag}-${triple}-install_only.tar.gz"
+    local url="https://github.com/indygreg/python-build-standalone/releases/download/${release_tag}/${archive_name}"
+    local tmp="/tmp/${archive_name}"
+
+    echo "  ${target}: downloading ${archive_name}"
+    download "${url}" "${tmp}" || continue
+
+    echo "  ${target}: extracting"
+    rm -rf "${dest}"
+    mkdir -p "${dest}"
+    tar -xzf "${tmp}" -C "${dest}" --strip-components=1
+    rm -f "${tmp}"
+
+    # Write version marker
+    echo "${PYTHON_VERSION}" > "${dest}/.version"
+    echo "  ${target}: done (${dest})"
+    break # python-build-standalone archive is multi-platform? No — one per target.
+          # For now we just vendor for the first matching target (host).
+          # Cross-platform Python vendoring would need separate dirs per target.
+  done
+}
+
+# ---------------------------------------------------------------------------
+# 3. uv (standalone binary)
+# ---------------------------------------------------------------------------
+vendor_uv() {
+  echo "==> uv v${UV_VERSION}"
+  IFS=',' read -r -a targets <<<"${TARGETS}"
+
+  for target in "${targets[@]}"; do
+    local triple uv_name
+    triple="$(python_target_triple "${target}")"
+
+    local dest_dir="${VENDOR_DIR}/runtimes/uv"
+    local dest="${dest_dir}/uv"
+    [[ "${target}" == win32-* ]] && dest="${dest_dir}/uv.exe"
+
+    if [[ -f "${dest}" ]] && [[ -f "${dest_dir}/.version" ]]; then
+      local existing
+      existing="$(cat "${dest_dir}/.version" 2>/dev/null || true)"
+      if [[ "${existing}" == "${UV_VERSION}" ]]; then
+        echo "  ${target}: already vendored (v${UV_VERSION})"
+        continue
+      fi
+    fi
+
+    case "${target}" in
+      win32-*) uv_name="uv-${triple}.zip" ;;
+      *)       uv_name="uv-${triple}.tar.gz" ;;
+    esac
+
+    local url="https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/${uv_name}"
+    local tmp="/tmp/${uv_name}"
+
+    echo "  ${target}: downloading ${uv_name}"
+    download "${url}" "${tmp}" || continue
+
+    echo "  ${target}: extracting"
+    rm -rf "${dest_dir}"
+    mkdir -p "${dest_dir}"
+    if [[ "${target}" == win32-* ]]; then
+      unzip -qo "${tmp}" -d "${dest_dir}/"
+      # uv zip extracts to uv.exe in a subdir; find and move it
+      find "${dest_dir}" -name 'uv.exe' -type f -exec mv {} "${dest}" \;
+    else
+      tar -xzf "${tmp}" -C "${dest_dir}/"
+      # uv tar extracts to uv-<triple>/uv; move it up
+      find "${dest_dir}" -name 'uv' -type f -exec mv {} "${dest}" \;
+    fi
+    rm -f "${tmp}"
+    chmod +x "${dest}" 2>/dev/null || true
+
+    echo "${UV_VERSION}" > "${dest_dir}/.version"
+    echo "  ${target}: done (${dest})"
+    break # One binary per run (host platform); cross-platform would need multi-dir
+  done
+}
+
+# ---------------------------------------------------------------------------
+# 4. chrome-devtools-mcp (npm package, installed into node runtime)
+# ---------------------------------------------------------------------------
+vendor_chrome_devtools_mcp() {
+  echo "==> chrome-devtools-mcp v${CHROME_DEVTOOLS_MCP_VERSION}"
+  IFS=',' read -r -a targets <<<"${TARGETS}"
+
+  for target in "${targets[@]}"; do
+    local meta plat arch platdir
+    meta="$(target_meta "${target}")"
+    IFS='|' read -r plat arch platdir <<<"${meta}"
+
+    local dest="${VENDOR_DIR}/mcp/chrome-devtools-mcp/${CHROME_DEVTOOLS_MCP_VERSION}/${platdir}"
+    if [[ -d "${dest}" ]] && [[ -f "${dest}/manifest.json" ]]; then
+      echo "  ${target}: already vendored"
+      continue
+    fi
+
+    local work="/tmp/vendor-cdt-${target}"
+    rm -rf "${work}"
+    mkdir -p "${work}/project" "${work}/npm-cache"
+
+    cat > "${work}/project/package.json" <<PKGJSON
+{
+  "name": "vendor-chrome-devtools-mcp",
+  "private": true,
+  "dependencies": {
+    "chrome-devtools-mcp": "${CHROME_DEVTOOLS_MCP_VERSION}"
+  }
+}
+PKGJSON
+
+    echo "  ${target}: npm install"
+    cd "${work}/project"
+    npm install \
+      --cpu "${arch}" \
+      --os "${plat}" \
+      --cache "${work}/npm-cache" \
+      --no-audit --no-fund --silent \
+      2>&1 | tail -3 || {
+        echo "  ${target}: npm install FAILED, skipping"
+        continue
+      }
+
+    rm -rf "${dest}"
+    mkdir -p "${dest}"
+
+    # Copy everything
+    cp -R "${work}/project/node_modules/." "${dest}/"
+
+    # Resolve entry point from package.json bin field
+    local entrypoint
+    entrypoint="$(node - "chrome-devtools-mcp" "${work}/project" <<'NODESCRIPT'
+const fs = require('node:fs');
+const path = require('node:path');
+const [, , pkgName, projectDir] = process.argv;
+const segs = pkgName.split('/');
+const pkgDir = path.join(projectDir, 'node_modules', ...segs);
+const pj = JSON.parse(fs.readFileSync(path.join(pkgDir, 'package.json'), 'utf8'));
+// Use the bin entry: "chrome-devtools-mcp" -> build/src/bin/chrome-devtools-mcp.js
+const bin = pj.bin || {};
+const binRel = (typeof bin === 'string' ? bin : (bin[pkgName] || bin['chrome-devtools'] || Object.values(bin)[0] || '')).replace(/\\/g, '/');
+console.log(path.posix.join('node_modules', ...segs, binRel));
+NODESCRIPT
+)"
+
+    cat > "${dest}/manifest.json" <<MANIFEST
+{
+  "entrypoint": "${entrypoint}",
+  "path_entries": []
+}
+MANIFEST
+
+    rm -rf "${work}"
+    echo "  ${target}: done (${dest})"
+  done
+}
+
+# ---------------------------------------------------------------------------
+# 5. ACP tools (Claude, Codex) — same install logic as prepare-managed-acp-tools.sh
 # ---------------------------------------------------------------------------
 vendor_acp_one() {
   local tool_slug="$1" package_name="$2" version="$3"
@@ -344,7 +539,6 @@ MANIFEST
 }
 
 vendor_clis() {
-  vendor_cli_one "opencode" "opencode-ai" "${OPENCODE_VERSION}"
   vendor_cli_one "openclaw" "openclaw" "${OPENCLAW_VERSION}"
   vendor_hermes
 }
@@ -354,18 +548,26 @@ vendor_clis() {
 # ---------------------------------------------------------------------------
 main() {
   echo "==> Vendoring managed resources to ${VENDOR_DIR}"
-  echo "    Targets:     ${TARGETS}"
-  echo "    Node.js:     v${NODE_VERSION}"
-  echo "    Claude ACP:  v${CLAUDE_ACP_VERSION}"
-  echo "    Codex ACP:   v${CODEX_ACP_VERSION}"
-  echo "    Hermes:      v${HERMES_VERSION}"
-  echo "    OpenCode:    v${OPENCODE_VERSION}"
-  echo "    OpenClaw:    v${OPENCLAW_VERSION}"
+  echo "    Targets:              ${TARGETS}"
+  echo "    Node.js:              v${NODE_VERSION}"
+  echo "    Python:               v${PYTHON_VERSION}"
+  echo "    uv:                   v${UV_VERSION}"
+  echo "    chrome-devtools-mcp:  v${CHROME_DEVTOOLS_MCP_VERSION}"
+  echo "    Claude ACP:           v${CLAUDE_ACP_VERSION}"
+  echo "    Hermes:               v${HERMES_VERSION}"
+  echo "    OpenCode:             v${OPENCODE_VERSION}"
+  echo "    OpenClaw:             v${OPENCLAW_VERSION}"
   echo ""
 
   mkdir -p "${VENDOR_DIR}"
 
   vendor_node
+  echo ""
+  vendor_python
+  echo ""
+  vendor_uv
+  echo ""
+  vendor_chrome_devtools_mcp
   echo ""
   vendor_acp
   echo ""

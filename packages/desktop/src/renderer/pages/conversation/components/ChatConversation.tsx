@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -9,8 +9,10 @@ import type { IConversationMcpStatus, IProvider, TChatConversation, TProviderWit
 import { uuid } from '@/common/utils';
 import addChatIcon from '@/renderer/assets/icons/add-chat.svg';
 import { CronJobManager } from '@/renderer/pages/cron';
+import { resolveCronJobId } from '@/renderer/pages/cron/cronUtils';
+import { classifyConfigSetError, useAcpConfigOptions } from '@/renderer/hooks/agent/useAcpConfigOptions';
 import { useLayoutContext } from '@/renderer/hooks/context/LayoutContext';
-import { usePresetAssistantInfo, resolveAssistantConfigId } from '@/renderer/hooks/agent/usePresetAssistantInfo';
+import { usePresetAssistantInfo } from '@/renderer/hooks/agent/usePresetAssistantInfo';
 import { iconColors } from '@/renderer/styles/colors';
 import { Button, Dropdown, Menu, Message, Tooltip, Typography } from '@arco-design/web-react';
 import { History } from '@icon-park/react';
@@ -18,29 +20,33 @@ import React, { useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import useSWR from 'swr';
-import { emitter } from '../../../utils/emitter';
-import AcpChat from '../platforms/acp/AcpChat';
-import ChatLayout from './ChatLayout';
+import { emitter } from '../../../utils/emitter.ts';
+import AcpChat from '../platforms/acp/AcpChat.tsx';
+import ChatLayout from './ChatLayout/index.tsx';
 import ChatSlider from './ChatSlider.tsx';
-import NanobotChat from '../platforms/nanobot/NanobotChat';
-import OpenClawChat from '../platforms/openclaw/OpenClawChat';
-import RemoteChat from '../platforms/remote/RemoteChat';
+import NanobotChat from '../platforms/nanobot/NanobotChat.tsx';
+import OpenClawChat from '../platforms/openclaw/OpenClawChat.tsx';
+import RemoteChat from '../platforms/remote/RemoteChat.tsx';
 import AcpModelSelector from '@/renderer/components/agent/AcpModelSelector';
-import { saveAionrsDefaultModel } from '@/renderer/pages/guid/hooks/agentSelectionUtils';
 import { getConversationOrNull } from '@/renderer/pages/conversation/utils/conversationCache';
 import { getConversationCreateErrorMessage } from '@/renderer/pages/conversation/utils/conversationCreateError';
-import GoogleModelSelector from '../platforms/gemini/GoogleModelSelector';
-import AionrsChat from '../platforms/aionrs/AionrsChat';
-import AionrsModelSelector from '../platforms/aionrs/AionrsModelSelector';
-import { useAionrsModelSelection } from '../platforms/aionrs/useAionrsModelSelection';
-import { usePreviewContext } from '../Preview';
+import GoogleModelSelector from '../platforms/gemini/GoogleModelSelector.tsx';
+import AionrsChat from '../platforms/aionrs/AionrsChat.tsx';
+import AionrsModelSelector from '../platforms/aionrs/AionrsModelSelector.tsx';
+import { useAionrsModelSelection } from '../platforms/aionrs/useAionrsModelSelection.ts';
+import { usePreviewContext } from '../Preview/index.ts';
 import StarOfficeMonitorCard from '../platforms/openclaw/StarOfficeMonitorCard.tsx';
+import { resolveConversationBackend } from '../utils/conversationAssistantIdentity.ts';
+import { useActiveLease } from '../hooks/useActiveLease.ts';
+import { saveAionrsDefaultModel } from '@/renderer/pages/guid/hooks/agentSelectionUtils';
 // import SkillRuleGenerator from './components/SkillRuleGenerator'; // Temporarily hidden
 
-/** Check whether a specific skill is mounted on the conversation. */
-const hasLoadedSkill = (conversation: TChatConversation | undefined, skillName: string): boolean => {
-  const skills = (conversation?.extra as { skills?: string[] } | undefined)?.skills;
-  return skills?.includes(skillName) ?? false;
+const configErrorMessageKey = (error: unknown) => {
+  const errorKind = classifyConfigSetError(error);
+  if (errorKind === 'command_ack') return 'agent.config.commandAck';
+  if (errorKind === 'confirmation_timeout') return 'agent.config.timeout';
+  if (errorKind === 'config_update_in_progress') return 'agent.config.busy';
+  return 'agent.config.failed';
 };
 
 const _AssociatedConversation: React.FC<{ conversation_id: string }> = ({ conversation_id }) => {
@@ -158,12 +164,31 @@ const AionrsConversationPanel: React.FC<{ conversation: AionrsConversation; slid
     onSelectModel,
   });
   const workspaceEnabled = Boolean(conversation.extra?.workspace);
+  const cronJobId = resolveCronJobId(conversation.extra);
   const { info: presetAssistantInfo } = usePresetAssistantInfo(conversation);
-  const aionrsAssistantId = resolveAssistantConfigId(conversation) ?? undefined;
+  const aionrsAssistantId = presetAssistantInfo?.assistantId;
   const layout = useLayoutContext();
   // Mobile: model selection moved into the sendbox `+` action sheet to free up
   // header space; the dropdown stays available on desktop and tablets ≥768px.
   const isMobile = Boolean(layout?.isMobile);
+  const { t } = useTranslation();
+  const runtimeConfig = useAcpConfigOptions({
+    conversation_id: conversation.id,
+    enabled: !isMobile,
+  });
+  const handleThoughtLevelSetOption = useCallback(
+    async (optionId: string, value: string) => {
+      try {
+        const result = await runtimeConfig.setConfigOption(optionId, value);
+        Message.success(t('agent.thoughtLevel.switchSuccess'));
+        return result;
+      } catch (error) {
+        Message.error(t(configErrorMessageKey(error)));
+        throw error;
+      }
+    },
+    [runtimeConfig, t]
+  );
 
   const chatLayoutProps = {
     title: conversation.name,
@@ -171,12 +196,15 @@ const AionrsConversationPanel: React.FC<{ conversation: AionrsConversation; slid
     sider: <ChatSlider conversation={conversation} />,
     headerExtra: (
       <div className='flex items-center gap-8px'>
-        <CronJobManager
-          conversation_id={conversation.id}
-          cron_job_id={conversation.extra?.cron_job_id as string | undefined}
-          hasCronSkill={hasLoadedSkill(conversation, 'cron')}
-        />
-        {!isMobile && <AionrsModelSelector selection={modelSelection} />}
+        <CronJobManager conversation_id={conversation.id} cron_job_id={cronJobId} />
+        {!isMobile && (
+          <AionrsModelSelector
+            selection={modelSelection}
+            thoughtLevel={runtimeConfig.thoughtLevel}
+            setStatus={runtimeConfig.setStatus}
+            onSetThoughtLevel={handleThoughtLevelSetOption}
+          />
+        )}
       </div>
     ),
     workspaceEnabled,
@@ -194,7 +222,7 @@ const AionrsConversationPanel: React.FC<{ conversation: AionrsConversation; slid
         workspace={conversation.extra.workspace}
         modelSelection={modelSelection}
         session_mode={conversation.extra?.session_mode}
-        cron_job_id={(conversation.extra as { cron_job_id?: string })?.cron_job_id}
+        cron_job_id={cronJobId}
         loadedSkills={(conversation.extra as { skills?: string[] } | undefined)?.skills}
         loadedMcpServers={(conversation.extra as { mcp_servers?: string[] } | undefined)?.mcp_servers}
         loadedMcpStatuses={
@@ -212,17 +240,19 @@ const ChatConversation: React.FC<{
 }> = ({ conversation, hideSendBox }) => {
   const { t } = useTranslation();
   const { openPreview } = usePreviewContext();
+  useActiveLease({ type: 'conversation', id: conversation?.id });
   const workspaceEnabled = Boolean(conversation?.extra?.workspace);
+  const cronJobId = resolveCronJobId(conversation?.extra);
   const layout = useLayoutContext();
   const isMobile = Boolean(layout?.isMobile);
 
   const isAionrsConversation = conversation?.type === 'aionrs';
 
-  // 使用统一的 Hook 获取预设助手信息（ACP/Codex 会话）
   // Use unified hook for preset assistant info (ACP/Codex conversations)
   const acpConversation = isAionrsConversation ? undefined : conversation;
   const { info: presetAssistantInfo, isLoading: isLoadingPreset } = usePresetAssistantInfo(acpConversation);
-  const acpAssistantId = acpConversation ? (resolveAssistantConfigId(acpConversation) ?? undefined) : undefined;
+  const acpAssistantId = presetAssistantInfo?.assistantId;
+  const resolvedConversationBackend = resolveConversationBackend(conversation, presetAssistantInfo?.backend);
 
   const conversationAgentName = (conversation?.extra as { agent_name?: string } | undefined)?.agent_name;
   const assistantDisplayName = presetAssistantInfo?.name || conversationAgentName;
@@ -236,7 +266,8 @@ const ChatConversation: React.FC<{
             key={conversation.id}
             conversation_id={conversation.id}
             workspace={conversation.extra?.workspace}
-            backend={conversation.extra?.backend || 'claude'}
+            backend={resolvedConversationBackend || 'claude'}
+            assistantId={acpAssistantId}
             session_mode={conversation.extra?.session_mode}
             agent_name={assistantDisplayName}
             cron_job_id={(conversation.extra as { cron_job_id?: string })?.cron_job_id}
@@ -251,10 +282,7 @@ const ChatConversation: React.FC<{
       case 'gemini':
         // Legacy Gemini conversation: the dedicated Gemini runtime has been
         // removed. The message history is still served by the shared messages
-        // table, so AcpChat renders it fine. The composer is left enabled —
-        // any send attempt will get a BadRequest from the factory branch in
-        // aionui-common/src/enums.rs → factory.rs, surfacing a clear error
-        // to the user.
+        // table, so AcpChat renders it fine.
         return (
           <AcpChat
             key={conversation.id}
@@ -320,7 +348,14 @@ const ChatConversation: React.FC<{
       default:
         return null;
     }
-  }, [conversation, isAionrsConversation, assistantDisplayName, hideSendBox]);
+  }, [
+    conversation,
+    isAionrsConversation,
+    assistantDisplayName,
+    hideSendBox,
+    resolvedConversationBackend,
+    acpAssistantId,
+  ]);
 
   const sliderTitle = useMemo(() => {
     return (
@@ -339,24 +374,22 @@ const ChatConversation: React.FC<{
     if (isMobile) return undefined;
     if (conversation.type === 'acp' || conversation.type === 'openclaw-gateway') {
       const extra = conversation.extra as { backend?: string; current_model_id?: string };
-      const backend = extra.backend || (conversation.type === 'openclaw-gateway' ? 'openclaw-gateway' : undefined);
       return (
         <AcpModelSelector
           conversation_id={conversation.id}
-          backend={backend}
+          backend={resolvedConversationBackend}
           initialModelId={extra.current_model_id}
           waitForWarmup={conversation.type === 'acp'}
         />
       );
     }
     return <GoogleModelSelector disabled={true} />;
-  }, [conversation, isAionrsConversation, isMobile]);
+  }, [conversation, isAionrsConversation, isMobile, resolvedConversationBackend]);
 
   if (conversation && conversation.type === 'aionrs') {
     return <AionrsConversationPanel key={conversation.id} conversation={conversation} sliderTitle={sliderTitle} />;
   }
 
-  // 如果有预设助手信息，使用预设助手的 logo 和名称；加载中时不进入 fallback；否则使用 backend 的 logo
   // If preset assistant info exists, use preset logo/name; while loading, avoid fallback; otherwise use backend logo
   const chatLayoutProps = presetAssistantInfo
     ? {
@@ -365,20 +398,7 @@ const ChatConversation: React.FC<{
     : isLoadingPreset
       ? {} // Still loading custom agents — avoid showing backend logo prematurely
       : {
-          backend:
-            conversation?.type === 'acp'
-              ? conversation?.extra?.backend
-              : conversation?.type === 'aionrs'
-                ? 'aionrs'
-                : conversation?.type === 'codex'
-                  ? 'codex'
-                  : conversation?.type === 'openclaw-gateway'
-                    ? 'openclaw-gateway'
-                    : conversation?.type === 'nanobot'
-                      ? 'nanobot'
-                      : conversation?.type === 'remote'
-                        ? 'remote'
-                        : undefined,
+          backend: resolvedConversationBackend,
           agent_name: conversationAgentName,
         };
 
@@ -396,11 +416,7 @@ const ChatConversation: React.FC<{
       )}
       {conversation && (
         <div className='shrink-0'>
-          <CronJobManager
-            conversation_id={conversation.id}
-            cron_job_id={conversation.extra?.cron_job_id as string | undefined}
-            hasCronSkill={hasLoadedSkill(conversation, 'cron')}
-          />
+          <CronJobManager conversation_id={conversation.id} cron_job_id={cronJobId} />
         </div>
       )}
       {modelSelector && <div className='shrink-0'>{modelSelector}</div>}

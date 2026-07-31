@@ -1,0 +1,23 @@
+# Patch 002: POUNDING Distribution Channels
+# All links, update URLs, Sentry, dealer codes, feature hiding.
+# Independent of Patch 003 (NewApi login).
+
+packages/desktop/src/renderer/components/settings/SettingsModal/contents/AboutModalContent.tsx
+packages/desktop/src/renderer/components/layout/Sider/index.tsx
+packages/desktop/src/renderer/pages/settings/AgentSettings/RemoteAgentManagement.tsx
+packages/desktop/src/process/services/portableUpdater.ts
+packages/desktop/src/process/services/cdnGenericProvider.ts
+packages/desktop/src/process/services/autoUpdaterService.ts
+packages/desktop/src/process/services/updateFeed.ts
+packages/desktop/src/process/services/autoUpdateDiagnostics.ts
+packages/desktop/src/sentry.ts
+packages/desktop/src/common/config/sentry.ts
+packages/desktop/src/process/bridge/applicationBridge.ts
+packages/desktop/src/renderer/hooks/useDealerConfig.ts
+packages/desktop/src/common/types/dealerConfig.ts
+packages/desktop/src/process/utils/configureChromium.ts
+packages/desktop/src/renderer/pages/settings/components/SettingsSider.tsx
+packages/desktop/src/process/bridge/updateBridge.ts
+scripts/pack-usb-zip.sh
+scripts/check-portable-runtimes.sh
+scripts/upload-binaries-to-cos.sh

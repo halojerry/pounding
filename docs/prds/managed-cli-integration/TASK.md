@@ -1,6 +1,6 @@
 # Managed CLI Integration — TASK
 
-## Frontend scope (AionUi) — Done
+## Frontend scope (POUNDING) — Done
 
 - [x] Kill stale app instances before test
 - [x] Add entry/exit logging to `reconcileManagedRuntimeState`
@@ -17,7 +17,7 @@
 - [x] Fix OpenCode: remove dead `canWriteToPath()` function
 - [x] Fix macOS app resolver: `Info.plist` `CFBundleExecutable` preferred
 - [x] Fix Windows: `removeFromKnownPaths()` covers `%APPDATA%\npm`, scoop/choco
-- [x] Fix update feed: `electron-builder.yml` repo → `halojerry/AionUi`
+- [x] Fix update feed: `electron-builder.yml` repo → `halojerry/POUNDING`
 - [x] Fix brand asset: add `pounding-heart-solid.png` to AionCore assets
 - [x] Merge `dev` → `main` → `release/pounding-v2.0.x` (all synced)
 

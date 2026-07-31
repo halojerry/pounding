@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -75,22 +75,6 @@ const ExtensionSettingsTabContent: React.FC<ExtensionSettingsTabContentProps> = 
       if (data.type === 'aion:get-locale') {
         void postLocaleInit();
         return;
-      }
-
-      if (data.type !== 'star-office:request-snapshot') return;
-
-      try {
-        const snapshot = await extensionsIpc.getAgentActivitySnapshot.invoke();
-        frameWindow.postMessage(
-          {
-            type: 'star-office:activity-snapshot',
-            reqId: data.reqId,
-            snapshot,
-          },
-          '*'
-        );
-      } catch (err) {
-        console.error('[ExtensionSettingsTabContent] Failed to get activity snapshot:', err);
       }
     };
 

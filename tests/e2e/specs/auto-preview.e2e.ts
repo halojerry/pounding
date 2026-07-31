@@ -6,7 +6,7 @@
  * 2. POUNDING_IMG marker — image generation tool output
  *
  * Prerequisites:
- *   cd AionUi && bun run webui
+ *   cd POUNDING && bun run webui
  *   (or the packaged Electron app)
  *
  * Run:

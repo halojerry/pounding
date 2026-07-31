@@ -1,4 +1,5 @@
 import type { IMessageAcpToolCall, IMessageToolCall, IMessageToolGroup } from './chatLib';
+import { getAcpImagePath } from './acpToolCallOutput';
 
 export type NormalizedToolStatus = 'pending' | 'running' | 'completed' | 'error' | 'canceled';
 
@@ -12,6 +13,7 @@ export interface NormalizedToolCall {
   truncated?: boolean;
   messageId?: string;
   conversationId?: string;
+  imagePath?: string;
 }
 
 const formatValue = (value: unknown): string => {
@@ -155,6 +157,7 @@ export function normalizeAcpToolCall(message: IMessageAcpToolCall): NormalizedTo
   if (Array.isArray(update.content) && update.content.length) {
     output = update.content
       .map((item) => {
+        if (typeof item !== 'object' || item === null) return '';
         if (item.type === 'content' && item.content?.text) return item.content.text;
         if (item.type === 'diff' && 'path' in item) return `[diff] ${item.path}`;
         return '';
@@ -175,6 +178,7 @@ export function normalizeAcpToolCall(message: IMessageAcpToolCall): NormalizedTo
     truncated: content?._compact?.truncated === true,
     messageId: message.id,
     conversationId: message.conversation_id,
+    imagePath: getAcpImagePath(update),
   };
 }
 
@@ -188,6 +192,8 @@ function normalizeToolCallStatus(status?: string): NormalizedToolStatus {
       return 'error';
     case 'running':
       return 'running';
+    case 'canceled':
+      return 'canceled';
     default:
       return 'pending';
   }

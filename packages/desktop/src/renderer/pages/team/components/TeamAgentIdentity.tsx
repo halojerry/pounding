@@ -1,13 +1,13 @@
 import React from 'react';
 import useSWR from 'swr';
-import { getAgentLogo } from '@renderer/utils/model/agentLogo';
+import { resolveAgentAvatar, useAgentLogos } from '@renderer/utils/model/agentLogo';
 import { usePresetAssistantInfo } from '@renderer/hooks/agent/usePresetAssistantInfo';
-import { resolveBackendAssetUrl } from '@renderer/utils/platform';
 import { getConversationOrNull } from '@/renderer/pages/conversation/utils/conversationCache';
+import { Robot } from '@icon-park/react';
 
 type Props = {
-  agent_name: string;
-  agent_type: string;
+  assistant_name: string;
+  assistant_backend: string;
   icon?: string;
   /** When provided, enables preset-aware avatar (emoji / custom svg) via the agent's conversation extras. */
   conversation_id?: string;
@@ -17,12 +17,16 @@ type Props = {
   /** Used for emoji presets (text-based avatar) and the first-letter fallback circle. */
   avatarClassName?: string;
   nameClassName?: string;
+  nameStyle?: React.CSSProperties;
+  nameTestId?: string;
   crownClassName?: string;
+  /** 叠加在头像右下角的节点（如状态点）。传入时头像外层为 relative 定位容器。 */
+  avatarOverlay?: React.ReactNode;
 };
 
 const TeamAgentIdentity: React.FC<Props> = ({
-  agent_name,
-  agent_type,
+  assistant_name,
+  assistant_backend,
   icon,
   conversation_id,
   isLeader = false,
@@ -30,15 +34,19 @@ const TeamAgentIdentity: React.FC<Props> = ({
   logoClassName,
   avatarClassName,
   nameClassName,
+  nameStyle,
+  nameTestId,
   crownClassName,
+  avatarOverlay,
 }) => {
+  const logos = useAgentLogos();
   // Share the SWR key with AgentChatSlot / TeamChatEmptyState so this hits cache instead of firing a fetch
   const { data: conversation } = useSWR(conversation_id ? ['team-conversation', conversation_id] : null, () =>
     getConversationOrNull(conversation_id!)
   );
   const { info: presetInfo } = usePresetAssistantInfo(conversation ?? undefined);
-  const explicitLogo = resolveBackendAssetUrl(icon) ?? icon;
-  const backendLogo = getAgentLogo(agent_type);
+  const displayName = assistant_name || presetInfo?.name || 'Assistant';
+  const agentAvatar = resolveAgentAvatar(logos, { icon, backend: assistant_backend });
 
   const defaultLogoClassName = 'w-16px h-16px object-contain rounded-2px opacity-80';
   const resolvedLogoClassName = logoClassName ?? defaultLogoClassName;
@@ -48,18 +56,29 @@ const TeamAgentIdentity: React.FC<Props> = ({
 
   const renderAvatar = () => {
     if (presetInfo) {
+      if (presetInfo.isFallback) {
+        return (
+          <span className={resolvedAvatarClassName}>
+            <Robot theme='outline' size={12} />
+          </span>
+        );
+      }
       if (presetInfo.isEmoji) {
         return <span className={resolvedAvatarClassName}>{presetInfo.logo}</span>;
       }
-      return <img src={presetInfo.logo} alt={presetInfo.name} className={resolvedLogoClassName} />;
+      return <img src={presetInfo.logo} alt={displayName} className={resolvedLogoClassName} />;
     }
-    if (explicitLogo) {
-      return <img src={explicitLogo} alt={agent_name} className={resolvedLogoClassName} />;
+    if (agentAvatar.kind === 'image') {
+      return <img src={agentAvatar.value} alt={displayName} className={resolvedLogoClassName} />;
     }
-    if (backendLogo) {
-      return <img src={backendLogo} alt={agent_type} className={resolvedLogoClassName} />;
+    if (agentAvatar.kind === 'emoji') {
+      return <span className={resolvedAvatarClassName}>{agentAvatar.value}</span>;
     }
-    return <span className={resolvedAvatarClassName}>{agent_name.charAt(0).toUpperCase() || '🤖'}</span>;
+    return (
+      <span className={resolvedAvatarClassName}>
+        <Robot theme='outline' size={12} />
+      </span>
+    );
   };
 
   const crownIcon = (
@@ -84,8 +103,21 @@ const TeamAgentIdentity: React.FC<Props> = ({
 
   return (
     <div className={['flex items-center gap-8px', className].filter(Boolean).join(' ')}>
-      {renderAvatar()}
-      <span className={['min-w-0 flex-1 truncate', nameClassName].filter(Boolean).join(' ')}>{agent_name}</span>
+      {avatarOverlay ? (
+        <span className='relative shrink-0 inline-flex'>
+          {renderAvatar()}
+          {avatarOverlay}
+        </span>
+      ) : (
+        renderAvatar()
+      )}
+      <span
+        data-testid={nameTestId}
+        className={['min-w-0 flex-1 truncate', nameClassName].filter(Boolean).join(' ')}
+        style={nameStyle}
+      >
+        {displayName}
+      </span>
       {isLeader && (
         <span
           data-testid='team-leader-crown'

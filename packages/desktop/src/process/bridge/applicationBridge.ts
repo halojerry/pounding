@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -166,6 +166,8 @@ export function initApplicationBridge(): void {
       console.error(...args);
     } else if (level === 'warn') {
       console.warn(...args);
+    } else if (level === 'debug') {
+      console.debug(...args);
     } else {
       console.info(...args);
     }

@@ -4,22 +4,137 @@
 
 - **Node.js** 22 or higher
 - **bun** — Package manager & runtime ([install](https://bun.sh))
+- **Rust stable + Cargo** — Required to build the local AionCore backend ([install](https://rustup.rs))
 - **Python** 3.11+ (for native module compilation)
 - **prek** — PR code checker (`npm install -g @j178/prek`)
 
+On Windows, install the Rust MSVC toolchain. If Rust compilation fails because native build tools are missing, install **Microsoft C++ Build Tools** from the Visual Studio installer, then reopen your terminal.
+
+## Repository Layout
+
+POUNDING development uses two repositories:
+
+- **AionCore** (`https://github.com/iOfficeAI/AionCore.git`) builds the local backend binary: `aioncore` on macOS/Linux and `aioncore.exe` on Windows.
+- **POUNDING** (`https://github.com/iOfficeAI/AionUi.git`) starts the Electron desktop app and launches the backend binary automatically.
+
+Keep the repositories side by side when possible:
+
+```text
+workspace/
+|-- AionCore/
+`-- POUNDING/
+```
+
+The desktop development server resolves the backend from the `PATH` inherited by `bun run start`. Install AionCore first, verify the binary is discoverable in the same terminal, then start POUNDING.
+
 ## Quick Start
 
+### 1. Clone Both Repositories
+
 ```bash
-# Clone the repository
+git clone https://github.com/iOfficeAI/AionCore.git
 git clone https://github.com/iOfficeAI/AionUi.git
-cd AionUi
+```
+
+Use the `main` branch for both repositories unless a maintainer asks you to test another branch.
+
+### 2. Build and Install AionCore
+
+Run these commands from the `AionCore` repository.
+
+#### macOS / Linux
+
+```bash
+cd AionCore
+cargo clean
+cargo install --path crates/aionui-app --locked
+
+# Make Cargo-installed binaries visible to this shell if needed.
+export PATH="$HOME/.cargo/bin:$PATH"
+
+# Verify that POUNDING will be able to find the backend.
+which aioncore
+aioncore --help
+```
+
+If `which aioncore` prints nothing, add `export PATH="$HOME/.cargo/bin:$PATH"` to your shell profile (`~/.zshrc`, `~/.bashrc`, or your shell's equivalent), open a new terminal, and verify again.
+
+#### Windows PowerShell
+
+```powershell
+cd AionCore
+cargo clean
+cargo install --path crates/aionui-app --locked
+
+# Make Cargo-installed binaries visible to this PowerShell session if needed.
+$env:Path = "$env:USERPROFILE\.cargo\bin;$env:Path"
+
+# Verify that POUNDING will be able to find the backend.
+where.exe aioncore
+aioncore --help
+```
+
+If `where.exe aioncore` prints nothing, make sure `%USERPROFILE%\.cargo\bin` is in your user `Path`, open a new PowerShell window, and verify again.
+
+### 3. Start POUNDING
+
+Run these commands from the `POUNDING` repository in a terminal where `aioncore` is discoverable.
+
+```bash
+cd POUNDING
 
 # Install dependencies
 bun install
 
-# Start development server (Electron desktop mode)
-bun start
+# Start the Electron desktop app in development mode
+bun run start
 ```
+
+During startup, POUNDING launches `aioncore` automatically and passes the backend port to the renderer. You do not need to start AionCore in a separate terminal.
+
+## Updating the Local Backend
+
+When you pull or change AionCore, reinstall the backend binary and restart POUNDING:
+
+```bash
+cd ../AionCore
+cargo install --path crates/aionui-app --locked --force
+
+cd ../POUNDING
+bun run start
+```
+
+Use `--force` when rebuilding local changes with the same AionCore package version; otherwise Cargo may keep the already installed binary.
+
+## Backend Startup Troubleshooting
+
+### `Cannot find "aioncore" binary`
+
+POUNDING cannot find the backend from the `PATH` inherited by `bun run start`.
+
+Check from the same terminal where you start POUNDING:
+
+```bash
+# macOS / Linux
+which aioncore
+
+# Windows PowerShell
+where.exe aioncore
+```
+
+If the command fails, add Cargo's binary directory to `PATH` and start POUNDING from a new terminal.
+
+### `aioncore` Works in a Terminal but POUNDING Still Cannot Find It
+
+Make sure you start `bun run start` from the same terminal environment that can run `aioncore --help`. IDE terminals and GUI-launched shells can inherit a different `PATH`; restart the IDE or launch it from a terminal after updating `PATH`.
+
+### Backend Changes Do Not Show Up
+
+Quit POUNDING, reinstall AionCore with `cargo install --path crates/aionui-app --locked --force`, then start POUNDING again. The Electron app owns the backend subprocess during development, so a running POUNDING instance will not pick up a newly installed binary until it restarts.
+
+### Windows Rust Build Errors
+
+Use the Rust MSVC toolchain and install Microsoft C++ Build Tools. After installing or changing toolchains, open a new PowerShell window and rerun the AionCore install command.
 
 ## Scripts Reference
 
@@ -105,7 +220,7 @@ bun start
 
 ## Multi-Instance Development
 
-When you have two clones of the repository (e.g. `AionUi` and `AionUi-refactor`) and need to run both simultaneously, the second instance can be started with:
+When you have two clones of the repository (e.g. `POUNDING` and `POUNDING-refactor`) and need to run both simultaneously, the second instance can be started with:
 
 ```bash
 bun run start:multi
@@ -114,7 +229,7 @@ bun run start:multi
 This sets `AIONUI_MULTI_INSTANCE=1`, which:
 
 - Skips the Electron single-instance lock
-- Uses a separate userData directory (`AionUi-Dev-2`) to avoid database and config conflicts
+- Uses a separate userData directory (`POUNDING-Dev-2`) to avoid database and config conflicts
 - Isolates data/config symlink paths (`~/.aionui-dev-2`, `~/.aionui-config-dev-2`)
 - Vite renderer, CDP, and WebUI proxy ports auto-increment to avoid collisions
 
@@ -140,7 +255,7 @@ prek run --from-ref origin/main --to-ref HEAD
 
 ## Build System
 
-AionUi uses **electron-vite** for fast bundling:
+POUNDING uses **electron-vite** for fast bundling:
 
 - **Main process**: bundled with Vite (ESM)
 - **Renderer process**: bundled with Vite (React + TypeScript)

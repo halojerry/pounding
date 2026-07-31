@@ -16,7 +16,7 @@
 
 ---
 
-## Gap 2: AionUi 仍偏 dev-centric
+## Gap 2: POUNDING 仍偏 dev-centric
 
 **位置:** `build-and-release.yml`, `BRANCH-GOVERNANCE.md`
 

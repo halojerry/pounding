@@ -1,40 +1,25 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
 import type { IMessageTips } from '@/common/chat/chatLib';
 import { Collapse, Tag } from '@arco-design/web-react';
 import { Attention, CheckOne } from '@icon-park/react';
-import { theme } from '@office-ai/platform';
 import classNames from 'classnames';
 import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import MarkdownView from '@renderer/components/Markdown';
+import ButlerDiagnoseButton from '@renderer/components/base/ButlerDiagnoseButton';
 import FeedbackButton from '@renderer/components/base/FeedbackButton';
 import CollapsibleContent from '@renderer/components/chat/CollapsibleContent';
+import { iconColors } from '@/renderer/styles/colors';
 
 const icon = {
-  success: <CheckOne theme='filled' size='16' fill={theme.Color.FunctionalColor.success} className='m-t-2px' />,
-  warning: (
-    <Attention
-      theme='filled'
-      size='16'
-      strokeLinejoin='bevel'
-      className='m-t-2px'
-      fill={theme.Color.FunctionalColor.warn}
-    />
-  ),
-  error: (
-    <Attention
-      theme='filled'
-      size='16'
-      strokeLinejoin='bevel'
-      className='m-t-2px'
-      fill={theme.Color.FunctionalColor.error}
-    />
-  ),
+  success: <CheckOne theme='filled' size='16' fill={iconColors.success} className='m-t-2px' />,
+  warning: <Attention theme='filled' size='16' strokeLinejoin='bevel' className='m-t-2px' fill={iconColors.warning} />,
+  error: <Attention theme='filled' size='16' strokeLinejoin='bevel' className='m-t-2px' fill={iconColors.danger} />,
 };
 
 const useFormatContent = (content: string) => {
@@ -79,7 +64,12 @@ const MessageTips: React.FC<{ message: IMessageTips }> = ({ message }) => {
   const { json, data } = useFormatContent(localizedTipBody);
 
   const displayContent = json ? '' : localizedTipBody;
-  const shouldShowFeedback = type === 'error';
+  // The report chip stays hidden for errors that opt out via
+  // feedback_recommended=false (user-environment problems the team can't fix),
+  // but the Butler chip shows on every error — environment issues are exactly
+  // what the Butler diagnoses best.
+  const shouldShowButler = type === 'error';
+  const shouldShowFeedback = type === 'error' && structuredError?.feedback_recommended !== false;
 
   if (structuredError) {
     const errorCode = structuredError.code;
@@ -142,6 +132,7 @@ const MessageTips: React.FC<{ message: IMessageTips }> = ({ message }) => {
           ? { feedback_recommended: structuredError.feedback_recommended }
           : {}),
         ...(structuredError.resolution ? { resolution: structuredError.resolution } : {}),
+        ...(structuredError.rawError ? { rawError: structuredError.rawError } : {}),
       },
     };
 
@@ -182,9 +173,16 @@ const MessageTips: React.FC<{ message: IMessageTips }> = ({ message }) => {
               )}
             </div>
           </div>
-          {shouldShowFeedback && (
+          {shouldShowButler && (
             <div className='flex justify-end'>
-              <FeedbackButton module='conversation-session' feedbackTags={feedbackTags} feedbackExtra={feedbackExtra} />
+              <ButlerDiagnoseButton errorText={[title, body, ...detailParts].filter(Boolean).join('\n')} />
+              {shouldShowFeedback && (
+                <FeedbackButton
+                  module='conversation-session'
+                  feedbackTags={feedbackTags}
+                  feedbackExtra={feedbackExtra}
+                />
+              )}
             </div>
           )}
         </div>
@@ -216,6 +214,7 @@ const MessageTips: React.FC<{ message: IMessageTips }> = ({ message }) => {
           </div>
           {type === 'error' && (
             <div className='flex justify-end'>
+              <ButlerDiagnoseButton errorText={JSON.stringify(data, null, 2)} />
               <FeedbackButton module='conversation-session' />
             </div>
           )}
@@ -233,9 +232,10 @@ const MessageTips: React.FC<{ message: IMessageTips }> = ({ message }) => {
             </CollapsibleContent>
           </div>
         </div>
-        {shouldShowFeedback && (
+        {shouldShowButler && (
           <div className='flex justify-end'>
-            <FeedbackButton module='conversation-session' />
+            <ButlerDiagnoseButton errorText={displayContent} />
+            {shouldShowFeedback && <FeedbackButton module='conversation-session' />}
           </div>
         )}
       </div>

@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -38,7 +38,7 @@ const ConversationSkillsIndicator: React.FC<ConversationSkillsIndicatorProps> = 
   const descriptionByName = new Map((skillIndex ?? []).map((s) => [s.name, s.description]));
 
   const handleSkillClick = (skillName: string) => {
-    navigate(`/settings/capabilities?tab=skills&highlight=${encodeURIComponent(skillName)}`);
+    navigate(`/settings/skills?highlight=${encodeURIComponent(skillName)}`);
   };
 
   const content = (

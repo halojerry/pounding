@@ -1,17 +1,17 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { execFile } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { getEnvAwareName } from '@/common/config/appEnv';
 import { migrateConfigStorage, migrateLegacyMcpConfigToDb, migrateProviders } from '@/common/config/configMigration';
 import { httpRequest } from '@/common/adapter/httpBridge';
 import { mcpService } from '@/common/adapter/ipcBridge';
-import type { ConfigKeyMap } from '@/common/config/configKeys';
+import type { ImageGenerationModelSetting } from '@/common/config/clientSettings';
 import {
   removeImageGenerationEnvKeys,
   resolveImageGenerationMcpEnv,
@@ -19,6 +19,7 @@ import {
 } from '@/common/config/imageGenerationMcpEnv';
 import { BUILTIN_IMAGE_GEN_NAME, type IMcpServer, type IProvider } from '@/common/config/storage';
 import { getBuiltinMcpScriptPath, type ProcessConfig as ProcessConfigType } from './initStorage';
+import { getDataPath } from './utils';
 import { migrateAssistantsToBackend } from './migrateAssistants';
 
 type ConfigFile = typeof ProcessConfigType;
@@ -66,18 +67,18 @@ async function fetchProviders(): Promise<IProvider[]> {
 
 export function resolveImageGenerationMigrationConfig(
   backendPrefs: BackendClientPreferences,
-  fileConfig?: ConfigKeyMap['tools.imageGenerationModel']
-): ConfigKeyMap['tools.imageGenerationModel'] | undefined {
+  fileConfig?: ImageGenerationModelSetting
+): ImageGenerationModelSetting | undefined {
   const backendConfig = backendPrefs['tools.imageGenerationModel'];
   if (backendConfig && typeof backendConfig === 'object') {
-    return backendConfig as ConfigKeyMap['tools.imageGenerationModel'];
+    return backendConfig as ImageGenerationModelSetting;
   }
   return fileConfig;
 }
 
 function resolveImageGenerationMigrationConfigSource(
   backendPrefs: BackendClientPreferences,
-  fileConfig?: ConfigKeyMap['tools.imageGenerationModel']
+  fileConfig?: ImageGenerationModelSetting
 ): 'backend' | 'file' | 'none' {
   const backendConfig = backendPrefs['tools.imageGenerationModel'];
   if (backendConfig && typeof backendConfig === 'object') {
@@ -114,7 +115,7 @@ function logImageGenerationEnvResolution(
 
 function buildBuiltinImageGenerationServer(
   resolution: ImageGenerationMcpEnvResolveResult,
-  config?: ConfigKeyMap['tools.imageGenerationModel']
+  config?: ImageGenerationModelSetting
 ): McpImportServer {
   const scriptPath = getBuiltinMcpScriptPath('builtin-mcp-image-gen');
   const env = resolution.ok ? resolution.env : {};
@@ -163,6 +164,22 @@ function isSameStdioTransport(left: IMcpServer['transport'], right: IMcpServer['
   );
 }
 
+/** Recursively copy a directory. Creates target directory if needed. */
+function copyDirectorySync(src: string, dest: string): void {
+  fs.mkdirSync(dest, { recursive: true });
+  for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
+    const srcPath = path.join(src, entry.name);
+    const destPath = path.join(dest, entry.name);
+    if (entry.isDirectory()) {
+      copyDirectorySync(srcPath, destPath);
+    } else if (entry.isSymbolicLink()) {
+      fs.symlinkSync(fs.readlinkSync(srcPath), destPath);
+    } else {
+      fs.copyFileSync(srcPath, destPath);
+    }
+  }
+}
+
 function resolveManagedNodeRoot(): string {
   // Uses the same managed node runtime as AionCore — probed via 'node' binary
   // in the managed runtime directory. Falls back to system node.
@@ -180,17 +197,132 @@ function resolveManagedNodeRoot(): string {
 
 function resolveManagedNodeCommand(): string {
   const root = resolveManagedNodeRoot();
-  return root ? path.join(root, 'bin', 'node') : 'node';
+  if (!root) return 'node';
+  const isWin = process.platform === 'win32';
+  // Windows Node.js distribution: node.exe is at the root level
+  // Unix Node.js distribution: bin/node
+  return isWin ? path.join(root, 'node.exe') : path.join(root, 'bin', 'node');
 }
 
 function resolveManagedNodeModule(pkgName: string, entry: string): string {
   const root = resolveManagedNodeRoot();
-  if (root) {
-    const pkgPath = path.join(root, 'lib', 'node_modules', pkgName, entry);
+  if (!root) return ''; // fall back to npx download
+
+  // Managed Node's global modules are installed to {root}/tools/global/lib/node_modules/
+  // (npm prefix = root/tools/global). Also check the legacy {root}/lib/node_modules/ path.
+  const candidates = [
+    path.join(root, 'tools', 'global', 'lib', 'node_modules', pkgName, entry),
+    path.join(root, 'lib', 'node_modules', pkgName, entry),
+  ];
+  for (const pkgPath of candidates) {
     if (fs.existsSync(pkgPath)) return pkgPath;
   }
-  // Fallback: let npx download it
   return '';
+}
+
+/** Copy a compiled builtin MCP script from the build output to the data
+ *  directory so the Rust ACP injection path can find it. */
+function materializeBuiltinMcpScript(scriptName: string, targetName: string): void {
+  try {
+    const src = getBuiltinMcpScriptPath(scriptName);
+    if (!fs.existsSync(src)) {
+      console.warn(`[POUNDING] Builtin MCP script not found: ${src}`);
+      return;
+    }
+    const destDir = path.join(getDataPath(), 'builtin-mcp');
+    fs.mkdirSync(destDir, { recursive: true });
+    const dest = path.join(destDir, targetName);
+    // Skip if already up-to-date (same size)
+    if (fs.existsSync(dest)) {
+      const srcStat = fs.statSync(src);
+      const destStat = fs.statSync(dest);
+      if (srcStat.size === destStat.size) return;
+    }
+    fs.copyFileSync(src, dest);
+    console.log(`[POUNDING] Materialized builtin MCP script: ${dest}`);
+  } catch (err) {
+    console.warn(`[POUNDING] Failed to materialize builtin MCP script ${scriptName}:`, err);
+  }
+}
+
+/** Pre-install chrome-devtools-mcp into the managed Node runtime's global
+ *  modules so it is available offline without `npx` downloading at runtime.
+ *
+ *  Tries bundled resources first (shipped with the app), then falls back
+ *  to `npm install -g` for dev/network environments. */
+function preinstallChromeDevtoolsMcp(): void {
+  const root = resolveManagedNodeRoot();
+  if (!root) {
+    console.warn('[POUNDING] Managed Node runtime not found; skipping chrome-devtools-mcp preinstall');
+    return;
+  }
+  const isWin = process.platform === 'win32';
+  // Windows Node.js distribution: node.exe, npm.cmd at root level (no bin/)
+  // Unix Node.js distribution: bin/node, bin/npm
+  const nodeBin = isWin ? path.join(root, 'node.exe') : path.join(root, 'bin', 'node');
+  const npmBin = isWin ? path.join(root, 'npm.cmd') : path.join(root, 'bin', 'npm');
+  if (!fs.existsSync(nodeBin) || !fs.existsSync(npmBin)) {
+    console.warn('[POUNDING] Managed node/npm binaries not found; skipping chrome-devtools-mcp preinstall');
+    return;
+  }
+  // Check if already installed
+  const installedPath = path.join(root, 'tools', 'global', 'lib', 'node_modules', 'chrome-devtools-mcp');
+  if (fs.existsSync(installedPath)) {
+    return; // already installed
+  }
+
+  // Try bundled resources first (offline path from vendor-managed-resources.sh)
+  const platformKey = `${process.platform}-${process.arch}`;
+  const bundledMCP =
+    process.resourcesPath &&
+    path.join(process.resourcesPath, 'bundled-poundingcore', platformKey, 'managed-resources', 'mcp');
+  if (bundledMCP && fs.existsSync(bundledMCP)) {
+    const versions = fs.readdirSync(bundledMCP).filter((d) => d.startsWith('chrome-devtools-mcp'));
+    if (versions.length > 0) {
+      // Find the right platform subdirectory
+      for (const ver of versions) {
+        const platDirs = fs
+          .readdirSync(path.join(bundledMCP, ver))
+          .filter((d) => d.includes(process.platform) && d.includes(process.arch));
+        for (const platDir of platDirs) {
+          const srcDir = path.join(bundledMCP, ver, platDir);
+          if (fs.existsSync(path.join(srcDir, 'manifest.json'))) {
+            try {
+              const destDir = path.join(root, 'tools', 'global', 'lib', 'node_modules');
+              fs.mkdirSync(destDir, { recursive: true });
+              const dest = path.join(destDir, 'chrome-devtools-mcp');
+              if (!fs.existsSync(dest)) {
+                copyDirectorySync(srcDir, dest);
+                console.log('[POUNDING] chrome-devtools-mcp materialized from bundled resources');
+              }
+              return;
+            } catch (err) {
+              console.warn('[POUNDING] Failed to materialize chrome-devtools-mcp from bundle:', err);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Fallback: npm install (needs network)
+  console.log('[POUNDING] Pre-installing chrome-devtools-mcp to managed Node runtime...');
+  try {
+    const npmPrefix = path.join(root, 'tools', 'global');
+    execFileSync(nodeBin, [npmBin, 'install', '-g', 'chrome-devtools-mcp'], {
+      stdio: 'pipe',
+      timeout: 120_000,
+      env: {
+        ...process.env,
+        npm_config_prefix: npmPrefix,
+        npm_config_userconfig: path.join(root, 'blank_user_npmrc'),
+        npm_config_globalconfig: path.join(root, 'blank_global_npmrc'),
+      },
+    });
+    console.log('[POUNDING] chrome-devtools-mcp installed successfully');
+  } catch (err) {
+    console.warn('[POUNDING] Failed to preinstall chrome-devtools-mcp:', err);
+  }
 }
 
 function buildDefaultMcpServers(): McpImportServer[] {
@@ -198,7 +330,7 @@ function buildDefaultMcpServers(): McpImportServer[] {
     // Use managed node binary with locally-installed chrome-devtools-mcp
     command: resolveManagedNodeCommand(),
     args: [
-      resolveManagedNodeModule('chrome-devtools-mcp', 'build/src/index.js'),
+      resolveManagedNodeModule('chrome-devtools-mcp', 'build/src/bin/chrome-devtools-mcp.js'),
       '--browser-url=http://127.0.0.1:9230',
     ],
   };
@@ -327,6 +459,13 @@ async function ensureBootstrapMcpServersInDb(configFile: ConfigFile): Promise<vo
 
   if (missing.length > 0) {
     await mcpService.batchImportServers.invoke({ servers: missing });
+    // Refresh existingByName so the fix-up loop below sees freshly imported
+    // servers. Without this, on a fresh install existingByName is empty and
+    // the enable loop is a no-op.
+    const refreshed = await mcpService.listServers.invoke();
+    for (const server of refreshed ?? []) {
+      existingByName.set(server.name, server);
+    }
   }
 
   // Ensure existing builtin MCP servers are enabled (in case they were
@@ -338,12 +477,16 @@ async function ensureBootstrapMcpServersInDb(configFile: ConfigFile): Promise<vo
     seen.add(server.name);
     return true;
   });
+  // Enable any builtin servers that were previously disabled.
+  // Collect promises and run in parallel (each toggle is independent).
+  const enableTasks: Promise<unknown>[] = [];
   for (const server of uniqueServers) {
-    const existing = existingByName.get(server.name);
-    if (existing && !existing.enabled) {
-      await mcpService.toggleServer.invoke({ id: existing.id });
+    const match = existingByName.get(server.name);
+    if (match && !match.enabled) {
+      enableTasks.push(mcpService.toggleServer.invoke({ id: match.id }));
     }
   }
+  await Promise.all(enableTasks);
 
   const existingChromeDevtools = existingByName.get(BUILTIN_CHROME_DEVTOOLS_NAME);
   if (
@@ -419,11 +562,6 @@ async function ensureBootstrapMcpServersInDb(configFile: ConfigFile): Promise<vo
       existingImageServer.id,
       imageEnvResolution.reason
     );
-  }
-
-  if (imageConfig?.switch === true) {
-    const { switch: _switch, ...rest } = imageConfig;
-    await configFile.set('tools.imageGenerationModel', rest as ConfigKeyMap['tools.imageGenerationModel']);
   }
 
   console.info(

@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -12,36 +12,47 @@
 import * as electron from 'electron';
 
 const { ipcMain, app, BrowserWindow } = electron;
-import * as fs from 'fs';
 import * as path from 'path';
-import * as zlib from 'zlib';
+import { collectFeedbackLogAttachment } from '../feedback/logs';
 import { resolveDesktopSentryConfig } from '@/common/config/sentry';
 
-/**
- * Get log file paths for the last N days.
- * Log files are named YYYY-MM-DD.log by electron-log.
- */
-const getRecentLogPaths = (logsDir: string, days: number): string[] => {
-  const paths: string[] = [];
-  const now = new Date();
+const FEEDBACK_FLUSH_TIMEOUT_MS = 8000;
 
-  for (let i = 0; i < days; i++) {
-    const date = new Date(now);
-    date.setDate(date.getDate() - i);
-    const dateStr = date.toISOString().slice(0, 10);
-    for (const filename of [`${dateStr}.log`, `${dateStr}.backend.log`, `${dateStr}.aionrs.log`]) {
-      const filePath = path.join(logsDir, filename);
-      if (fs.existsSync(filePath)) {
-        paths.push(filePath);
-      }
-    }
-  }
-
-  return paths;
+type RendererFeedbackLogPayload = {
+  details?: unknown;
+  level?: unknown;
+  message?: unknown;
 };
 
-const LOG_DAYS = 3;
-const FEEDBACK_FLUSH_TIMEOUT_MS = 8000;
+function normalizeRendererFeedbackLogPayload(payload: RendererFeedbackLogPayload): {
+  details?: unknown;
+  level: 'info' | 'warn' | 'error';
+  message: string;
+} {
+  const level = payload.level === 'warn' || payload.level === 'error' ? payload.level : 'info';
+  const message = typeof payload.message === 'string' && payload.message.trim() ? payload.message : 'feedback log';
+  return {
+    level,
+    message,
+    details: payload.details,
+  };
+}
+
+ipcMain.on('feedback:renderer-log', (_event, payload: RendererFeedbackLogPayload) => {
+  const log = normalizeRendererFeedbackLogPayload(payload ?? {});
+  const args = [`[FeedbackReport:renderer] ${log.message}`];
+  if (log.details !== undefined) {
+    args.push(log.details as string);
+  }
+
+  if (log.level === 'error') {
+    console.error(...args);
+  } else if (log.level === 'warn') {
+    console.warn(...args);
+  } else {
+    console.info(...args);
+  }
+});
 
 ipcMain.handle('feedback:collect-logs', async () => {
   try {
@@ -52,30 +63,14 @@ ipcMain.handle('feedback:collect-logs', async () => {
       logsDir = path.join(app.getPath('userData'), 'logs');
     }
 
-    if (!fs.existsSync(logsDir)) {
-      return null;
-    }
-
-    const logPaths = getRecentLogPaths(logsDir, LOG_DAYS);
-    if (logPaths.length === 0) {
-      return null;
-    }
-
-    // Read and concatenate all log files with date headers
-    const parts: string[] = [];
-    for (const logPath of logPaths) {
-      const basename = path.basename(logPath);
-      const content = fs.readFileSync(logPath, 'utf-8');
-      parts.push(`=== ${basename} ===\n${content}\n`);
-    }
-
-    const combined = parts.join('\n');
-    const compressed = zlib.gzipSync(Buffer.from(combined, 'utf-8'));
+    const logDirs = [logsDir, path.join(logsDir, 'logs')];
+    const attachment = collectFeedbackLogAttachment(logDirs);
+    if (!attachment) return null;
 
     // Return as number array for IPC serialization (Buffer is not serializable)
     return {
-      filename: 'logs.gz',
-      data: Array.from(compressed),
+      filename: attachment.filename,
+      data: Array.from(attachment.data),
     };
   } catch (error) {
     console.error('[feedbackBridge] Failed to collect logs:', error);

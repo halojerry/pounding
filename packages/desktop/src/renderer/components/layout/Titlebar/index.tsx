@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import classNames from 'classnames';
-import { ArrowCircleLeft, ArrowLeft, ArrowRight, ExpandLeft, ExpandRight, Peoples } from '@icon-park/react';
+import { ArrowCircleLeft, ArrowLeft, ArrowRight, ExpandLeft, ExpandRight, Peoples, Search } from '@icon-park/react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 import { ipcBridge } from '@/common';
 import { TEAM_MODE_ENABLED } from '@/common/config/constants';
+import ConversationSearchPopover from '@renderer/pages/conversation/GroupedHistory/ConversationSearchPopover';
 import MobileConversationBrand from './MobileConversationBrand';
 import WindowControls from '../WindowControls';
 import { WORKSPACE_STATE_EVENT, dispatchWorkspaceToggleEvent } from '@renderer/utils/workspace/workspaceEvents';
@@ -13,22 +14,13 @@ import type { WorkspaceStateDetail } from '@renderer/utils/workspace/workspaceEv
 import { useLayoutContext } from '@/renderer/hooks/context/LayoutContext';
 import { useNavigationHistory } from '@/renderer/hooks/context/NavigationHistoryContext';
 import { useFeedback } from '@/renderer/hooks/context/FeedbackContext';
+import { resolveFeedbackModule } from '@/renderer/services/feedback/resolveFeedbackModule';
 import { isElectronDesktop, isMacOS } from '@/renderer/utils/platform';
 import './titlebar.css';
 
 interface TitlebarProps {
   workspaceAvailable: boolean;
 }
-
-// Map the current route to a feedback module tag (must match FEEDBACK_MODULES in
-// feedbackModules.ts), so the report modal pre-selects the relevant module.
-// Unknown routes (e.g. the home page) return undefined, letting the user pick.
-const resolveFeedbackModule = (pathname: string): string | undefined => {
-  if (pathname.startsWith('/conversation')) return 'conversation-session';
-  if (pathname.startsWith('/team')) return 'agent-team';
-  if (pathname.startsWith('/settings')) return 'system-settings';
-  return undefined;
-};
 
 // Bug-report icon: a speech bubble with a centred "?" mark, reading as "report an
 // issue". Drawn on a 48-unit viewBox with icon-park-like padding and taking the same
@@ -163,6 +155,11 @@ const Titlebar: React.FC<TitlebarProps> = ({ workspaceAvailable }) => {
   const showHistoryNav = Boolean(navigationHistory) && !layout?.isMobile;
   const historyBackTooltip = t('common.historyBack', { defaultValue: 'Back' });
   const historyForwardTooltip = t('common.forward', { defaultValue: 'Forward' });
+  // Conversation search moved from the sidebar into the titlebar toolbar
+  // (between the sidebar toggle and the back/forward nav). Desktop only —
+  // mobile keeps search inside the sidebar.
+  const showSearchButton = !layout?.isMobile;
+  const searchTooltip = t('conversation.historySearch.tooltip', { defaultValue: 'Search conversations' });
 
   const handleSiderToggle = () => {
     if (!showSiderToggle || !layout?.setSiderCollapsed) return;
@@ -333,6 +330,28 @@ const Titlebar: React.FC<TitlebarProps> = ({ workspaceAvailable }) => {
           >
             <SidebarIcon size={iconSize} strokeWidth={desktopIconStroke} />
           </button>
+        )}
+        {showSearchButton && (
+          <ConversationSearchPopover
+            renderTrigger={({ onClick }) => (
+              <button
+                type='button'
+                className='app-titlebar__button'
+                onClick={onClick}
+                aria-label={searchTooltip}
+                title={searchTooltip}
+              >
+                <Search
+                  theme='outline'
+                  size={iconSize}
+                  fill='currentColor'
+                  strokeWidth={desktopIconStroke}
+                  className='block leading-none'
+                  style={{ lineHeight: 0 }}
+                />
+              </button>
+            )}
+          />
         )}
         {showHistoryNav && (
           <>

@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -10,12 +10,11 @@ import BtwOverlay from '@/renderer/components/chat/BtwOverlay';
 import { useInputFocusRing } from '@/renderer/hooks/chat/useInputFocusRing';
 import SlashCommandMenu, { type SlashCommandMenuItem } from '@/renderer/components/chat/SlashCommandMenu';
 import { useBtwCommand } from '@/renderer/components/chat/BtwOverlay/useBtwCommand';
-import { useSlashCommandController } from '@/renderer/hooks/chat/useSlashCommandController';
+import { getFuzzyMatchIndices, useSlashCommandController } from '@/renderer/hooks/chat/useSlashCommandController';
 import { useLayoutContext } from '@/renderer/hooks/context/LayoutContext';
 import { useConversationContextSafe } from '@/renderer/hooks/context/ConversationContext';
-import { useTeamPermission } from '@/renderer/pages/team/hooks/TeamPermissionContext';
+import { appendPromptToDraft, useConversationSendBoxPrefill } from '@/renderer/hooks/chat/useSendBoxDraft';
 import { usePreviewContext } from '@/renderer/pages/conversation/Preview';
-import { warmupConversation } from '@/renderer/pages/conversation/utils/warmupConversation';
 import { buildAtFileInsertion, getActiveAtFileQuery, getAllAtFileQueries } from '@/renderer/utils/chat/atFileQuery';
 import { getLastAssistantText } from '@/renderer/utils/chat/getLastAssistantText';
 import { emitter, type ReplyQuote, useAddEventListener } from '@/renderer/utils/emitter';
@@ -27,9 +26,10 @@ import { blurActiveElement, shouldBlockMobileInputFocus } from '@/renderer/utils
 import { Button, Input, Message, Tag } from '@arco-design/web-react';
 import { ArrowUp, CloseSmall, Plus, Quote } from '@icon-park/react';
 import type { SlashCommandItem } from '@/common/chat/slash/types';
-import { theme } from '@office-ai/platform';
+import { buildSkillSlashCommands, mergeSlashCommands } from '@/common/chat/slash/mergeSlashCommands';
 import React, { useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import useSWR from 'swr';
 import { useCompositionInput } from '@renderer/hooks/chat/useCompositionInput';
 import { useConversationExport } from '@renderer/hooks/file/useConversationExport';
 import { useDragUpload } from '@renderer/hooks/file/useDragUpload';
@@ -52,7 +52,7 @@ const constVoid = (): void => undefined;
 // Threshold: switch to multi-line mode directly when character count exceeds this value to avoid heavy layout work
 const MAX_SINGLE_LINE_CHARACTERS = 800;
 const BTW_COMMAND_RE = /^\/btw(?:\s+([\s\S]*))?$/i;
-const AT_FILE_HIGHLIGHT_COLOR = theme.Color.PrimaryColor;
+const AT_FILE_HIGHLIGHT_COLOR = 'var(--primary)';
 
 const getSelectedItemMatchKeys = (item: FileSelectionItem): string[] => {
   if (typeof item === 'string') {
@@ -221,7 +221,6 @@ const SendBox: React.FC<{
   const effectiveLockMultiLine = lockMultiLine && !isMobileCompact;
   const effectiveDefaultMultiLine = defaultMultiLine && !isMobileCompact;
   const conversationContext = useConversationContextSafe();
-  const teamPermission = useTeamPermission();
   const { t } = useTranslation();
   const [isLoading, setIsLoading] = useState(false);
   const [isSingleLine, setIsSingleLine] = useState(!effectiveDefaultMultiLine);
@@ -232,8 +231,6 @@ const SendBox: React.FC<{
   const singleLineWidthRef = useRef<number>(0);
   const measurementCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const mobileUserFocusIntentUntilRef = useRef(0);
-  const warmedConversationRef = useRef<string | undefined>(undefined);
-  const warmupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latestInputRef = useLatestRef(input);
   const setInputRef = useLatestRef(setInput);
   const messageList = useMessageList();
@@ -241,6 +238,12 @@ const SendBox: React.FC<{
   const historyDraftRef = useRef<string | null>(null);
   const [replyQuote, setReplyQuote] = useState<ReplyQuote | null>(null);
   const [caretPosition, setCaretPosition] = useState(0);
+  const [prefillFocusRequest, setPrefillFocusRequest] = useState<{
+    requestId: number;
+    expectedValue: string;
+  } | null>(null);
+  const prefillDraftChainRef = useRef<string | null>(null);
+  const focusedPrefillRequestIdRef = useRef<number | null>(null);
   const [workspaceMentionItems, setWorkspaceMentionItems] = useState<FileOrFolderItem[]>([]);
   const [workspaceMentionLoading, setWorkspaceMentionLoading] = useState(false);
   const [atFileMenuActiveIndex, setAtFileMenuActiveIndex] = useState(0);
@@ -461,18 +464,27 @@ const SendBox: React.FC<{
     return commands;
   }, [conversationContext?.conversation_id, enableBtw, onSlashBuiltinCommand, t]);
 
-  const mergedSlashCommands = useMemo(() => {
-    const map = new Map<string, SlashCommandItem>();
-    for (const command of builtinSlashCommands) {
-      map.set(command.name, command);
-    }
-    for (const command of slash_commands) {
-      if (!map.has(command.name)) {
-        map.set(command.name, command);
-      }
-    }
-    return Array.from(map.values());
-  }, [builtinSlashCommands, slash_commands]);
+  // Skills loaded into this conversation are also invokable via slash. We reuse
+  // the global skills index (shared SWR key `skills-index`) purely to attach a
+  // human-readable description; the loadedSkills snapshot decides which appear.
+  const loadedSkills = conversationContext?.loadedSkills;
+  const { data: skillIndex } = useSWR(loadedSkills && loadedSkills.length > 0 ? 'skills-index' : null, () =>
+    ipcBridge.fs.listAvailableSkills.invoke()
+  );
+  const skillSlashCommands = useMemo<SlashCommandItem[]>(() => {
+    const descriptionByName = new Map((skillIndex ?? []).map((s) => [s.name, s.description]));
+    return buildSkillSlashCommands(
+      loadedSkills,
+      descriptionByName,
+      t('conversation.skills.slashHint', { defaultValue: 'Skill' })
+    );
+  }, [loadedSkills, skillIndex, t]);
+
+  // Priority on name collisions: builtin > ACP agent commands > session skills.
+  const mergedSlashCommands = useMemo(
+    () => mergeSlashCommands(builtinSlashCommands, slash_commands, skillSlashCommands),
+    [builtinSlashCommands, slash_commands, skillSlashCommands]
+  );
 
   const slashController = useSlashCommandController({
     input,
@@ -510,8 +522,11 @@ const SendBox: React.FC<{
         label: `/${command.name}`,
         description: command.description,
         badge: command.hint,
+        highlightIndices: slashController.query
+          ? getFuzzyMatchIndices(command.name, slashController.query)?.map((index) => index + 1)
+          : undefined,
       })),
-    [slashController.filteredCommands]
+    [slashController.filteredCommands, slashController.query]
   );
 
   const isCommandMenuOpen = conversationExport.isOpen || slashController.isOpen;
@@ -530,6 +545,32 @@ const SendBox: React.FC<{
     const textarea = containerRef.current?.querySelector('textarea');
     return textarea instanceof HTMLTextAreaElement ? textarea : null;
   }, []);
+
+  const handleConversationPrefill = useCallback(
+    ({ prompt, requestId }: { prompt: string; requestId: number }) => {
+      const expectedValue = appendPromptToDraft(prefillDraftChainRef.current ?? latestInputRef.current, prompt);
+      prefillDraftChainRef.current = expectedValue;
+      setInputRef.current(expectedValue);
+      setPrefillFocusRequest({ requestId, expectedValue });
+    },
+    [latestInputRef, setInputRef]
+  );
+  useConversationSendBoxPrefill(conversationContext?.conversation_id, handleConversationPrefill);
+
+  useEffect(() => {
+    if (!prefillFocusRequest || input !== prefillFocusRequest.expectedValue) {
+      return;
+    }
+    prefillDraftChainRef.current = null;
+    if (isMobile || focusedPrefillRequestIdRef.current === prefillFocusRequest.requestId) return;
+    const textarea = getTextareaElement();
+    if (!textarea) return;
+    focusedPrefillRequestIdRef.current = prefillFocusRequest.requestId;
+    textarea.focus();
+    const end = textarea.value.length;
+    textarea.setSelectionRange(end, end);
+    setCaretPosition(end);
+  }, [getTextareaElement, input, isMobile, prefillFocusRequest]);
 
   const syncCaretPosition = useCallback(
     (target?: EventTarget | null) => {
@@ -617,12 +658,12 @@ const SendBox: React.FC<{
           WebkitBackdropFilter: 'blur(14px) saturate(1.1)',
         }}
       >
-        <div className='text-13px font-semibold text-t-primary'>{t('messages.export.file_nameLabel')}</div>
+        <div className='text-13px font-semibold text-t-primary'>{t('messages.export.fileNameLabel')}</div>
         <Input
           autoFocus
           value={conversationExport.filename}
           onChange={conversationExport.setFilename}
-          placeholder={t('messages.export.file_namePlaceholder')}
+          placeholder={t('messages.export.fileNamePlaceholder')}
           disabled={conversationExport.loading}
           onKeyDown={(event) => {
             conversationExport.handleKeyDown(event);
@@ -962,24 +1003,8 @@ const SendBox: React.FC<{
     mobileUserFocusIntentUntilRef.current = 0;
     handlePasteFocus();
     setIsInputFocused(true);
-
-    // Pre-warm worker bootstrap after focus stays for 1s (debounce).
-    // Avoids triggering warmup for every conversation during rapid switching.
-    // In team mode, warmup is deferred to first user input via TeamPermissionContext.
-    const cid = conversationContext?.conversation_id;
-    if (cid && !teamPermission && warmedConversationRef.current !== cid) {
-      if (warmupTimerRef.current) clearTimeout(warmupTimerRef.current);
-      warmupTimerRef.current = setTimeout(() => {
-        warmedConversationRef.current = cid;
-        warmupConversation(cid).catch(() => {});
-      }, 1000);
-    }
-  }, [handlePasteFocus, isMobile, conversationContext?.conversation_id]);
+  }, [handlePasteFocus, isMobile]);
   const handleInputBlur = useCallback(() => {
-    if (warmupTimerRef.current) {
-      clearTimeout(warmupTimerRef.current);
-      warmupTimerRef.current = null;
-    }
     setIsInputFocused(false);
   }, []);
 
@@ -1131,18 +1156,6 @@ const SendBox: React.FC<{
 
   const sendMessageHandler = () => {
     if (isUploading) return;
-    // Cancel any pending warmup: once the user actually submits, the
-    // forthcoming /messages request will build the agent on its own.
-    // Without this, a focus-triggered warmup timer still fires ~1s later
-    // and races the real send over the same conversation.
-    if (warmupTimerRef.current) {
-      clearTimeout(warmupTimerRef.current);
-      warmupTimerRef.current = null;
-    }
-    const activeCid = conversationContext?.conversation_id;
-    if (activeCid) {
-      warmedConversationRef.current = activeCid;
-    }
     if (enableBtw && btwQuestion !== null) {
       const normalizedQuestion = btwQuestion.trim();
       if (!normalizedQuestion) {

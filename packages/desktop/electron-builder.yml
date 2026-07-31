@@ -81,8 +81,6 @@ files:
   # Exclude large packages
   - '!**/node_modules/{@img,@emnapi}/**'
   - '!**/node_modules/@img/sharp-*/**'
-  - '!**/node_modules/@anthropic-ai/claude-code/vendor/**'
-  - '!**/node_modules/@anthropic-ai/claude-agent-sdk/vendor/**'
   # Exclude JAR files and JNI libraries that cause notarization issues
   - '!**/*.jar'
   - '!**/*.jnilib'
@@ -122,8 +120,8 @@ extraResources:
 win:
   target:
     - nsis
-    #    - msi
     - zip
+    #    - msi
   icon: resources/app.ico # Use the checked-in Windows icon resource for executable metadata/icon patching
   artifactName: ${productName}-${version}-${os}-${arch}.${ext}
 
@@ -146,6 +144,7 @@ mac:
   category: public.app-category.productivity
   hardenedRuntime: true
   gatekeeperAssess: false
+  notarize: false
   entitlements: entitlements.plist
   entitlementsInherit: entitlements.plist
 
@@ -185,7 +184,7 @@ linux:
     entry:
       Name: POUNDING
       Comment: ${description}
-      Icon: pounding
+      Icon: POUNDING
       Categories: Office;Utility;
       MimeType: x-scheme-handler/pounding;
 
@@ -231,7 +230,7 @@ publish:
     channel: latest
   - provider: github
     owner: halojerry
-    repo: AionUi
+    repo: pounding
     publishAutoUpdate: true
     releaseType: release
     channel: latest

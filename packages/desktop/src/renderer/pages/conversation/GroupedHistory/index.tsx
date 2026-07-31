@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -9,18 +9,18 @@ import AionModal from '@/renderer/components/base/AionModal';
 import DirectorySelectionModal from '@/renderer/components/settings/DirectorySelectionModal';
 import { useLayoutContext } from '@/renderer/hooks/context/LayoutContext';
 import { useCronJobsMap } from '@/renderer/pages/cron';
-import { DndContext, DragOverlay, closestCenter } from '@dnd-kit/core';
+import { restrictToVerticalAxis } from '@/renderer/utils/ui/dndModifiers';
+import { DndContext, closestCenter } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { Button, Dropdown, Empty, Input, Menu, Modal, Tooltip } from '@arco-design/web-react';
 import { Delete, FolderOpen, MoreOne, Plus, Right } from '@icon-park/react';
 import classNames from 'classnames';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 
 import WorkspaceCollapse from '../components/WorkspaceCollapse';
 import ConversationRow from './ConversationRow';
-import DragOverlayContent from './DragOverlayContent';
 import SortableConversationRow from './SortableConversationRow';
 import { useBatchSelection } from './hooks/useBatchSelection';
 import { useConversationActions } from './hooks/useConversationActions';
@@ -44,31 +44,17 @@ const WorkspaceGroupedHistory: React.FC<WorkspaceGroupedHistoryProps> = ({
   const isMobile = layout?.isMobile ?? false;
   const { getJobStatus, markAsRead, setActiveConversation } = useCronJobsMap();
 
-  // Persist section collapsed state across reloads.
-  const COLLAPSED_SECTIONS_KEY = 'grouped-history-collapsed-sections';
-  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(() => {
-    try {
-      const raw = localStorage.getItem(COLLAPSED_SECTIONS_KEY);
-      if (!raw) return new Set();
-      const arr = JSON.parse(raw) as string[];
-      return new Set(Array.isArray(arr) ? arr : []);
-    } catch {
-      return new Set();
-    }
-  });
-  const toggleSection = useCallback((key: string) => {
-    setCollapsedSections((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      try {
-        localStorage.setItem(COLLAPSED_SECTIONS_KEY, JSON.stringify([...next]));
-      } catch {
-        // ignore storage errors
-      }
-      return next;
-    });
-  }, []);
+  const {
+    conversations,
+    isConversationGenerating,
+    hasCompletionUnread,
+    expandedWorkspaces,
+    pinnedConversations,
+    timelineSections,
+    handleToggleWorkspace,
+    collapsedSections,
+    toggleSection,
+  } = useConversations();
 
   const SectionLabel = useCallback(
     ({ sectionKey, label, trailing }: { sectionKey: string; label: string; trailing?: React.ReactNode }) => {
@@ -108,16 +94,6 @@ const WorkspaceGroupedHistory: React.FC<WorkspaceGroupedHistoryProps> = ({
   }, [id, setActiveConversation]);
 
   const {
-    conversations,
-    isConversationGenerating,
-    hasCompletionUnread,
-    expandedWorkspaces,
-    pinnedConversations,
-    timelineSections,
-    handleToggleWorkspace,
-  } = useConversations();
-
-  const {
     selectedConversationIds,
     setSelectedConversationIds,
     selectedCount,
@@ -141,6 +117,7 @@ const WorkspaceGroupedHistory: React.FC<WorkspaceGroupedHistoryProps> = ({
     handleTogglePin,
     handleMenuVisibleChange,
     handleOpenMenu,
+    handleCreateCronTask,
     handleRemoveProject,
     removeProjectTarget,
     removeProjectLoading,
@@ -177,12 +154,11 @@ const WorkspaceGroupedHistory: React.FC<WorkspaceGroupedHistoryProps> = ({
     onBatchModeChange,
   });
 
-  const { sensors, activeId, activeConversation, handleDragStart, handleDragEnd, handleDragCancel, isDragEnabled } =
-    useDragAndDrop({
-      pinnedConversations,
-      batchMode,
-      collapsed,
-    });
+  const { sensors, handleDragEnd, isDragEnabled } = useDragAndDrop({
+    pinnedConversations,
+    batchMode,
+    collapsed,
+  });
 
   const getConversationRowProps = useCallback(
     (conversation: TChatConversation): ConversationRowProps => ({
@@ -200,6 +176,7 @@ const WorkspaceGroupedHistory: React.FC<WorkspaceGroupedHistoryProps> = ({
       onOpenMenu: handleOpenMenu,
       onMenuVisibleChange: handleMenuVisibleChange,
       onEditStart: handleEditStart,
+      onCreateCronTask: handleCreateCronTask,
       onDelete: handleDeleteClick,
       // Export UI entry intentionally disabled (kanban #14): omit onExport so
       // ConversationRow's `{onExport && ...}` guard hides the menu item. The
@@ -222,6 +199,7 @@ const WorkspaceGroupedHistory: React.FC<WorkspaceGroupedHistoryProps> = ({
       handleOpenMenu,
       handleMenuVisibleChange,
       handleEditStart,
+      handleCreateCronTask,
       handleDeleteClick,
       handleTogglePin,
       getJobStatus,
@@ -404,7 +382,7 @@ const WorkspaceGroupedHistory: React.FC<WorkspaceGroupedHistoryProps> = ({
       />
 
       {batchMode && !collapsed && (
-        <div className='px-12px pb-8px'>
+        <div className='px-12px pb-8px pt-2px sticky top-0 z-20 bg-[var(--bg-2)]'>
           <div className='rd-8px bg-fill-1 p-10px flex flex-col gap-8px border border-solid border-[rgba(var(--primary-6),0.08)]'>
             <div className='text-12px leading-18px text-t-secondary'>
               {t('conversation.history.selectedCount', { count: selectedCount })}
@@ -506,9 +484,8 @@ const WorkspaceGroupedHistory: React.FC<WorkspaceGroupedHistoryProps> = ({
         <DndContext
           sensors={sensors}
           collisionDetection={closestCenter}
-          onDragStart={handleDragStart}
+          modifiers={[restrictToVerticalAxis]}
           onDragEnd={handleDragEnd}
-          onDragCancel={handleDragCancel}
         >
           {pinnedConversations.length > 0 && (
             <div className='min-w-0'>
@@ -529,10 +506,6 @@ const WorkspaceGroupedHistory: React.FC<WorkspaceGroupedHistoryProps> = ({
               )}
             </div>
           )}
-
-          <DragOverlay dropAnimation={null}>
-            {activeId && activeConversation ? <DragOverlayContent conversation={activeConversation} /> : null}
-          </DragOverlay>
         </DndContext>
 
         {/* Slot 由父级（Sider）填入：例如 Team / CronJob sections，位于「置顶」之后、「项目」之前 */}
@@ -566,6 +539,8 @@ const WorkspaceGroupedHistory: React.FC<WorkspaceGroupedHistoryProps> = ({
                       expanded={expandedWorkspaces.includes(group.workspace)}
                       onToggle={() => handleToggleWorkspace(group.workspace)}
                       siderCollapsed={collapsed}
+                      stickyHeader
+                      stickyTop={28}
                       header={
                         <span className='text-14px font-[500] truncate flex-1 text-t-primary min-w-0'>
                           {group.displayName}

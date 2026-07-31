@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -18,6 +18,16 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { getEnvAwareName } from '@/common/config/appEnv';
+
+// ── POUNDING managed CLI directory ────────────────────────────────────
+// CLI tools installed by POUNDING live under the data directory, not in
+// the user's global ~/.bun or ~/.local — self-contained, portable-safe,
+// and never conflicts with tools the user already has.
+
+function getCliBinDir(): string {
+  const baseName = getEnvAwareName('.pounding');
+  return path.join(os.homedir(), baseName, 'cli', 'bin');
+}
 
 type ExecCommandOptions = {
   env?: NodeJS.ProcessEnv;
@@ -45,7 +55,7 @@ const OPENCODE_CONFIG_ENV_NAME = 'OPENCODE_CONFIG';
 const XDG_CONFIG_HOME_ENV_NAME = 'XDG_CONFIG_HOME';
 const BUN_HOME_DIR = process.env.BUN_INSTALL?.trim() || path.join(os.homedir(), '.bun');
 
-function getAionUiDevDir(): string {
+function getPOUNDINGDevDir(): string {
   try {
     const { app } = require('electron');
     if (app && app.isReady()) {
@@ -58,11 +68,11 @@ function getAionUiDevDir(): string {
 }
 
 function getManagedOpencodeConfigPath(): string {
-  return path.join(getAionUiDevDir(), 'managed-opencode', 'opencode.json');
+  return path.join(getPOUNDINGDevDir(), 'managed-opencode', 'opencode.json');
 }
 
 function getManagedOpencodeXdgHome(): string {
-  return path.join(getAionUiDevDir(), 'xdg-config');
+  return path.join(getPOUNDINGDevDir(), 'xdg-config');
 }
 
 const BUN_BIN_DIR = path.join(BUN_HOME_DIR, 'bin');
@@ -352,47 +362,53 @@ function materializeFromBundled(descriptor: ManagedCliDescriptor, bundledDir: st
     throw new Error(`Bundle entrypoint not found: ${entrypointAbs}`);
   }
 
-  // 1. Copy node_modules from bundle to global bun directory so the
-  //    CLI can resolve its dependencies at runtime.
+  const kind: string = manifest.kind || 'node'; // default 'node' for backward compat
+
+  if (kind === 'native') {
+    // ── Native binary (e.g. Claude) ──────────────────────────────────
+    // Copy the binary to the detect path instead of writing a shim.
+    // Shims with absolute paths break on app update; a copied binary is
+    // self-contained and survives updates.
+    const shimPath = descriptor.detectPaths?.[0];
+    if (shimPath && !fs.existsSync(shimPath)) {
+      ensureDir(path.dirname(shimPath));
+      fs.copyFileSync(entrypointAbs, shimPath);
+      if (process.platform !== 'win32') {
+        fs.chmodSync(shimPath, 0o755);
+      }
+    }
+    return;
+  }
+
+  // ── Node.js package ──────────────────────────────────────────────
+  // Copy node_modules to the global install dir so the CLI can resolve
+  // its dependencies. Then copy the entrypoint script (with #!/usr/bin/env
+  // node shebang) to the detect path — no absolute-path shim that breaks
+  // on app update.
+
   const bundledNodeModules = path.join(bundledDir, 'node_modules');
   if (fs.existsSync(bundledNodeModules)) {
     const targetNodeModules = path.join(BUN_HOME_DIR, 'install', 'global', 'node_modules');
     ensureDir(targetNodeModules);
-
-    // Infer the npm package directory from the entrypoint path.
-    // Example entrypoint: node_modules/@openai/codex/bin/codex.js
-    // → package dir: node_modules/@openai/codex → target: @openai/codex
     const pkgParts = entrypointRel.split(path.sep);
     const scopeIdx = pkgParts.indexOf('node_modules');
     if (scopeIdx >= 0 && pkgParts.length > scopeIdx + 2) {
-      const isScoped = pkgParts[scopeIdx + 2]?.startsWith('@');
-      const pkgDirName = isScoped ? pkgParts[scopeIdx + 2]! : pkgParts[scopeIdx + 1]!;
       const srcPkg = path.join(bundledNodeModules, pkgParts[scopeIdx + 1]!);
       const destPkg = path.join(targetNodeModules, pkgParts[scopeIdx + 1]!);
       copyDirContents(srcPkg, destPkg);
-
-      // Also materialise .bin/ shim entries (e.g. codex → codex.js)
       const srcBin = path.join(bundledNodeModules, '.bin');
       const destBin = path.join(targetNodeModules, '.bin');
       if (fs.existsSync(srcBin)) copyDirContents(srcBin, destBin);
     }
   }
 
-  // 2. Write a shim at each detectPath that execs the entrypoint via node.
-  for (const detectPath of descriptor.detectPaths ?? []) {
-    ensureDir(path.dirname(detectPath));
-    if (fs.existsSync(detectPath)) {
-      // Don't overwrite a CLI that was already installed by the user.
-      continue;
-    }
-    const nodeCmd = resolveNodeForShim();
-    if (process.platform === 'win32') {
-      const shim = `@echo off\r\n"${nodeCmd}" "${entrypointAbs}" %*\r\n`;
-      fs.writeFileSync(detectPath, shim, { encoding: 'utf8' });
-    } else {
-      const shim = `#!/usr/bin/env bash\nexec ${JSON.stringify(nodeCmd)} ${JSON.stringify(entrypointAbs)} "$@"\n`;
-      fs.writeFileSync(detectPath, shim, { encoding: 'utf8', mode: 0o755 });
-    }
+  // Copy the main entrypoint to the detect path with a node shebang.
+  const shimPath = descriptor.detectPaths?.[0];
+  if (shimPath && !fs.existsSync(shimPath)) {
+    ensureDir(path.dirname(shimPath));
+    const content = fs.readFileSync(entrypointAbs, 'utf-8');
+    const withShebang = content.startsWith('#!') ? content : `#!/usr/bin/env node\n${content}`;
+    fs.writeFileSync(shimPath, withShebang, { encoding: 'utf8', mode: 0o755 });
   }
 }
 
@@ -656,8 +672,8 @@ export async function preinstallHermesFromBundle(bundledResourcesDir: string): P
   if (!fs.existsSync(hermesWheelDir)) return false;
   const wheelFiles = fs.readdirSync(hermesWheelDir).filter((f) => f.endsWith('.whl'));
   if (wheelFiles.length === 0) return false;
-  const wheelPath = path.join(hermesWheelDir, wheelFiles[0]);
 
+  // Require vendored Python to create the venv.
   if (!fs.existsSync(pythonDir)) return false;
   const pythonBinDir = path.join(pythonDir, 'python', 'bin');
   const pythonBinary = path.join(pythonBinDir, process.platform === 'win32' ? 'python3.exe' : 'python3');
@@ -672,10 +688,27 @@ export async function preinstallHermesFromBundle(bundledResourcesDir: string): P
       process.platform === 'win32' ? 'Scripts' : 'bin',
       process.platform === 'win32' ? 'python.exe' : 'python'
     );
-    await runCommand(uvCmd, ['pip', 'install', '--python', venvPython, wheelPath]);
-    // Hermes ACP mode requires agent-client-protocol (the [acp] extra).
-    // Local wheels do not resolve extras metadata, so install explicitly.
-    await runCommand(uvCmd, ['pip', 'install', '--python', venvPython, 'agent-client-protocol']);
+
+    if (wheelFiles.length === 1) {
+      // Legacy: single wheel (old vendor format). Install it, then
+      // explicitly add agent-client-protocol for the [acp] extra.
+      const wheelPath = path.join(hermesWheelDir, wheelFiles[0]);
+      await runCommand(uvCmd, ['pip', 'install', '--python', venvPython, wheelPath]);
+      await runCommand(uvCmd, ['pip', 'install', '--python', venvPython, 'agent-client-protocol']);
+    } else {
+      // Multi-wheel vendor bundle (pip download). Install everything from
+      // the local directory — no network at all.
+      await runCommand(uvCmd, [
+        'pip',
+        'install',
+        '--python',
+        venvPython,
+        '--no-index',
+        '--find-links',
+        hermesWheelDir,
+        'hermes-agent[acp]',
+      ]);
+    }
 
     writeHermesShim();
     console.log('[POUNDING] Hermes installed from bundled resources');
@@ -735,8 +768,8 @@ const DESCRIPTORS: Record<ManagedCliInstallTarget, ManagedCliDescriptor> = {
     target: 'claude',
     detectCommand: 'claude',
     detectPaths: [
-      path.join(BUN_BIN_DIR, process.platform === 'win32' ? 'claude.cmd' : 'claude'),
       path.join(HERMES_BIN_DIR, process.platform === 'win32' ? 'claude.cmd' : 'claude'),
+      path.join(BUN_BIN_DIR, process.platform === 'win32' ? 'claude.cmd' : 'claude'),
     ],
     install: async () => {
       const command = await getGlobalJsCommand();
@@ -757,17 +790,13 @@ const DESCRIPTORS: Record<ManagedCliInstallTarget, ManagedCliDescriptor> = {
     install: installHermes,
     uninstall: uninstallHermes,
   },
-  opencode: {
-    target: 'opencode',
-    detectCommand: 'opencode',
-    detectPaths: [getOpencodeBinaryTargetPath(), getOpencodePlatformBinaryPath()],
-    install: installOpenCode,
-    uninstall: uninstallOpenCode,
-  },
   openclaw: {
     target: 'openclaw',
     detectCommand: 'openclaw',
-    detectPaths: [path.join(BUN_BIN_DIR, process.platform === 'win32' ? 'openclaw.cmd' : 'openclaw')],
+    detectPaths: [
+      path.join(HERMES_BIN_DIR, process.platform === 'win32' ? 'openclaw.cmd' : 'openclaw'),
+      path.join(BUN_BIN_DIR, process.platform === 'win32' ? 'openclaw.cmd' : 'openclaw'),
+    ],
     install: async () => {
       const command = await getGlobalJsCommand();
       if (command === getNpmCommand()) {
@@ -790,9 +819,6 @@ async function isManagedCliInstalled(descriptor: ManagedCliDescriptor): Promise<
 }
 
 async function syncAfterInstall(target: ManagedCliInstallTarget): Promise<void> {
-  if (target === 'opencode') {
-    ensureManagedOpencodeShim();
-  }
   await newApiDesktopAccountService.reconcileManagedRuntimeState({ cliTarget: target });
   await refreshAgents();
 }
@@ -819,31 +845,51 @@ async function installManagedCli(input: ManagedCliInstallOptions): Promise<Manag
       return { success: true, status: 'installed' };
     }
 
-    // Try bundled resources first (zero network!)
+    // Try native install first (bun add -g / pip install).
+    // This properly registers the CLI on PATH and survives app updates.
+    try {
+      console.log(`[POUNDING] Installing ${descriptor.target} via native package manager...`);
+      await descriptor.install();
+      await syncAfterInstall(descriptor.target);
+      const installed = await isManagedCliInstalled(descriptor);
+      if (installed) {
+        return { success: true, status: 'installed' };
+      }
+    } catch (err) {
+      console.warn(`[POUNDING] Native install failed for ${descriptor.target}, trying bundled fallback:`, err);
+    }
+
+    // Bundled fallback: copy binary from app resources (no network needed).
     const bundledDir = resolveBundledCliDir(descriptor.target);
     if (bundledDir) {
       console.log(`[POUNDING] Installing ${descriptor.target} from bundled resources...`);
       materializeFromBundled(descriptor, bundledDir);
-      if (descriptor.target === 'opencode') {
-        writeOpencodeShim();
-      }
       await syncAfterInstall(descriptor.target);
       const installed = await isManagedCliInstalled(descriptor);
-      return {
-        success: installed,
-        status: installed ? 'installed' : 'failed',
-        message: installed ? undefined : `${descriptor.detectCommand} still not available`,
-      };
+      if (installed) {
+        return { success: true, status: 'installed' };
+      }
     }
 
-    // Fallback: network install
-    await descriptor.install();
-    await syncAfterInstall(descriptor.target);
-    const installed = await isManagedCliInstalled(descriptor);
+    // Hermes uses a different bundle layout (Python wheels in runtimes/).
+    if (descriptor.target === 'hermes') {
+      const bundledResourcesDir = resolveBundledResourcesDir();
+      if (bundledResourcesDir) {
+        console.log(`[POUNDING] Installing hermes from bundled Python wheels...`);
+        const ok = await preinstallHermesFromBundle(bundledResourcesDir);
+        if (ok) {
+          writeHermesShim();
+          await syncAfterInstall(descriptor.target);
+          const installed = await isManagedCliInstalled(descriptor);
+          if (installed) return { success: true, status: 'installed' };
+        }
+      }
+    }
+
     return {
-      success: installed,
-      status: installed ? 'installed' : 'failed',
-      message: installed ? undefined : `${descriptor.detectCommand} is still not available in PATH`,
+      success: false,
+      status: 'failed',
+      message: `${descriptor.detectCommand} is still not available in PATH`,
     };
   } catch (error) {
     return {

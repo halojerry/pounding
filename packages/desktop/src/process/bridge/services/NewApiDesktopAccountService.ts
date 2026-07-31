@@ -1,10 +1,10 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { BackendHttpError, httpRequest, isBackendHttpError } from '@/common/adapter/httpBridge';
+import { httpRequest, isBackendHttpError } from '@/common/adapter/httpBridge';
 import type { IProvider, TProviderWithModel } from '@/common/config/storage';
 import type {
   ManagedRuntimeCliTarget,
@@ -26,7 +26,7 @@ import {
 } from '@/common/types/agent/managedRuntimeCli';
 import type { CreateProviderRequest, UpdateProviderRequest } from '@/common/types/provider/providerApi';
 import { getProviderAuthType } from '@/common/utils/platformAuthType';
-import { AuthType } from '@office-ai/aioncli-core';
+import { AuthType } from '@/common/types/provider/authType';
 import { ProcessConfig, getSystemDir } from '@process/utils/initStorage';
 import { createRequire } from 'node:module';
 import fs from 'node:fs';
@@ -42,8 +42,8 @@ const NEW_API_MANAGED_PROVIDER_ID = 'desktop-newapi-managed-provider';
 const NEW_API_PROVIDER_NAME = 'New API';
 const NEW_API_PROVIDER_DISPLAY_NAME = 'POUNDING API';
 const OPENCODE_SCHEMA_URL = 'https://opencode.ai/config.json';
-const DEFAULT_MODEL = 'deepseek-v4-pro';
-const DEFAULT_IMAGE_MODEL = 'gpt-image-2';
+const DEFAULT_MODEL = 'deepseek-v4-flash';
+const _DEFAULT_IMAGE_MODEL = 'gpt-image-2';
 const HERMES_API_KEY_ENV = 'AIONUI_HERMES_API_KEY';
 const OPENCODE_CONFIG_ENV = 'OPENCODE_CONFIG';
 const OPENCODE_MANAGED_FALLBACK_DIR_NAME = 'managed-opencode';
@@ -390,6 +390,23 @@ function normalizeBaseUrl(baseUrl: string): string {
   return baseUrl.replace(/\/+$/, '');
 }
 
+/**
+ * A recovered runtime snapshot is only a POUNDING login if it points at the
+ * POUNDING API. CLI config files (~/.claude/settings.json, ~/.hermes/...)
+ * may carry the user's own third-party keys — treating those as a POUNDING
+ * session fakes a logged-in state whose key can't fetch POUNDING models.
+ */
+function isPoundingBaseUrl(baseUrl: string | undefined): boolean {
+  if (!baseUrl) return false;
+  try {
+    const managed = new URL(NEW_API_BASE_URL);
+    const candidate = new URL(normalizeBaseUrl(baseUrl));
+    return candidate.hostname === managed.hostname;
+  } catch {
+    return false;
+  }
+}
+
 function normalizeProviderEnv(env: unknown): ClaudeProviderEnv {
   if (!isRecord(env)) return {};
   return Object.fromEntries(
@@ -476,9 +493,20 @@ function normalizeUser(payload: unknown, usernameFallback: string): NewApiDeskto
   };
 }
 
-function normalizeModelList(payload: unknown): string[] {
+function normalizeModelList(payload: unknown, userGroups?: string[]): string[] {
+  const groups = userGroups?.length ? new Set(userGroups.map((g) => g.toLowerCase())) : null;
   if (Array.isArray(payload)) {
     return payload
+      .filter((item) => {
+        if (!groups) return true;
+        if (typeof item === 'string') return true;
+        if (item && typeof item === 'object') {
+          const record = item as Record<string, unknown>;
+          const ownedBy = String(record.owned_by ?? record.ownedBy ?? '').toLowerCase();
+          return groups.has(ownedBy);
+        }
+        return true;
+      })
       .map((item) => {
         if (typeof item === 'string') return item.trim();
         if (item && typeof item === 'object') {
@@ -492,7 +520,7 @@ function normalizeModelList(payload: unknown): string[] {
   }
   if (payload && typeof payload === 'object') {
     const record = payload as Record<string, unknown>;
-    return normalizeModelList(record.data ?? record.models ?? record.list ?? []);
+    return normalizeModelList(record.data ?? record.models ?? record.list ?? [], groups ? [...groups] : undefined);
   }
   return [];
 }
@@ -658,6 +686,7 @@ async function fetchJson<T>(requestPath: string, options: NewApiRequestOptions =
   let lastError: unknown;
   for (let attempt = 0; attempt <= FETCH_MAX_RETRIES; attempt++) {
     try {
+      // oxlint-disable-next-line no-await-in-loop
       const response = await fetchWithTimeout(url, fetchInit, FETCH_TIMEOUT_MS);
 
       const cookies = normalizeCookies(getSetCookieValues(response));
@@ -669,8 +698,10 @@ async function fetchJson<T>(requestPath: string, options: NewApiRequestOptions =
 
       let content: T;
       try {
+        // oxlint-disable-next-line no-await-in-loop
         content = (await response.json()) as T;
       } catch (jsonError) {
+        // oxlint-disable-next-line no-await-in-loop
         const text = await response.text().catch(() => '<unreadable>');
         console.error('[POUNDING] fetchJson: failed to parse JSON response', {
           url: requestPath,
@@ -694,6 +725,7 @@ async function fetchJson<T>(requestPath: string, options: NewApiRequestOptions =
           `[POUNDING] fetchJson: retrying after ${delayMs}ms (attempt ${attempt + 1}/${FETCH_MAX_RETRIES}) for ${requestPath}:`,
           getErrorMessage(error)
         );
+        // oxlint-disable-next-line no-await-in-loop
         await new Promise((resolve) => setTimeout(resolve, delayMs));
         continue;
       }
@@ -814,7 +846,7 @@ function buildClaudeRuntimeProviderEnv(profile: ProviderSyncProfile): ClaudeProv
 /** Connection-only env: base URL + auth tokens. Model selection is managed
  *  via the "model" slot field and ACP session protocol, so model env keys
  *  must NOT be included. Used when writing to ~/.claude/settings.json. */
-function buildClaudeConnectionEnv(profile: ProviderSyncProfile): Record<string, string> {
+function _buildClaudeConnectionEnv(profile: ProviderSyncProfile): Record<string, string> {
   const baseUrl = profile.normalizedBaseUrl.replace(/\/v1\/?$/, '');
   return {
     ANTHROPIC_BASE_URL: baseUrl,
@@ -1024,27 +1056,12 @@ function buildCcSwitchSettingsConfig(profile: ProviderSyncProfile, appType: stri
         env: buildClaudeRuntimeProviderEnv(profile),
         model: 'default',
       };
-    case 'codex':
-      return {
-        model: modelId,
-        model_provider: profile.managedProviderId,
-        base_url: resolveCodexBaseUrl(profile),
-        wire_api: 'responses',
-        auth: { OPENAI_API_KEY: apiKey },
-      };
     case 'hermes':
       return {
         model: `default: ${modelId}`,
         api_key: apiKey,
         base_url: baseUrl,
         protocol: profile.protocol,
-      };
-    case 'opencode':
-      return {
-        model: `${profile.managedProviderId}/${modelId}`,
-        api_key: apiKey,
-        base_url: baseUrl,
-        npm: resolveOpencodeNpmPackage(profile),
       };
     case 'openclaw':
       return {
@@ -1205,6 +1222,11 @@ function recoverManagedRuntimeSnapshotFromClaudeSettings(): RecoveredManagedRunt
   const currentSettings = readJsonObjectFile<ClaudeSettings>(claudeSettingsPath);
   if (!currentSettings) return undefined;
   const env = normalizeProviderEnv(currentSettings.env);
+  // Only treat this as a POUNDING session when the settings explicitly point
+  // at the POUNDING API. A user's own Claude CLI setup (official Anthropic API
+  // or another relay) must NOT fake a POUNDING login — its key can't fetch
+  // POUNDING group models.
+  if (!isPoundingBaseUrl(env.ANTHROPIC_BASE_URL)) return undefined;
   const token = env.ANTHROPIC_AUTH_TOKEN?.trim() || env.ANTHROPIC_API_KEY?.trim();
   const models = normalizeManagedRuntimeModels([
     env.ANTHROPIC_MODEL,
@@ -1329,7 +1351,7 @@ function resolveManagedOpencodeConfigPath(): string {
   return resolveManagedOpencodeFallbackPath();
 }
 
-function canWriteToPath(targetPath: string): boolean {
+function _canWriteToPath(targetPath: string): boolean {
   try {
     const dirPath = path.dirname(targetPath);
     fs.mkdirSync(dirPath, { recursive: true });
@@ -1803,7 +1825,7 @@ function writeCodexConfigForProviderSync(provider: TProviderWithModel, modelList
   }
 }
 
-function clearCodexManagedProviderModel(managedProviderId: string): void {
+function clearCodexManagedProviderModel(_managedProviderId: string): void {
   // Clear auth.json
   const authPath = resolveCodexAuthPath();
   if (fs.existsSync(authPath)) {
@@ -1975,6 +1997,8 @@ function recoverManagedRuntimeSnapshotFromHermesConfig(): RecoveredManagedRuntim
   const baseUrl = baseUrlMatch?.[1]?.trim();
   const model = modelMatch?.[1]?.trim();
   if (!baseUrl || !model) return undefined;
+  // Only a config pointing at the POUNDING API counts as a POUNDING session.
+  if (!isPoundingBaseUrl(baseUrl)) return undefined;
   return {
     token,
     baseUrl: normalizeBaseUrl(baseUrl),
@@ -2049,10 +2073,6 @@ async function syncManagedProviderRuntimeConfigs(
     {
       cliTarget: 'hermes',
       run: (providerWithModel) => writeHermesConfigForProviderSync(providerWithModel, provider.models),
-    },
-    {
-      cliTarget: 'opencode',
-      run: (providerWithModel) => writeOpencodeConfigForProviderSync(providerWithModel, provider),
     },
     {
       cliTarget: 'openclaw',
@@ -2235,6 +2255,9 @@ function resolveManagedCliModelId(
 const PREFERRED_MODEL_PATTERNS = ['deepseek', 'claude-opus', 'claude-sonnet', 'claude-haiku'];
 
 function selectDefaultModel(models: string[]): string | undefined {
+  // Prefer exact DEFAULT_MODEL match first
+  if (models.includes(DEFAULT_MODEL)) return DEFAULT_MODEL;
+  // First matching preferred pattern (models are already filtered by MODEL_GROUP)
   for (const pattern of PREFERRED_MODEL_PATTERNS) {
     const match = models.find((m) => m.toLowerCase().includes(pattern));
     if (match) return match;
@@ -2252,7 +2275,12 @@ function buildManagedProviderPayload(params: {
   models: string[];
   baseUrl?: string;
 }): CreateProviderRequest {
-  const baseUrl = params.baseUrl || NEW_API_BASE_URL;
+  // Append /v1 to the base URL so the aionrs backend constructs
+  // the correct API path: {base_url}/chat/completions
+  // Without /v1, the URL becomes api.mxou.cn/chat/completions which
+  // returns non-streaming JSON instead of SSE.
+  const rawBaseUrl = params.baseUrl || NEW_API_BASE_URL;
+  const baseUrl = rawBaseUrl.replace(/\/+$/, '') + '/v1';
   return {
     id: NEW_API_MANAGED_PROVIDER_ID,
     name: NEW_API_PROVIDER_DISPLAY_NAME,
@@ -2329,9 +2357,6 @@ function clearManagedRuntimeForCliTargetSync(cliTarget: ManagedRuntimeCliTarget)
       break;
     case 'hermes':
       clearHermesConfigForProviderSync();
-      break;
-    case 'opencode':
-      clearOpencodeConfigForProviderSync(managedProviderId);
       break;
     case 'openclaw':
       clearOpenClawManagedProviderModel(managedProviderId);
@@ -2512,7 +2537,7 @@ export class NewApiDesktopAccountService {
             updatedUser.subscription = subs[0] as NewApiSubscription;
           }
         }
-      } catch (_subError) {
+      } catch {
         // Non-fatal: balance card works without subscription
       }
 
@@ -2526,6 +2551,26 @@ export class NewApiDesktopAccountService {
         writePoundingConfig(status.token, status.baseUrl || undefined);
       }
 
+      // Self-heal the managed provider in the backend DB. The frontend login
+      // state survives backend DB resets/migrations, but the provider row does
+      // not — leaving aionrs conversations (and Team rebuild) with
+      // "Provider 'aionrs' not found". Re-upsert whenever it is missing.
+      try {
+        if (status.token && status.models.length > 0) {
+          const provider = await findManagedProvider();
+          if (!provider) {
+            console.warn('[POUNDING] Managed provider missing from backend DB — restoring on refresh');
+            await upsertManagedProvider({
+              apiKey: status.token,
+              models: status.models,
+              baseUrl: status.baseUrl || undefined,
+            });
+          }
+        }
+      } catch (error) {
+        console.warn('[POUNDING] Failed to self-heal managed provider on refresh:', error);
+      }
+
       // Sync WebUI credentials on every startup refresh, not just login.
       // Uses the API token as the WebUI password — same credential the user
       // already has from the desktop login flow. No separate WebUI password needed.
@@ -2537,7 +2582,7 @@ export class NewApiDesktopAccountService {
             password: status.token,
           });
         }
-      } catch (_err) {
+      } catch {
         // Non-fatal — WebUI password sync is best-effort on refresh
       }
 
@@ -2597,12 +2642,30 @@ export class NewApiDesktopAccountService {
       });
       const user = normalizeUser(selfResult.data?.data ?? selfResult.data ?? loginPayload, username.trim());
 
-      const modelsResult = await fetchJson<NewApiResponse<unknown>>('/api/user/models', {
+      // Fetch models for the POUNDING group. Returns a flat string array.
+      const modelsResult = await fetchJson<NewApiResponse<unknown>>('/api/user/models?group=POUNDING', {
         cookies,
         token,
         userId: resolvedUserId,
       });
-      const models = normalizeModelList(modelsResult.data?.data ?? modelsResult.data);
+
+      // Fetch the user's available model groups so we can filter models
+      // by owned_by to only show models from the user's authorized groups.
+      let userGroups: string[] | undefined;
+      try {
+        const groupsResult = await fetchJson<NewApiResponse<Record<string, unknown>>>('/api/user/self/groups', {
+          cookies,
+          token,
+          userId: resolvedUserId,
+        });
+        if (groupsResult.data?.success && groupsResult.data.data) {
+          userGroups = Object.keys(groupsResult.data.data);
+        }
+      } catch {
+        // Non-fatal: if groups API fails, import all models
+      }
+
+      const models = normalizeModelList(modelsResult.data?.data ?? modelsResult.data, userGroups);
 
       await upsertManagedProvider({
         apiKey: token,
@@ -2610,23 +2673,25 @@ export class NewApiDesktopAccountService {
         baseUrl: providerBaseUrl,
       });
 
-      // Set all CLIs to deepseek-v4-pro by default. Write config files immediately
+      // Set all CLIs to DEFAULT_MODEL by default. Write config files immediately
       // so CLI processes (Claude Code, Codex, etc.) can read them on first launch.
       // Individual CLI configs are rewritten later when the user picks a different model.
       const currentPrefs = await getSavedManagedModelPrefs();
       const defaults: ManagedCliModelPrefs = Object.fromEntries(
         MANAGED_RUNTIME_CLI_TARGETS.map((t) => [t, DEFAULT_MODEL])
       ) as ManagedCliModelPrefs;
-      await saveManagedModelPrefs({ ...defaults, ...currentPrefs });
+      const mergedPrefs = { ...defaults, ...currentPrefs }; // user preferences override defaults
+      await saveManagedModelPrefs(mergedPrefs);
 
       // Write ~/.pounding/config.json immediately so skills (pounding-ozon etc.)
       // can read the API key even before the user configures any CLI.
       writePoundingConfig(token, providerBaseUrl);
 
-      // Phase 1 (keep): Write all 5 CLI config files directly — battle-tested fallback.
+      // Phase 1: Write all 5 CLI config files — uses mergedPrefs so user's
+      // previously-selected model is preserved across logins.
       await syncManagedProviderRuntimeConfigs(
         { api_key: token, base_url: providerBaseUrl, models, id: NEW_API_MANAGED_PROVIDER_ID } as IProvider,
-        defaults
+        mergedPrefs
       );
 
       // Phase 2 (new): Write all 5 CLI providers to cc-switch DB — future SSOT path.
@@ -2692,6 +2757,7 @@ export const __TEST__ = {
   mergeAccountStatus,
   mergeManagedRuntimeModelSets,
   shouldSelfHealManagedRuntimeStatus,
+  isPoundingBaseUrl,
   toPersistedAccountStatus,
   toBackendManagedRuntimeAccount,
   fromManagedRuntimeAccountStatus,

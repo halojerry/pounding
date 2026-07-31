@@ -1,24 +1,29 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
 import { ipcBridge } from '@/common';
 import type {
+  AutoUpdateReadyResult,
   UpdateCheckResult,
+  UpdateDownloadCancelRequest,
   UpdateDownloadProgressEvent,
   UpdateDownloadRequest,
   UpdateDownloadResult,
   UpdateReleaseInfo,
   GitHubReleaseAsset,
+  InstallerLastFailureMarker,
 } from '@/common/update/updateTypes';
 import { uuid } from '@/common/utils';
 import { app } from 'electron';
+import log from 'electron-log';
 import * as fs from 'fs';
 import * as path from 'path';
 import semver from 'semver';
 import { autoUpdaterService } from '../services/autoUpdaterService';
+import { consumeInstallerLastFailure } from '../services/installerLastFailure';
 
 /** Lazily loads i18n to avoid pulling in initStorage chain at module load time */
 let _i18nCache: Promise<typeof import('../services/i18n')> | null = null;
@@ -59,8 +64,11 @@ const DEFAULT_USER_AGENT = 'POUNDING';
 const ALLOWED_ASSET_EXTS = new Set(['.exe', '.msi', '.dmg', '.zip', '.deb', '.rpm']);
 const CDN_HOST = 'github.com/halojerry/pounding/releases/download';
 const CDN_BASE_URL = `https://${CDN_HOST}/releases`;
+// NOTE: entries must be hostnames (compared against URL.hostname). The POUNDING
+// release CDN lives under github.com/halojerry/pounding, which is covered by
+// the github.com entry; static.aionui.com stays allowed for upstream CDN URLs.
 const ALLOWED_DOWNLOAD_HOSTS = new Set<string>([
-  CDN_HOST,
+  'static.aionui.com',
   'github.com',
   'objects.githubusercontent.com',
   'github-releases.githubusercontent.com',
@@ -306,7 +314,15 @@ type DownloadState = {
   file_path: string;
 };
 
+type ActiveManualDownload = {
+  downloadId: string;
+  file_path: string;
+};
+
 const downloads = new Map<string, DownloadState>();
+const activeManualDownloads = new Map<string, ActiveManualDownload>();
+const manualDownloadKeysById = new Map<string, string>();
+const cancelledManualDownloadIds = new Set<string>();
 
 const sanitizeFileName = (name: string): string => {
   // Keep only base name and trim weird whitespace.
@@ -327,8 +343,23 @@ const ensureUniquePath = (target: string): string => {
   return path.join(dir, `${base}-${Date.now()}${ext}`);
 };
 
+const buildManualDownloadKey = (url: string, fallbackUrl: string | undefined, fileName: string): string => {
+  const primary = new URL(url).toString();
+  const fallback = fallbackUrl ? new URL(fallbackUrl).toString() : '';
+  return [primary, fallback, fileName].join('\n');
+};
+
 const emitProgress = (evt: UpdateDownloadProgressEvent) => {
   ipcBridge.update.downloadProgress.emit(evt);
+};
+
+const cleanupManualDownload = (downloadId: string) => {
+  downloads.delete(downloadId);
+  const activeKey = manualDownloadKeysById.get(downloadId);
+  if (activeKey) {
+    activeManualDownloads.delete(activeKey);
+    manualDownloadKeysById.delete(downloadId);
+  }
 };
 
 type DownloadAttempt = {
@@ -378,6 +409,8 @@ const attemptDownload = async (
   };
 
   emitThrottled('starting');
+
+  log.info('[update-download] Downloading from URL:', url);
 
   let stream: fs.WriteStream | null = null;
   try {
@@ -469,17 +502,20 @@ const startDownloadInBackground = async (
       await assertAllowedUrl(fallbackUrl);
     } catch (err) {
       // Fallback URL itself is invalid — keep the primary failure result.
-      console.warn('[updateBridge] Fallback URL rejected by allowlist:', err);
+      log.warn('[update-download] Fallback URL rejected by allowlist:', err);
       return primary;
     }
 
-    console.warn(`[updateBridge] Primary download failed (${primary.message}). Retrying with fallback URL.`);
+    log.warn(`[update-download] Primary download failed (${primary.message}). Retrying with fallback URL.`);
     return attemptDownload(downloadId, fallbackUrl, file_path, abortController);
   };
 
   const finalResult = await runWithFallback();
 
   try {
+    if (cancelledManualDownloadIds.has(downloadId)) {
+      return;
+    }
     if (finalResult.ok) {
       emitProgress({
         downloadId,
@@ -501,7 +537,8 @@ const startDownloadInBackground = async (
       });
     }
   } finally {
-    downloads.delete(downloadId);
+    cleanupManualDownload(downloadId);
+    cancelledManualDownloadIds.delete(downloadId);
   }
 };
 
@@ -519,6 +556,19 @@ export function createAutoUpdateStatusBroadcast(): (
 }
 
 export function initUpdateBridge(): void {
+  ipcBridge.update.consumeInstallerLastFailure.provider(
+    async (): Promise<{ success: boolean; data: InstallerLastFailureMarker | null; msg?: string }> => {
+      try {
+        return {
+          success: true,
+          data: await consumeInstallerLastFailure({ appDataDir: app.getPath('appData') }),
+        };
+      } catch (err: unknown) {
+        return { success: false, data: null, msg: err instanceof Error ? err.message : String(err) };
+      }
+    }
+  );
+
   ipcBridge.update.check.provider(
     async (params): Promise<{ success: boolean; data?: UpdateCheckResult; msg?: string }> => {
       try {
@@ -589,16 +639,23 @@ export function initUpdateBridge(): void {
           await assertAllowedUrl(params.fallbackUrl);
         }
 
-        const downloadId = uuid();
+        const downloadId = params.downloadId || uuid();
         const abortController = new AbortController();
 
         const downloadsDir = app.getPath('downloads');
         const urlObj = new URL(params.url);
         const urlName = path.basename(urlObj.pathname);
         const baseName = sanitizeFileName(params.file_name || urlName);
+        const activeKey = buildManualDownloadKey(params.url, params.fallbackUrl, baseName);
+        const activeDownload = activeManualDownloads.get(activeKey);
+        if (activeDownload) {
+          return Promise.resolve({ success: true, data: activeDownload });
+        }
 
         const targetPath = ensureUniquePath(path.join(downloadsDir, baseName));
         downloads.set(downloadId, { abortController, file_path: targetPath });
+        activeManualDownloads.set(activeKey, { downloadId, file_path: targetPath });
+        manualDownloadKeysById.set(downloadId, activeKey);
 
         // Start background download, but return immediately so the UI stays responsive.
         void startDownloadInBackground(downloadId, params.url, targetPath, abortController, params.fallbackUrl);
@@ -606,6 +663,36 @@ export function initUpdateBridge(): void {
         return Promise.resolve({ success: true, data: { downloadId, file_path: targetPath } });
       } catch (err: unknown) {
         return Promise.resolve({ success: false, msg: err instanceof Error ? err.message : String(err) });
+      }
+    }
+  );
+
+  ipcBridge.update.cancelDownload.provider(
+    async (params: UpdateDownloadCancelRequest): Promise<{ success: boolean; msg?: string }> => {
+      try {
+        const downloadId = params?.downloadId;
+        if (!downloadId) {
+          return { success: false, msg: (await getI18n()).t('update.errors.missingDownloadId') };
+        }
+
+        const activeDownload = downloads.get(downloadId);
+        if (!activeDownload) {
+          return { success: true };
+        }
+
+        cancelledManualDownloadIds.add(downloadId);
+        activeDownload.abortController.abort();
+        emitProgress({
+          downloadId,
+          status: 'cancelled',
+          receivedBytes: 0,
+          file_path: activeDownload.file_path,
+        });
+        cleanupManualDownload(downloadId);
+
+        return { success: true };
+      } catch (err: unknown) {
+        return { success: false, msg: err instanceof Error ? err.message : String(err) };
       }
     }
   );
@@ -656,11 +743,31 @@ export function initUpdateBridge(): void {
     }
   });
 
-  ipcBridge.autoUpdate.quitAndInstall.provider(async (): Promise<void> => {
-    try {
-      await autoUpdaterService.quitAndInstall();
-    } catch (err: unknown) {
-      console.error('quitAndInstall failed:', err);
+  ipcBridge.autoUpdate.restoreDownloaded.provider(
+    async (): Promise<{ success: boolean; data: AutoUpdateReadyResult; msg?: string }> => {
+      try {
+        const result = await autoUpdaterService.restoreDownloadedUpdateIfAvailable();
+        return { success: result.success, data: result.data, msg: result.error };
+      } catch (err: unknown) {
+        return {
+          success: false,
+          data: { ready: false },
+          msg: err instanceof Error ? err.message : String(err),
+        };
+      }
     }
+  );
+
+  ipcBridge.autoUpdate.cancelDownload.provider(async (): Promise<{ success: boolean; msg?: string }> => {
+    try {
+      const result = await autoUpdaterService.cancelDownload();
+      return { success: result.success, msg: result.error };
+    } catch (err: unknown) {
+      return { success: false, msg: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  ipcBridge.autoUpdate.quitAndInstall.provider(async (): Promise<void> => {
+    await autoUpdaterService.quitAndInstall();
   });
 }

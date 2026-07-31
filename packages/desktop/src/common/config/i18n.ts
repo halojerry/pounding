@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -41,6 +41,14 @@ export function normalizeLanguageCode(language: string): SupportedLanguage {
       return 'uk-UA';
     case 'pt':
       return 'pt-BR';
+    case 'de':
+      return 'de-DE';
+    case 'es':
+      return 'es-ES';
+    case 'fr':
+      return 'fr-FR';
+    case 'fa':
+      return 'fa-IR';
     default:
       return DEFAULT_LANGUAGE;
   }

@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -33,6 +33,32 @@ describe('buildSendFailureError', () => {
     });
   });
 
+  it('classifies 409 already-running as AIONUI_CONVERSATION_BUSY', () => {
+    const err = httpError(409, 'CONFLICT', 'conversation 7261e2b5 is already running');
+
+    const result = buildSendFailureError(err, 'conversation 7261e2b5 is already running');
+
+    expect(result).toMatchObject({
+      code: 'AIONUI_CONVERSATION_BUSY',
+      ownership: 'aionui',
+      retryable: false,
+      feedback_recommended: false,
+      resolution: { kind: 'wait_for_current_response' },
+    });
+    expect(result.rawError).toBeUndefined();
+  });
+
+  it('classifies runtime shutdown conflict as non-retryable busy without raw internal diagnostics', () => {
+    const err = httpError(409, 'CONFLICT', 'conversation runtime is shutting down');
+
+    const result = buildSendFailureError(err, 'conversation runtime is shutting down');
+
+    expect(result.code).toBe('AIONUI_CONVERSATION_BUSY');
+    expect(result.retryable).toBe(false);
+    expect(result.feedback_recommended).toBe(false);
+    expect(result.rawError).toBeUndefined();
+  });
+
   it('classifies 502 BAD_GATEWAY as UNKNOWN_UPSTREAM_ERROR (retryable)', () => {
     const err = httpError(502, 'BAD_GATEWAY', 'Bad gateway: upstream timeout');
 
@@ -41,6 +67,31 @@ describe('buildSendFailureError', () => {
     expect(result.code).toBe('UNKNOWN_UPSTREAM_ERROR');
     expect(result.ownership).toBe('unknown_upstream');
     expect(result.retryable).toBe(true);
+  });
+
+  it('classifies ACP protocol not connected as USER_AGENT_DISCONNECTED', () => {
+    const err = httpError(502, 'BAD_GATEWAY', 'Bad gateway: ACP protocol is not connected.');
+
+    const result = buildSendFailureError(err, 'Bad gateway: ACP protocol is not connected.');
+
+    expect(result).toEqual({
+      message: 'Bad gateway: ACP protocol is not connected.',
+      code: 'USER_AGENT_DISCONNECTED',
+      ownership: 'user_agent',
+      detail: 'Bad gateway: ACP protocol is not connected.',
+      retryable: true,
+      feedback_recommended: false,
+      resolution: { kind: 'reconnect_agent', target: 'agent_settings' },
+    });
+  });
+
+  it('classifies ACP protocol not connected before generic BAD_GATEWAY', () => {
+    const err = httpError(502, 'BAD_GATEWAY', 'ACP protocol not connected');
+
+    const result = buildSendFailureError(err, 'ACP protocol not connected');
+
+    expect(result.code).toBe('USER_AGENT_DISCONNECTED');
+    expect(result.code).not.toBe('UNKNOWN_UPSTREAM_ERROR');
   });
 
   it('preserves workspace-path validation code as a structured non-retryable error', () => {
@@ -82,5 +133,51 @@ describe('buildSendFailureError', () => {
     expect(result.code).toBe('AIONUI_INTERNAL_ERROR');
     expect(result.ownership).toBe('aionui');
     expect(result.retryable).toBe(true);
+  });
+
+  it('preserves a redacted summary of the original error in the fallback branch', () => {
+    const original = Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:8080'), { code: 'ECONNREFUSED' });
+
+    const result = buildSendFailureError(original, 'Something went wrong, please try again.');
+
+    expect(result.code).toBe('AIONUI_INTERNAL_ERROR');
+    expect(result.rawError).toEqual({
+      name: 'Error',
+      message: 'connect ECONNREFUSED 127.0.0.1:8080',
+      code: 'ECONNREFUSED',
+      stack: expect.any(String),
+    });
+  });
+
+  it('carries backend http diagnostics into the fallback rawError for unclassified HTTP errors', () => {
+    const err = httpError(409, 'CONFLICT', 'Conflict: WebSocket not connected; nothing to cancel');
+
+    const result = buildSendFailureError(err, 'Conflict: WebSocket not connected; nothing to cancel');
+
+    expect(result.code).toBe('AIONUI_INTERNAL_ERROR');
+    expect(result.rawError).toMatchObject({
+      name: 'BackendHttpError',
+      status: 409,
+      code: 'CONFLICT',
+      message: 'Conflict: WebSocket not connected; nothing to cancel',
+    });
+  });
+
+  it('redacts secrets from the fallback rawError summary', () => {
+    const original = new Error('auth failed for key sk-ant-api03-shouldNotLeak123456');
+
+    const result = buildSendFailureError(original, 'failed');
+
+    expect(result.rawError?.message).not.toContain('sk-ant-api03-shouldNotLeak123456');
+    expect(result.rawError?.message).toContain('[REDACTED_KEY]');
+  });
+
+  it('does not attach rawError to classified (non-fallback) branches', () => {
+    const err = httpError(502, 'BAD_GATEWAY', 'Bad gateway: upstream timeout');
+
+    const result = buildSendFailureError(err, 'Bad gateway: upstream timeout');
+
+    expect(result.code).toBe('UNKNOWN_UPSTREAM_ERROR');
+    expect(result.rawError).toBeUndefined();
   });
 });

@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -32,6 +32,7 @@ export interface CreateProviderRequest {
   model_protocols?: Record<string, string>;
   model_enabled?: Record<string, boolean>;
   model_health?: IProvider['model_health'];
+  model_settings?: IProvider['model_settings'];
   bedrock_config?: IProvider['bedrock_config'];
   is_full_url?: boolean;
 }
@@ -52,6 +53,7 @@ export interface UpdateProviderRequest {
   model_protocols?: Record<string, string>;
   model_enabled?: Record<string, boolean>;
   model_health?: IProvider['model_health'];
+  model_settings?: IProvider['model_settings'];
   bedrock_config?: IProvider['bedrock_config'];
   is_full_url?: boolean;
 }

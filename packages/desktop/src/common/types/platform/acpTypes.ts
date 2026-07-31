@@ -1,8 +1,10 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
+
+import type { TConversationRuntimeSummary } from '@/common/config/storage';
 
 /**
  * Advanced overrides exposed through the JSON panel of the custom agent
@@ -121,15 +123,33 @@ export interface ToolCallLocationItem {
   path: string;
 }
 
+export interface AcpImageOutput {
+  path: string;
+  mime_type?: string;
+  source?: string;
+}
+
+export interface AcpRawOutput {
+  saved_path?: string;
+  image?: AcpImageOutput;
+  result_omitted?: boolean;
+  result_omitted_reason?: string;
+  result_bytes?: number;
+  status?: string;
+  [key: string]: unknown;
+}
+
 /** Tool call session update */
 export interface ToolCallUpdate extends BaseSessionUpdate {
   update: {
-    sessionUpdate: 'tool_call';
+    sessionUpdate: 'tool_call' | 'tool_call_update';
     tool_call_id: string;
     status: 'pending' | 'in_progress' | 'completed' | 'failed';
     title: string;
     kind: 'read' | 'edit' | 'execute';
     rawInput?: Record<string, unknown>;
+    rawOutput?: AcpRawOutput;
+    raw_output?: AcpRawOutput;
     content?: ToolCallContentItem[];
     locations?: ToolCallLocationItem[];
   };
@@ -154,6 +174,7 @@ export interface AcpConfigSelectOption {
   value: string;
   name?: string;
   label?: string; // Some agents may use label instead of name
+  description?: string;
 }
 
 /** A configuration option returned by session/new */
@@ -192,6 +213,12 @@ export type AcpConfigOptionDto = {
   options: AcpConfigSelectOptionDto[];
 };
 
+export type EnsureConversationRuntimeResponse = {
+  recovered: boolean;
+  config_options: AcpConfigOptionDto[];
+  runtime: TConversationRuntimeSummary;
+};
+
 export type GetConfigOptionsResponse = {
   config_options: AcpConfigOptionDto[];
 };
@@ -228,7 +255,7 @@ export interface AcpModelInfo {
   /** Display label for the current model */
   current_model_label: string | null;
   /** Available models for switching */
-  available_models: Array<{ id: string; label: string }>;
+  available_models: Array<{ id: string; label: string; description?: string }>;
 }
 
 // ===== Permission request (session/request_permission) =====

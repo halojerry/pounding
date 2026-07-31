@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -11,11 +11,11 @@ import { mapAcpCommandsToSlashCommands } from '@/common/chat/slash/acpMapping';
 import type { SlashCommandItem } from '@/common/chat/slash/types';
 import type { IResponseMessage } from '@/common/adapter/ipcBridge';
 import type { TokenUsageData } from '@/common/config/storage';
-import { useAddOrUpdateMessage } from '@/renderer/pages/conversation/Messages/hooks';
+import { useMergeLiveMessage } from '@/renderer/pages/conversation/Messages/hooks';
 import { logStreamTerminalObserved } from '@/renderer/pages/conversation/runtime/useConversationRuntimeView';
 import { getConversationOrNull } from '@/renderer/pages/conversation/utils/conversationCache';
 import { isConversationProcessing } from '@/renderer/pages/conversation/utils/conversationRuntime';
-import { warmupConversation } from '@/renderer/pages/conversation/utils/warmupConversation';
+import { ensureConversationRuntime } from '@/renderer/pages/conversation/utils/ensureConversationRuntime';
 import type { ThoughtData } from '@/renderer/components/chat/ThoughtDisplay';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
@@ -35,8 +35,32 @@ export type UseAcpMessageReturn = {
   fetchSlashCommands: () => void;
 };
 
-export const useAcpMessage = (conversation_id: string, options?: { skipWarmup?: boolean }): UseAcpMessageReturn => {
-  const addOrUpdateMessage = useAddOrUpdateMessage();
+const slashCommandsInFlight = new Map<string, Promise<SlashCommandItem[]>>();
+
+function fetchAcpSlashCommands(conversation_id: string): Promise<SlashCommandItem[]> {
+  const existing = slashCommandsInFlight.get(conversation_id);
+  if (existing) return existing;
+
+  const promise = ipcBridge.conversation.getSlashCommands
+    .invoke({ conversation_id })
+    .then((result) => {
+      if (!result || !Array.isArray(result) || result.length === 0) return [];
+      return mapAcpCommandsToSlashCommands(result);
+    })
+    .finally(() => {
+      if (slashCommandsInFlight.get(conversation_id) === promise) {
+        slashCommandsInFlight.delete(conversation_id);
+      }
+    });
+  slashCommandsInFlight.set(conversation_id, promise);
+  return promise;
+}
+
+export const useAcpMessage = (
+  conversation_id: string,
+  options?: { skipWarmup?: boolean; prepareRuntime?: () => Promise<void> }
+): UseAcpMessageReturn => {
+  const mergeLiveMessage = useMergeLiveMessage();
   const [running, setRunning] = useState(false);
   const [hasHydratedRunningState, setHasHydratedRunningState] = useState(false);
   const [thought, setThought] = useState<ThoughtData>({
@@ -136,7 +160,7 @@ export const useAcpMessage = (conversation_id: string, options?: { skipWarmup?: 
       const endTime = boundaryMessage.created_at ?? Date.now();
       const duration = completeOptions?.duration ?? Math.max(0, endTime - activeThinking.startedAt);
 
-      addOrUpdateMessage({
+      mergeLiveMessage({
         id: `${activeThinking.msgId}-thinking-done`,
         type: 'thinking',
         msg_id: activeThinking.msgId,
@@ -152,7 +176,7 @@ export const useAcpMessage = (conversation_id: string, options?: { skipWarmup?: 
 
       activeThinkingRef.current = null;
     },
-    [addOrUpdateMessage]
+    [mergeLiveMessage]
   );
 
   const handleResponseMessage = useCallback(
@@ -178,7 +202,7 @@ export const useAcpMessage = (conversation_id: string, options?: { skipWarmup?: 
         setHasThinkingMessage(false);
         const transformedMessage = transformMessage(message);
         if (transformedMessage) {
-          addOrUpdateMessage(transformedMessage);
+          mergeLiveMessage(transformedMessage);
         }
         return;
       }
@@ -192,6 +216,7 @@ export const useAcpMessage = (conversation_id: string, options?: { skipWarmup?: 
           'request_trace',
           'acp_context_usage',
           'acp_model_info',
+          'acp_config_option',
           'codex_model_info',
           'available_commands',
           'slash_commands_updated',
@@ -243,7 +268,7 @@ export const useAcpMessage = (conversation_id: string, options?: { skipWarmup?: 
           }
           hasThinkingMessageRef.current = true;
           setHasThinkingMessage(true);
-          addOrUpdateMessage(transformedMessage);
+          mergeLiveMessage(transformedMessage);
           break;
         }
         case 'start':
@@ -296,7 +321,7 @@ export const useAcpMessage = (conversation_id: string, options?: { skipWarmup?: 
           }
           // Clear thought when final answer arrives
           setThought({ subject: '', description: '' });
-          addOrUpdateMessage(transformedMessage);
+          mergeLiveMessage(transformedMessage);
           break;
         }
         case 'agent_status': {
@@ -325,16 +350,16 @@ export const useAcpMessage = (conversation_id: string, options?: { skipWarmup?: 
               aiProcessingRef.current = false;
             }
           }
-          addOrUpdateMessage(transformedMessage);
+          mergeLiveMessage(transformedMessage);
           break;
         }
         case 'user_content':
-          addOrUpdateMessage(transformedMessage);
+          mergeLiveMessage(transformedMessage);
           break;
         case 'teammate_message': {
           const tmMsg = message.data as TMessage;
           if (tmMsg && tmMsg.conversation_id === conversation_id) {
-            addOrUpdateMessage(
+            mergeLiveMessage(
               tmMsg.type === 'text'
                 ? {
                     ...tmMsg,
@@ -351,10 +376,16 @@ export const useAcpMessage = (conversation_id: string, options?: { skipWarmup?: 
             setRunning(true);
             runningRef.current = true;
           }
-          addOrUpdateMessage(transformedMessage);
+          mergeLiveMessage(transformedMessage);
           break;
         case 'acp_model_info':
           // Model info updates are handled by AcpModelSelector, no action needed here
+          break;
+        case 'acp_config_option':
+          // Config-options catalog updates (async model/mode discovery for the
+          // direct-CLI backends) are consumed by useAcpConfigOptions to re-project
+          // the picker. No turn-state change here — must NOT fall through to the
+          // default arm, which would setRunning(true) and light a spurious timer bar.
           break;
         case 'slash_commands_updated':
           // Slash commands became available (often during bootstrap when
@@ -379,6 +410,17 @@ export const useAcpMessage = (conversation_id: string, options?: { skipWarmup?: 
           }
           break;
         }
+        case 'tips':
+          // Advisory tips (backend `Notice`: a rejected mode/model/effort switch, or a
+          // codex out-of-turn warning/deprecation). Render the advisory but do NOT touch
+          // turn state — a config-reject Notice can arrive while idle (dispatched by the
+          // PUT /config-options path, not a turn), so falling through to the `default`
+          // arm's setRunning(true) would light a spurious timer bar with no terminal to
+          // clear it (the same regression the `acp_config_option` case guards against).
+          // Error-severity tips are handled earlier by isErrorTipMessage; only info/
+          // warning advisories reach here.
+          mergeLiveMessage(transformedMessage);
+          break;
         case 'request_trace':
           {
             const trace = message.data as Record<string, unknown>;
@@ -405,7 +447,7 @@ export const useAcpMessage = (conversation_id: string, options?: { skipWarmup?: 
           setAiProcessing(false);
           aiProcessingRef.current = false;
           activeThinkingRef.current = null;
-          addOrUpdateMessage(transformedMessage);
+          mergeLiveMessage(transformedMessage);
           // Log request error
           if (requestTraceRef.current) {
             const duration = Date.now() - requestTraceRef.current.startTime;
@@ -424,13 +466,13 @@ export const useAcpMessage = (conversation_id: string, options?: { skipWarmup?: 
             setRunning(true);
             runningRef.current = true;
           }
-          addOrUpdateMessage(transformedMessage);
+          mergeLiveMessage(transformedMessage);
           break;
       }
     },
     [
       conversation_id,
-      addOrUpdateMessage,
+      mergeLiveMessage,
       completeActiveThinking,
       throttledSetThought,
       setThought,
@@ -524,29 +566,29 @@ export const useAcpMessage = (conversation_id: string, options?: { skipWarmup?: 
     };
   }, [conversation_id]);
 
-  // Fetch slash commands via HTTP after warmup completes.
+  // Fetch slash commands via HTTP after runtime ensure completes.
   // WebSocket push of available_commands arrives during warmup when no
   // StreamRelay is listening, so the initial load must come from HTTP.
-  // Mirrors the aionrs pattern: warmup first, then fetch.
-  // In team mode, warmup is deferred to first user input — skip here.
+  // In team mode, runtime preparation is coordinated by the team send box.
   useEffect(() => {
-    if (options?.skipWarmup) return;
+    if (options?.skipWarmup && !options.prepareRuntime) return;
     let cancelled = false;
-    void warmupConversation(conversation_id)
+    const runtimeReady = options?.prepareRuntime?.() ?? ensureConversationRuntime(conversation_id);
+    void runtimeReady
       .then(() => {
         if (cancelled) return;
-        return ipcBridge.conversation.getSlashCommands.invoke({ conversation_id });
+        return fetchAcpSlashCommands(conversation_id);
       })
-      .then((result) => {
+      .then((commands) => {
         if (cancelled) return;
-        if (!result || !Array.isArray(result) || result.length === 0) return;
-        setSlashCommands(mapAcpCommandsToSlashCommands(result));
+        if (!commands?.length) return;
+        setSlashCommands(commands);
       })
       .catch(() => {});
     return () => {
       cancelled = true;
     };
-  }, [conversation_id, options?.skipWarmup]);
+  }, [conversation_id, options?.prepareRuntime, options?.skipWarmup]);
 
   const resetState = useCallback(() => {
     turnFinishedRef.current = true;
@@ -562,14 +604,15 @@ export const useAcpMessage = (conversation_id: string, options?: { skipWarmup?: 
   }, []);
 
   const fetchSlashCommands = useCallback(() => {
-    void ipcBridge.conversation.getSlashCommands
-      .invoke({ conversation_id })
-      .then((result) => {
-        if (!result || !Array.isArray(result) || result.length === 0) return;
-        setSlashCommands(mapAcpCommandsToSlashCommands(result));
+    const runtimeReady = options?.prepareRuntime?.() ?? ensureConversationRuntime(conversation_id);
+    void runtimeReady
+      .then(() => fetchAcpSlashCommands(conversation_id))
+      .then((commands) => {
+        if (!commands.length) return;
+        setSlashCommands(commands);
       })
       .catch(() => {});
-  }, [conversation_id]);
+  }, [conversation_id, options?.prepareRuntime]);
 
   return {
     thought,

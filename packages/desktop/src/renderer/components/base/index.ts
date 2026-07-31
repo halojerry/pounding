@@ -1,11 +1,11 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
 /**
- * AionUi 基础组件库统一导出 / AionUi base components unified exports
+ * POUNDING 基础组件库统一导出 / POUNDING base components unified exports
  *
  * 提供所有基础组件和类型的统一导出入口
  * Provides unified export entry for all base components and types
@@ -18,6 +18,8 @@ export { default as AionCollapse } from './AionCollapse';
 export { default as AionSelect } from './AionSelect';
 export { default as AionScrollArea } from './AionScrollArea';
 export { default as AionSteps } from './AionSteps';
+export { default as AionSearchInput } from './AionSearchInput';
+export { default as AionInlineSearchInput } from './AionInlineSearchInput';
 
 // ==================== 类型导出 / Type Exports ====================
 
@@ -39,3 +41,9 @@ export type { AionSelectProps } from './AionSelect';
 
 // AionSteps 类型 / AionSteps types
 export type { AionStepsProps } from './AionSteps';
+
+// AionSearchInput 类型 / AionSearchInput types
+export type { AionSearchInputProps } from './AionSearchInput';
+
+// AionInlineSearchInput 类型 / AionInlineSearchInput types
+export type { AionInlineSearchInputProps } from './AionInlineSearchInput';

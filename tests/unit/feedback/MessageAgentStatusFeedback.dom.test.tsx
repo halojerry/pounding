@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  *
  * Integration test for the FeedbackButton wired into MessageAgentStatus.
@@ -71,5 +71,25 @@ describe('MessageAgentStatus — FeedbackButton wiring', () => {
       module: 'conversation-session',
       autoScreenshot: true,
     });
+  });
+
+  it('falls back to a capitalized backend name without consulting runtime agent catalogs', () => {
+    render(
+      <MessageAgentStatus
+        message={
+          {
+            id: 'm2',
+            type: 'agent_status',
+            content: {
+              backend: 'codex',
+              status: 'connected',
+            },
+          } as IMessageAgentStatus
+        }
+      />
+    );
+
+    expect(screen.getByText('Codex')).toBeInTheDocument();
+    expect(screen.getByText('acp.status.connected:Codex')).toBeInTheDocument();
   });
 });

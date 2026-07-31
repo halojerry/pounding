@@ -1,21 +1,22 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
 import type { SpeechToTextConfig } from '@/common/types/provider/speech';
+import type { Theme } from '@/common/theme/types';
 import type { ManagedRuntimeCliTarget, NewApiAccountStatus } from '@/common/types/newApiAccount';
-import { storage } from '@office-ai/platform';
+import { buildStorage } from '@/common/platform/storage';
 
 // 系统配置存储
-export const ConfigStorage = storage.buildStorage<IConfigStorageRefer>('agent.config');
+export const ConfigStorage = buildStorage<IConfigStorageRefer>('agent.config');
 
 // 系统环境变量存储
-export const EnvStorage = storage.buildStorage<IEnvStorageRefer>('agent.env');
+export const EnvStorage = buildStorage<IEnvStorageRefer>('agent.env');
 
 export interface IConfigStorageRefer {
-  'google.config': {
+  'google.config'?: {
     /** Proxy URL for Google OAuth endpoint reachability / Google OAuth 端点代理 */
     proxy?: string;
   };
@@ -52,38 +53,10 @@ export interface IConfigStorageRefer {
   // Cached modes per ACP backend for Guid page / AgentModeSelector
   'acp.cachedModes'?: Record<string, import('@/common/types/platform/acpTypes').AcpSessionModes>;
   'mcp.config'?: IMcpServer[];
-  language: string;
-  theme: string;
-  colorScheme: string;
-  /** Persisted app-wide UI zoom factor for Display settings */
-  'ui.zoomFactor'?: number;
-  /** Last-known main window size and position, restored on next launch */
-  'window.bounds'?: { x?: number; y?: number; width: number; height: number };
-  /** 桌面模式下是否自动启用 WebUI / Auto-enable WebUI in desktop mode */
-  'webui.desktop.enabled'?: boolean;
-  /** 桌面模式下是否允许远程访问 / Allow remote access in desktop mode */
-  'webui.desktop.allowRemote'?: boolean;
-  /** 桌面模式下 WebUI 端口 / WebUI port in desktop mode */
-  'webui.desktop.port'?: number;
-  customCss: string; // 自定义 CSS 样式
-  'css.themes': ICssTheme[]; // 自定义 CSS 主题列表 / Custom CSS themes list
-  'css.activeThemeId': string; // 当前激活的主题 ID / Currently active theme ID
-  'aionrs.config'?: {
-    /** Preferred session mode for new conversations / 新会话的默认模式 */
-    preferredMode?: string;
-  };
-  'aionrs.defaultModel'?: { id: string; use_model: string };
-  'tools.imageGenerationModel': TProviderWithModel & {
-    /** @deprecated Image generation is now controlled via built-in MCP server toggle */
-    switch?: boolean;
-  };
-  'tools.speechToText'?: SpeechToTextConfig;
   // 是否在粘贴文件到工作区时询问确认（true = 不再询问）
   'workspace.pasteConfirm'?: boolean;
   // 上传的文件是否保存到工作区目录（true = 保存到工作区，false = 保存到缓存目录）
   'upload.saveToWorkspace'?: boolean;
-  // guid 页面上次选择的 agent 类型 / Last selected agent type on guid page
-  'guid.lastSelectedAgent'?: string;
   // 关闭窗口时最小化到系统托盘 / Minimize to system tray when closing window
   'system.closeToTray'?: boolean;
   // 任务完成时显示系统通知 / Show system notification when task completes
@@ -94,62 +67,7 @@ export interface IConfigStorageRefer {
   'system.keepAwake'?: boolean;
   // Automatically preview newly created Office files in the current workspace
   'system.autoPreviewOfficeFiles'?: boolean;
-  // Telegram assistant default model / Telegram 助手默认模型
-  'assistant.telegram.defaultModel'?: {
-    id: string;
-    use_model: string;
-  };
-  // Telegram assistant agent selection / Telegram 助手所使用的 Agent
-  'assistant.telegram.agent'?: {
-    backend: string;
-    custom_agent_id?: string;
-    name?: string;
-  };
-  // Lark assistant default model / Lark 助手默认模型
-  'assistant.lark.defaultModel'?: {
-    id: string;
-    use_model: string;
-  };
-  // Lark assistant agent selection / Lark 助手所使用的 Agent
-  'assistant.lark.agent'?: {
-    backend: string;
-    custom_agent_id?: string;
-    name?: string;
-  };
-  // DingTalk assistant default model / DingTalk 助手默认模型
-  'assistant.dingtalk.defaultModel'?: {
-    id: string;
-    use_model: string;
-  };
-  // DingTalk assistant agent selection / DingTalk 助手所使用的 Agent
-  'assistant.dingtalk.agent'?: {
-    backend: string;
-    custom_agent_id?: string;
-    name?: string;
-  };
-  // WeChat assistant default model / WeChat 助手默认模型
-  'assistant.weixin.defaultModel'?: {
-    id: string;
-    use_model: string;
-  };
-  // WeChat assistant agent selection / WeChat 助手所使用的 Agent
-  'assistant.weixin.agent'?: {
-    backend: string;
-    custom_agent_id?: string;
-    name?: string;
-  };
-  // WeCom assistant default model / 企业微信助手默认模型
-  'assistant.wecom.defaultModel'?: {
-    id: string;
-    use_model: string;
-  };
-  // WeCom assistant agent selection / 企业微信助手所使用的 Agent
-  'assistant.wecom.agent'?: {
-    backend: string;
-    custom_agent_id?: string;
-    name?: string;
-  };
-  // Skills Market: whether the aionui-skills builtin skill is enabled
+  // Skills Market: whether the external skills market source is enabled
   'skillsMarket.enabled'?: boolean;
   /**
    * One-shot completion flag for the legacy `model.config` → backend providers
@@ -181,6 +99,43 @@ export interface IConfigStorageRefer {
   'newApi.desktop.account'?: NewApiAccountStatus;
   // Managed CLI model preferences per runtime target
   'newApi.desktop.cliModelPrefs'?: Partial<Record<ManagedRuntimeCliTarget, string>>;
+}
+
+/**
+ * Legacy config keys that may still exist on disk from the pre-aionCore era.
+ *
+ * New business truth must not be added here. Keep this surface migration-only:
+ * renderer/process code may read these keys during one-shot imports into the
+ * backend, but all current writes should go through aionCore-owned storage.
+ */
+export interface ILegacyConfigStorageRefer extends IConfigStorageRefer {
+  'google.config'?: {
+    /** Proxy URL for Google OAuth endpoint reachability / Google OAuth 端点代理 */
+    proxy?: string;
+  };
+  /**
+   * UI preference keys persisted in the on-disk local config file and read by
+   * the Electron main process (`ProcessConfig`). The backend `ConfigService`
+   * (see {@link ConfigKeyMap}) is now the source of truth for these, but the
+   * main process still reads them locally at startup — before the renderer /
+   * backend are ready — to restore language, zoom and window geometry.
+   */
+  language?: string;
+  /** Persisted app-wide UI zoom factor for Display settings */
+  'ui.zoomFactor'?: number;
+  /** Last-known main window size and position, restored on next launch */
+  'window.bounds'?: { x?: number; y?: number; width: number; height: number };
+  /** Global LLM prompt timeout in seconds (default: 300). Per-backend promptTimeout overrides this. */
+  'acp.promptTimeout'?: number;
+  /** Idle timeout in minutes before an ACP agent process is killed to reclaim memory (default: 5). */
+  'acp.agentIdleTimeout'?: number;
+  'mcp.config'?: IMcpServer[];
+  'tools.imageGenerationModel'?: TProviderWithModel & {
+    /** @deprecated Image generation is now controlled via built-in MCP server toggle */
+    switch?: boolean;
+  };
+  'tools.speechToText'?: SpeechToTextConfig;
+  'model.config'?: unknown;
 }
 
 export interface IEnvStorageRefer {
@@ -218,6 +173,14 @@ export type TConversationRuntimeSummary = {
   turn_id?: string;
 };
 
+export type TConversationAssistantIdentity = {
+  id: string;
+  source: string;
+  name: string;
+  avatar: string;
+  backend: string;
+};
+
 interface IChatConversation<T, Extra> {
   created_at: number;
   modified_at: number;
@@ -233,6 +196,8 @@ interface IChatConversation<T, Extra> {
   source?: ConversationSource;
   /** Channel chat isolation ID (e.g. user:xxx, group:xxx) */
   channel_chat_id?: string;
+  /** Explicit assistant identity for assistant-led conversations */
+  assistant?: TConversationAssistantIdentity;
 }
 
 // Token 使用统计数据类型
@@ -510,6 +475,15 @@ export type ModelCapability = {
   isUserSelected?: boolean;
 };
 
+export type ModelOpenAiApiMode = 'chat_completions' | 'responses';
+
+export type ModelImageInputCapability = 'supported' | 'unsupported';
+
+export type ModelSettings = {
+  image_input?: ModelImageInputCapability;
+  openai_api_mode?: ModelOpenAiApiMode;
+};
+
 export interface IProvider {
   id: string;
   platform: string;
@@ -569,6 +543,11 @@ export interface IProvider {
       error?: string; // 错误信息 / error message
     }
   >;
+  /**
+   * Explicit per-model overrides. Missing entries retain automatic image-input
+   * capability and OpenAI API mode resolution.
+   */
+  model_settings?: Record<string, ModelSettings>;
   is_full_url?: boolean;
 }
 
@@ -622,7 +601,7 @@ export interface IMcpServer {
   created_at: number;
   updated_at: number;
   original_json: string; // 存储原始JSON配置，用于编辑时的准确显示
-  /** Built-in MCP server managed by AionUi (hide edit/delete in UI) */
+  /** Built-in MCP server managed by POUNDING (hide edit/delete in UI) */
   builtin?: boolean;
 }
 

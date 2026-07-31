@@ -110,18 +110,22 @@ check_exists "PoundingInteractiveLogo.tsx exists" "$ROOT/packages/desktop/src/re
 # ---- NSIS Installer ----
 for nsh in "$ROOT/resources/"windows-installer-*.nsh; do
   if [ -f "$nsh" ]; then
-    check "NSIS: $(basename "$nsh") halojerry" 'halojerry/AionUi/releases' "$nsh"
+    check "NSIS: $(basename "$nsh") halojerry" 'halojerry/pounding/releases' "$nsh"
     check_not "NSIS: $(basename "$nsh") AionUi.exe" 'AionUi\.exe' "$nsh" "should be POUNDING.exe"
   fi
 done
 
-# ---- No iOfficeAI references ----
-IOFFICE_FILES=$(grep -rl "iOfficeAI" "$ROOT/packages/desktop/src/" --include="*.ts" --include="*.tsx" 2>/dev/null || true)
+# ---- No iOfficeAI references (allowlist: legit upstream repo URLs) ----
+# iOfficeAI/AionUi wiki + iOfficeAI/OfficeCLI + iOfficeAI/AionHub are upstream
+# resources that POUNDING intentionally links to — not branding drift.
+IOFFICE_FILES=$(grep -rl "iOfficeAI" "$ROOT/packages/desktop/src/" --include="*.ts" --include="*.tsx" 2>/dev/null | while read -r f; do
+  if grep "iOfficeAI" "$f" | grep -vqE "iOfficeAI/(AionUi|OfficeCLI|OfficeCli|AionHub)"; then echo "$f"; fi
+done || true)
 if [ -z "$IOFFICE_FILES" ]; then
-  echo -e "${GREEN}PASS${NC} no iOfficeAI references in source"
+  echo -e "${GREEN}PASS${NC} no unexpected iOfficeAI references in source"
   PASS=$((PASS + 1))
 else
-  echo -e "${RED}FAIL${NC} iOfficeAI references found:"
+  echo -e "${RED}FAIL${NC} unexpected iOfficeAI references found:"
   echo "$IOFFICE_FILES" | while read -r f; do echo -e "  ${YELLOW}$f${NC}"; done
   FAIL=$((FAIL + 1))
   ERRORS+=("iOfficeAI references found in source")
@@ -169,38 +173,45 @@ else
   PASS=$((PASS + 1))
 fi
 
-# ── Locale: preview.json (all 9 locales) ──
+# ── Locale: preview.json (all locales, auto-discovered) ──
 echo ""
 echo "==> Checking locale preview.json files..."
-for locale in en-US ja-JP ko-KR pt-BR ru-RU tr-TR uk-UA zh-CN zh-TW; do
+for locale_dir in "$ROOT/packages/desktop/src/renderer/services/i18n/locales/"*/; do
+  locale=$(basename "$locale_dir")
+  preview_file="${locale_dir}preview.json"
+  [ -f "$preview_file" ] || continue
   check_not "locales/${locale}/preview.json contains AionUi" \
     '"AionUi"' \
-    "$ROOT/packages/desktop/src/renderer/services/i18n/locales/${locale}/preview.json" \
+    "$preview_file" \
     "    locales/${locale}/preview.json has AionUi branding residue"
 done
 
-# ── Locale: pt-BR files with known AionUi residue ──
+# ── Locale: all locale JSON files for mid-sentence AionUi/AionCore (unquoted) ──
 echo ""
-echo "==> Checking pt-BR locale files for AionUi residue..."
-for f in cron.json conversation.json settings.json; do
-  check_not "locales/pt-BR/${f} contains AionUi" \
-    '"AionUi"' \
-    "$ROOT/packages/desktop/src/renderer/services/i18n/locales/pt-BR/${f}" \
-    "    locales/pt-BR/${f} has AionUi branding residue"
-done
-
-# ── All locale JSON files (global scan) ──
-echo ""
-echo "==> Checking all locale JSON files for AionUi..."
-LOCALE_AIONUI=$(grep -rl '"AionUi"' "$ROOT/packages/desktop/src/renderer/services/i18n/locales/" --include="*.json" 2>/dev/null || true)
-if [ -z "$LOCALE_AIONUI" ]; then
-  echo -e "${GREEN}PASS${NC} no AionUi in locale JSON files"
+echo "==> Checking all locale JSON files for unquoted AionUi/AionCore..."
+UNQUOTED_AIONUI=$(grep -rlE 'AionUi[^"]|AionCore[^"]' "$ROOT/packages/desktop/src/renderer/services/i18n/locales/" --include="*.json" 2>/dev/null || true)
+if [ -z "$UNQUOTED_AIONUI" ]; then
+  echo -e "${GREEN}PASS${NC} no unquoted AionUi/AionCore in locale JSON files"
   PASS=$((PASS + 1))
 else
-  echo -e "${RED}FAIL${NC} locale JSON files have AionUi branding residue:"
+  echo -e "${RED}FAIL${NC} locale JSON files have unquoted AionUi/AionCore residue (mid-sentence):"
+  echo "$UNQUOTED_AIONUI" | while read -r f; do echo -e "  ${YELLOW}$f${NC}"; done
+  FAIL=$((FAIL + 1))
+  ERRORS+=("locale JSON files have unquoted AionUi/AionCore residue")
+fi
+
+# ── All locale JSON files (quoted scan for "AionUi") ──
+echo ""
+echo "==> Checking all locale JSON files for \"AionUi\"..."
+LOCALE_AIONUI=$(grep -rl '"AionUi"' "$ROOT/packages/desktop/src/renderer/services/i18n/locales/" --include="*.json" 2>/dev/null || true)
+if [ -z "$LOCALE_AIONUI" ]; then
+  echo -e "${GREEN}PASS${NC} no \"AionUi\" in locale JSON files"
+  PASS=$((PASS + 1))
+else
+  echo -e "${RED}FAIL${NC} locale JSON files have \"AionUi\" branding residue:"
   echo "$LOCALE_AIONUI" | while read -r f; do echo -e "  ${YELLOW}$f${NC}"; done
   FAIL=$((FAIL + 1))
-  ERRORS+=("locale JSON files have AionUi branding residue")
+  ERRORS+=("locale JSON files have \"AionUi\" branding residue")
 fi
 
 # ── Scripts: packaged-launch.mjs ──
@@ -255,10 +266,12 @@ check_not "install-web.sh AionUi-2.0.2" \
   "$ROOT/scripts/install-web.sh" \
   "    install-web.sh has old AionUi-2.0.2 version reference"
 
-# ── Tests directory ──
+# ── Tests directory (allowlist: legit upstream repo URLs) ──
 echo ""
 echo "==> Checking tests/ for iOfficeAI references..."
-TESTS_IOFFICE=$(grep -rl 'iOfficeAI' "$ROOT/tests/" --include="*.ts" --include="*.tsx" 2>/dev/null || true)
+TESTS_IOFFICE=$(grep -rl 'iOfficeAI' "$ROOT/tests/" --include="*.ts" --include="*.tsx" 2>/dev/null | while read -r f; do
+  if grep "iOfficeAI" "$f" | grep -vqE "iOfficeAI/(AionUi|OfficeCLI|OfficeCli|AionHub)"; then echo "$f"; fi
+done || true)
 if [ -z "$TESTS_IOFFICE" ]; then
   echo -e "${GREEN}PASS${NC} no iOfficeAI references in tests"
   PASS=$((PASS + 1))

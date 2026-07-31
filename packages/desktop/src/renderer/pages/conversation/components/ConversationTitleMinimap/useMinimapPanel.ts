@@ -1,11 +1,12 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { ipcBridge } from '@/common';
 import { dispatchChatMessageJump } from '@/renderer/utils/chat/chatMinimapEvents';
+import { loadAllConversationMessagesPaged } from '@/renderer/utils/chat/messagePagination';
+import { isPrimaryApplicationShortcut } from '@/renderer/utils/ui/keyboardShortcuts';
 import type { RefInputType } from '@arco-design/web-react/es/Input/interface';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { MinimapVisualStyle, TurnPreviewItem } from './minimapTypes';
@@ -110,12 +111,8 @@ export const useMinimapPanel = (conversation_id?: string): UseMinimapPanelReturn
     }
     setLoading(true);
     try {
-      const messages = await ipcBridge.database.getConversationMessages.invoke({
-        conversation_id: conversation_id,
-        page: 0,
-        page_size: 10000,
-      });
-      setItems(buildTurnPreview(messages?.items || []));
+      const messages = await loadAllConversationMessagesPaged(conversation_id);
+      setItems(buildTurnPreview(messages));
     } catch (error) {
       console.error('[ConversationTitleMinimap] Failed to load conversation messages:', error);
       setItems([]);
@@ -276,13 +273,10 @@ export const useMinimapPanel = (conversation_id?: string): UseMinimapPanelReturn
   // Global search shortcut (Cmd/Ctrl+F)
   useEffect(() => {
     const handleGlobalSearchShortcut = (event: KeyboardEvent) => {
-      if (event.defaultPrevented) return;
-      if ((event as unknown as { isComposing?: boolean }).isComposing) return;
-      const key = event.key.toLowerCase();
-      const isCmdOrCtrl = event.metaKey || event.ctrlKey;
-      if (!isCmdOrCtrl || event.shiftKey || key !== 'f' || event.altKey) return;
+      if (!isPrimaryApplicationShortcut(event, { key: 'f', targetGuard: 'embedded-editor' })) return;
       // Keep browser/native find behavior in WebUI; intercept only desktop runtime.
       if (typeof window !== 'undefined' && !window.electronAPI) return;
+      if (!conversation_id) return;
       event.preventDefault();
       openSearchPanel();
     };
@@ -290,7 +284,7 @@ export const useMinimapPanel = (conversation_id?: string): UseMinimapPanelReturn
     return () => {
       document.removeEventListener('keydown', handleGlobalSearchShortcut, true);
     };
-  }, [openSearchPanel]);
+  }, [conversation_id, openSearchPanel]);
 
   // Search focus
   useEffect(() => {

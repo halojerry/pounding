@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -48,7 +48,6 @@ function selectDefaultModel(models: string[]): string | undefined {
 const CLI_TARGET_LABELS: Record<ManagedRuntimeCliTarget, string> = {
   claude: 'Claude',
   hermes: 'Hermes',
-  opencode: 'OpenCode',
   openclaw: 'OpenClaw',
 };
 

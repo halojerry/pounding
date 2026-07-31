@@ -1,14 +1,11 @@
 {
-  "agentFallbackNotice": "{{original}} недоступний, використовується {{fallback}} замість нього.",
-  "noAgentAvailable": "Головний Агент недоступний. Будь ласка, увійдіть у Google або встановіть Claude/Codex CLI. Перейти до налаштувань?",
-  "noAgentAvailableShort": "Головний Агент недоступний. Натисніть для налаштування.",
-  "agentTabAutoSwitch": "Модель не сумісна з Gemini, автоматичне переключення на {{fallback}}",
-  "autoSwitchToAgent": "Gemini не налаштовано, автоматичне переключення на {{agent}}",
-  "autoSwitchedAgent": "{{from}} недоступний, переключено на {{to}}",
-  "promptExamplesHint": "Спробуйте приклади промптів:",
+  "promptExamplesHint": "Спробуйте ці інструкції",
+  "defaultPrompts": {
+    "understand": "Ознайомся з цим проєктом і поясни простими словами, що він робить і з чого почати",
+    "cleanup": "Знайди в цій папці дублікати та непотрібні файли й покажи список для мого підтвердження",
+    "create": "Зроби мені гарну персональну домашню сторінку й відкрий її, коли завершиш"
+  },
   "selectAssistantHint": "Виберіть асистента, щоб розпочати завдання",
-  "agentSwitcherLabel": "Агент",
-  "switchedToAgent": "Переключено на {{agent}}",
   "workspace": {
     "workInProject": "Працювати в проєкті",
     "optional": "Необов'язково",
@@ -16,15 +13,5 @@
     "specifyWorkspace": "Вибрати папку проєкту",
     "searchPlaceholder": "Пошук проєктів…",
     "noProject": "Без проєкту"
-  },
-  "scanning": {
-    "initialMessage": "Поточний Агент недоступний, пошук інших доступних агентів...",
-    "scanningMessage": "Сканування доступних локальних агентів...",
-    "connectingMessage": "Підключено успішно, зачекайте...",
-    "establishingConnection": "Встановлення з'єднання...",
-    "statusQueued": "У черзі",
-    "statusTesting": "Тестування затримки...",
-    "statusUnreachable": "Недосяжний",
-    "statusAvailable": "Доступний"
   }
 }

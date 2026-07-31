@@ -1,17 +1,18 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { configService } from '@/common/config/configService';
-import type { AcpSessionConfigOption } from '@/common/types/platform/acpTypes';
-import { classifyConfigSetError, useAcpConfigOptions } from '@/renderer/hooks/agent/useAcpConfigOptions';
-import { savePreferredMode } from '@/renderer/pages/guid/hooks/agentSelectionUtils';
-import { getAgentModes, supportsModeSwitch, type AgentModeOption } from '@/renderer/utils/model/agentModes';
+import {
+  classifyConfigSetError,
+  type AcpConfigOptionsLoader,
+  useAcpConfigOptions,
+} from '@/renderer/hooks/agent/useAcpConfigOptions';
+import type { AgentModeOption } from '@/renderer/utils/model/agentTypes';
 import { useLayoutContext } from '@/renderer/hooks/context/LayoutContext';
 import { AgentLogoIcon } from './AgentBadge';
-import { Dropdown, Menu, Message } from '@arco-design/web-react';
+import { Dropdown, Menu, Message, Tooltip } from '@arco-design/web-react';
 import { Down } from '@icon-park/react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -25,20 +26,6 @@ const configErrorMessageKey = (error: unknown) => {
   return 'agent.config.failed';
 };
 
-/**
- * Extract mode options from cached ACP config_options.
- * Looks for a select-type option with category === 'mode' and converts
- * its choices to AgentModeOption[] format.
- */
-function extractModesFromConfigOptions(config_options: AcpSessionConfigOption[]): AgentModeOption[] {
-  const modeOption = config_options.find((opt) => opt.category === 'mode' && opt.type === 'select' && opt.options);
-  if (!modeOption?.options || modeOption.options.length === 0) return [];
-  return modeOption.options.map((opt) => ({
-    value: opt.value,
-    label: opt.name || opt.label || opt.value,
-  }));
-}
-
 export interface AgentModeSelectorProps {
   /** Agent backend type / 代理后端类型 */
   backend?: string;
@@ -48,6 +35,8 @@ export interface AgentModeSelectorProps {
   agentLogo?: string;
   /** Whether the logo is an emoji / logo 是否为 emoji */
   agentLogoIsEmoji?: boolean;
+  /** Whether the explicit assistant logo is intentionally empty. */
+  agentLogoIsFallback?: boolean;
   /** Conversation ID for mode switching / 用于切换模式的会话 ID */
   conversation_id?: string;
   /** Compact mode: only show mode label + dropdown, no logo/name / 紧凑模式：仅显示模式标签和下拉 */
@@ -76,8 +65,10 @@ export interface AgentModeSelectorProps {
   dynamicModes?: AgentModeOption[];
   /** Optional runtime preparation before reading active-session mode. */
   beforeRuntimeSync?: () => Promise<void>;
-  /** Whether switching mode should persist into the backend-wide preference key. */
-  persistGlobalPreference?: boolean;
+  /** Optional runtime preparation only before applying a runtime mode change. */
+  beforeRuntimeSet?: () => Promise<void>;
+  /** Optional config option loader for runtime owners such as team sessions. */
+  loadConfigOptions?: AcpConfigOptionsLoader;
 }
 
 /**
@@ -92,6 +83,7 @@ const AgentModeSelector: React.FC<AgentModeSelectorProps> = ({
   agent_name,
   agentLogo,
   agentLogoIsEmoji,
+  agentLogoIsFallback,
   conversation_id,
   compact,
   showLogoInCompact = false,
@@ -106,15 +98,17 @@ const AgentModeSelector: React.FC<AgentModeSelectorProps> = ({
   onModeChanged,
   dynamicModes,
   beforeRuntimeSync,
-  persistGlobalPreference = true,
+  beforeRuntimeSet,
+  loadConfigOptions,
 }) => {
   const { t } = useTranslation();
   const layout = useLayoutContext();
   const isMobile = Boolean(layout?.isMobile);
-  const [cachedModes, setCachedModes] = useState<AgentModeOption[]>([]);
   const runtimeConfig = useAcpConfigOptions({
     conversation_id: conversation_id ?? '',
     prepareRuntime: beforeRuntimeSync,
+    prepareSetRuntime: beforeRuntimeSet ?? beforeRuntimeSync,
+    loadConfigOptions,
     enabled: Boolean(conversation_id),
   });
   const runtimeMode = runtimeConfig.mode;
@@ -128,41 +122,13 @@ const AgentModeSelector: React.FC<AgentModeSelectorProps> = ({
     [runtimeMode?.options]
   );
 
-  // Load modes from cache: try top-level `acp.cachedModes` first (qoder, opencode),
-  // then fall back to `acp.cached_config_options` category=mode (codex)
-  useEffect(() => {
-    if (!backend) return;
-
-    const cachedModeConfig = configService.get('acp.cachedModes');
-    const session_modes = cachedModeConfig?.[backend];
-    if (session_modes?.available_modes && session_modes.available_modes.length > 0) {
-      setCachedModes(
-        session_modes.available_modes.map((m) => ({
-          value: m.id,
-          label: m.name ?? m.id,
-        }))
-      );
-      return;
-    }
-
-    const cached = configService.get('acp.cached_config_options');
-    const options = cached?.[backend];
-    if (Array.isArray(options)) {
-      const modes = extractModesFromConfigOptions(options as AcpSessionConfigOption[]);
-      if (modes.length > 0) {
-        setCachedModes(modes);
-      }
-    }
-  }, [backend]);
-
-  // Priority: observed config_options > dynamicModes (runtime) > cachedModes (from cache) > static fallback
+  // Priority: observed config_options > dynamic modes from persisted agent_metadata.
   const modes = useMemo(() => {
     if (runtimeModes && runtimeModes.length > 0) return runtimeModes;
     if (dynamicModes && dynamicModes.length > 0) return dynamicModes;
-    if (cachedModes.length > 0) return cachedModes;
-    return getAgentModes(backend);
-  }, [runtimeModes, dynamicModes, cachedModes, backend]);
-  const defaultMode = modes[0]?.value ?? 'default';
+    return [];
+  }, [runtimeModes, dynamicModes]);
+  const defaultMode = modes[0]?.value ?? initialMode ?? 'default';
   // Validate initialMode against available modes; fall back to backend's default
   // when the provided value doesn't match (e.g. opencode has 'build'/'plan', not 'default')
   const validInitialMode = initialMode && modes.some((m) => m.value === initialMode) ? initialMode : defaultMode;
@@ -174,7 +140,7 @@ const AgentModeSelector: React.FC<AgentModeSelectorProps> = ({
     [modeLabelFormatter]
   );
 
-  const can_switchMode = (supportsModeSwitch(backend) || modes.length > 0) && (conversation_id || onModeSelect);
+  const can_switchMode = modes.length > 0 && Boolean(conversation_id || onModeSelect);
   // Mobile conversation header agent pill is display-only by design.
   const canInteract = can_switchMode && !(compact && compactLabelType === 'agent');
 
@@ -219,15 +185,9 @@ const AgentModeSelector: React.FC<AgentModeSelectorProps> = ({
 
       setIsLoading(true);
       try {
-        await beforeRuntimeSync?.();
         await setActiveMode();
         setCurrentMode(mode);
         onModeChanged?.(mode);
-        if (backend && persistGlobalPreference) {
-          // Mirror Guid page behaviour so a switch made inside the
-          // conversation also becomes the next-session default.
-          void savePreferredMode(backend, mode);
-        }
         Message.success(t('agentMode.switchSuccess'));
       } catch (error) {
         console.error('[AgentModeSelector] Failed to switch mode:', error);
@@ -236,18 +196,7 @@ const AgentModeSelector: React.FC<AgentModeSelectorProps> = ({
         setIsLoading(false);
       }
     },
-    [
-      backend,
-      beforeRuntimeSync,
-      conversation_id,
-      current_mode,
-      onModeChanged,
-      onModeSelect,
-      persistGlobalPreference,
-      runtimeConfig,
-      runtimeMode,
-      t,
-    ]
+    [conversation_id, current_mode, onModeChanged, onModeSelect, runtimeConfig, runtimeMode, t]
   );
 
   const renderLogo = () => (
@@ -256,13 +205,16 @@ const AgentModeSelector: React.FC<AgentModeSelectorProps> = ({
       agent_name={agent_name}
       agentLogo={agentLogo}
       agentLogoIsEmoji={agentLogoIsEmoji}
+      agentLogoIsFallback={agentLogoIsFallback}
     />
   );
 
-  // Get display label for current mode
+  // Get display label for current mode. When the current value matches no option
+  // (e.g. backend mode-vocabulary drift), surface the raw value instead of an empty
+  // string so the compact pill never renders a bare "prefix · " with nothing after it.
   const getCurrentModeLabel = () => {
     const modeOption = modes.find((m) => m.value === current_mode);
-    return modeOption ? getDisplayModeLabel(modeOption) : '';
+    return modeOption ? getDisplayModeLabel(modeOption) : current_mode;
   };
 
   // Dropdown menu (shared between compact and full mode)
@@ -276,8 +228,16 @@ const AgentModeSelector: React.FC<AgentModeSelectorProps> = ({
               data-mode-value={mode.value}
               data-testid={`aionrs-mode-option-${mode.value}`}
             >
-              {current_mode === mode.value && <span className='text-primary'>✓</span>}
-              <span className={current_mode !== mode.value ? 'ml-16px' : ''}>{getDisplayModeLabel(mode)}</span>
+              <span aria-hidden='true' className='w-16px shrink-0 text-primary'>
+                {current_mode === mode.value ? '✓' : ''}
+              </span>
+              {mode.description ? (
+                <Tooltip content={mode.description} position='right'>
+                  <span className='min-w-0 truncate'>{getDisplayModeLabel(mode)}</span>
+                </Tooltip>
+              ) : (
+                <span className='min-w-0 truncate'>{getDisplayModeLabel(mode)}</span>
+              )}
             </div>
           </Menu.Item>
         ))}

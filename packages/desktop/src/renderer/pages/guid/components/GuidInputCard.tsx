@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -9,11 +9,13 @@ import UploadProgressBar from '@/renderer/components/media/UploadProgressBar';
 import { useLayoutContext } from '@/renderer/hooks/context/LayoutContext';
 import { useCompositionInput } from '@/renderer/hooks/chat/useCompositionInput';
 import { Input } from '@arco-design/web-react';
-import React from 'react';
+import type { RefTextAreaType } from '@arco-design/web-react/es/Input';
+import React, { useEffect, useRef } from 'react';
 import styles from '../index.module.css';
 import GuidWorkspaceFootnote from './GuidWorkspaceFootnote';
 
 type GuidInputCardProps = {
+  focusRequestKey?: string;
   // Input state
   input: string;
   onInputChange: (value: string) => void;
@@ -31,17 +33,13 @@ type GuidInputCardProps = {
   activeShadow: string;
   dragHandlers: React.HTMLAttributes<HTMLDivElement>;
 
-  // Mention state
-  mentionOpen: boolean;
-  mentionSelectorBadge: React.ReactNode;
-  mentionDropdown: React.ReactNode;
-
   // Files
   files: string[];
   onRemoveFile: (path: string) => void;
 
   // Action row
   actionRow: React.ReactNode;
+  slashCommandMenu?: React.ReactNode;
 
   // Workspace
   workspaceDir: string;
@@ -50,6 +48,7 @@ type GuidInputCardProps = {
 };
 
 const GuidInputCard: React.FC<GuidInputCardProps> = ({
+  focusRequestKey,
   input,
   onInputChange,
   onKeyDown,
@@ -63,12 +62,10 @@ const GuidInputCard: React.FC<GuidInputCardProps> = ({
   inactiveBorderColor,
   activeShadow,
   dragHandlers,
-  mentionOpen,
-  mentionSelectorBadge,
-  mentionDropdown,
   files,
   onRemoveFile,
   actionRow,
+  slashCommandMenu,
   workspaceDir,
   onSelectWorkspace,
   onClearWorkspace,
@@ -76,7 +73,14 @@ const GuidInputCard: React.FC<GuidInputCardProps> = ({
   const layout = useLayoutContext();
   const isMobile = layout?.isMobile ?? false;
   const { compositionHandlers, isComposing } = useCompositionInput();
+  const inputRef = useRef<RefTextAreaType | null>(null);
   const textareaAutoSize = isMobile ? { minRows: 2, maxRows: 8 } : { minRows: 2, maxRows: 20 };
+
+  useEffect(() => {
+    if (!focusRequestKey || isMobile) return;
+    inputRef.current?.focus();
+    inputRef.current?.dom.setSelectionRange(input.length, input.length);
+  }, [focusRequestKey, input, isMobile]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (isComposing.current) return;
@@ -91,7 +95,7 @@ const GuidInputCard: React.FC<GuidInputCardProps> = ({
 
   return (
     <div
-      className={`${styles.guidInputCardWrap} guid-input-card-shell relative rd-24px flex flex-col ${mentionOpen ? 'overflow-visible' : 'overflow-hidden'} transition-all duration-200 ${isFileDragging ? 'b b-solid border-dashed guid-input-card-shell--dragging' : ''}`}
+      className={`${styles.guidInputCardWrap} guid-input-card-shell relative rd-24px flex flex-col ${slashCommandMenu ? 'overflow-visible' : 'overflow-hidden'} transition-all duration-200 ${isFileDragging ? 'b b-solid border-dashed guid-input-card-shell--dragging' : ''}`}
       style={{
         zIndex: 1,
         transition: 'box-shadow 0.25s ease',
@@ -112,15 +116,15 @@ const GuidInputCard: React.FC<GuidInputCardProps> = ({
     >
       {/* inner white card — narrower than outer wrap */}
       <div
-        className={`${styles.guidInputInner} p-12px flex flex-col bg-dialog-fill-0`}
+        className={`${styles.guidInputInner} relative p-12px flex flex-col bg-dialog-fill-0`}
         style={{
           transition: 'box-shadow 0.25s ease, border-color 0.25s ease',
           borderColor: isFileDragging ? 'rgb(var(--primary-3))' : borderColor,
           boxShadow: isInputActive && !isFileDragging ? activeShadow : 'none',
         }}
       >
-        {mentionSelectorBadge}
         <Input.TextArea
+          ref={inputRef}
           autoSize={textareaAutoSize}
           placeholder={placeholder}
           spellCheck={false}
@@ -135,11 +139,6 @@ const GuidInputCard: React.FC<GuidInputCardProps> = ({
           data-testid='guid-input'
         />
         <div style={{ height: 12, flexShrink: 0 }} aria-hidden='true' />
-        {mentionOpen && (
-          <div className='absolute z-50' style={{ left: 16, top: 44 }}>
-            {mentionDropdown}
-          </div>
-        )}
         {files.length > 0 && (
           <div className='flex flex-wrap items-center gap-8px mt-12px mb-12px'>
             {files.map((path) => (
@@ -149,6 +148,9 @@ const GuidInputCard: React.FC<GuidInputCardProps> = ({
         )}
         <UploadProgressBar source='sendbox' />
         {actionRow}
+        {slashCommandMenu && (
+          <div className='absolute left-0 right-0 top-[calc(100%+4px)] z-70'>{slashCommandMenu}</div>
+        )}
       </div>
       <GuidWorkspaceFootnote
         workspaceDir={workspaceDir}

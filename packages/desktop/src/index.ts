@@ -1,12 +1,12 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
 // configureChromium sets app name (dev isolation) and Chromium flags — must run before
 // ANY module that calls app.getPath('userData'), because Electron caches the path on first call.
-import './process/utils/configureChromium';
+import { showPortableStorageChoice } from './process/utils/configureChromium';
 import { installGpuCrashHandler } from './process/utils/gpuRecovery';
 import { captureBackendStartupFailure, initSentry, scheduleStartupLogReport, setSentryDeviceId } from './sentry';
 
@@ -25,6 +25,7 @@ import { startBackendOrExit } from './process/startup/backendStartup';
 import { assertStartupArchitectureCompatible } from './process/startup/architectureCompatibility';
 import { classifyBackendStartupFailure } from './process/startup/backendStartupFailure';
 import { installQuitCleanup } from './process/startup/quitCleanup';
+import { shouldRegisterBackendStartup } from './process/startup/singleInstanceGating';
 import { ProcessConfig } from './process/utils/initStorage';
 import type { BackendStartupFailureInfo } from './common/types/platform/electron';
 import { registerWindowMaximizeListeners } from '@process/bridge';
@@ -37,6 +38,7 @@ import { setInitialLanguage } from '@process/services/i18n';
 import { setupApplicationMenu } from './process/utils/appMenu';
 import { startWebHost } from '@aionui/web-host';
 import { initializeZoomFactor, setupZoomForWindow } from './process/utils/zoom';
+import { hydrateWindowsProcessPath } from './process/startup/windowsPath';
 import {
   MIN_WINDOW_WIDTH,
   MIN_WINDOW_HEIGHT,
@@ -114,8 +116,7 @@ if (!gotTheLock) {
   });
 }
 
-// Handle creating/removing shortcuts on Windows when installing/uninstalling.
-// 修复 macOS 和 Linux 下 GUI 应用的 PATH 环境变量,使其与命令行一致
+// Align GUI-launched PATH with what local CLIs expect on each desktop OS.
 if (process.platform === 'darwin' || process.platform === 'linux') {
   fixPath();
 
@@ -136,6 +137,69 @@ if (process.platform === 'darwin' || process.platform === 'linux') {
     } catch {
       // Ignore errors when reading nvm directory
     }
+  }
+} else if (process.platform === 'win32') {
+  hydrateWindowsProcessPath();
+}
+
+// All platforms: supplement bundled runtimes into PATH so CLI tools
+// and MCP servers can find node, npx, python, uv, and bun out-of-box.
+{
+  const pathParts: string[] = [];
+
+  // 1. Bundled runtimes from managed-resources (highest priority)
+  const platformKey = `${process.platform}-${process.arch}`;
+  const bundledDir = path.join(process.resourcesPath, 'bundled-poundingcore', platformKey, 'managed-resources');
+  if (fs.existsSync(bundledDir)) {
+    // Bundled Node.js (node + npx)
+    const nodeDir = path.join(bundledDir, 'node');
+    if (fs.existsSync(nodeDir)) {
+      // Node layout: Unix = bin/node, Windows = node.exe at root
+      const nodeBin = process.platform === 'win32' ? nodeDir : path.join(nodeDir, 'bin');
+      if (fs.existsSync(nodeBin)) pathParts.push(nodeBin);
+      else if (fs.existsSync(nodeDir)) pathParts.push(nodeDir);
+    }
+    // Bundled runtimes (python, uv)
+    const runtimesDir = path.join(bundledDir, 'runtimes');
+    if (fs.existsSync(runtimesDir)) {
+      for (const name of ['python', 'uv']) {
+        const d = path.join(runtimesDir, name);
+        if (fs.existsSync(d)) {
+          const sub = process.platform === 'win32' ? d : path.join(d, 'bin');
+          pathParts.push(fs.existsSync(sub) ? sub : d);
+        }
+      }
+    }
+  }
+
+  // 2. Bun bin directory (where CLI binaries are installed)
+  const bunBin = path.join(os.homedir(), '.bun', 'bin');
+  if (fs.existsSync(bunBin)) pathParts.push(bunBin);
+
+  // 3. Platform-specific system paths (fallback)
+  if (process.platform === 'win32') {
+    const appData = process.env.APPDATA;
+    if (appData) {
+      const npmGlobal = path.join(appData, 'npm');
+      if (fs.existsSync(npmGlobal)) pathParts.push(npmGlobal);
+    }
+    const nvmHome = process.env.NVM_HOME;
+    if (nvmHome && fs.existsSync(nvmHome)) pathParts.push(nvmHome);
+    const nvmSymlink = process.env.NVM_SYMLINK;
+    if (nvmSymlink && fs.existsSync(nvmSymlink)) pathParts.push(nvmSymlink);
+    const localAppData = process.env.LOCALAPPDATA;
+    if (localAppData) {
+      const voltaBin = path.join(localAppData, 'Volta', 'bin');
+      if (fs.existsSync(voltaBin)) pathParts.push(voltaBin);
+    }
+  }
+
+  // Merge: bundled first, then existing PATH
+  const existingPath = process.env.PATH || '';
+  const missing = pathParts.filter((p) => !existingPath.includes(p));
+  if (missing.length > 0) {
+    process.env.PATH = [...missing, existingPath].join(path.delimiter);
+    console.log('[POUNDING] PATH supplemented:', missing.join(', '));
   }
 }
 
@@ -287,6 +351,59 @@ ipcMain.on('get-backend-startup-failure', (event) => {
   event.returnValue = backendStartupFailureInfo;
 });
 
+ipcMain.handle('backend:recover-corrupted-database', async () => {
+  const { recoverCorruptedDatabaseAfterUserConfirmation } = await import('./process/startup/recoverCorruptedDatabase');
+
+  await recoverCorruptedDatabaseAfterUserConfirmation({
+    getFailure: () => backendStartupFailureInfo,
+    stopBackend: () => backendManager.stop(),
+    startBackendWithRecovery: async () => {
+      try {
+        const { getDataPath } = await import('./process/utils/utils');
+        const { getSystemDir } = await import('./process/utils/initStorage');
+        const sysDir = getSystemDir();
+        return await backendManager.start(
+          getDataPath(),
+          sysDir.logDir,
+          {
+            cacheDir: sysDir.cacheDir,
+            workDir: sysDir.workDir,
+            logDir: sysDir.logDir,
+          },
+          {
+            allowPendingOnHealthTimeout: false,
+            onHealthTimeout: async (error) => {
+              markBackendStartupFailed(error);
+              await captureBackendStartupFailure(error);
+            },
+            onPendingExit: async (error) => {
+              markBackendStartupFailed(error);
+              await captureBackendStartupFailure(error);
+            },
+            onReady: (backendPort) => {
+              markBackendReady(backendPort, 'backendManager.recoverCorruptedDatabase.lateReady');
+            },
+          },
+          undefined,
+          { recoverCorruptedDatabase: true }
+        );
+      } catch (error) {
+        markBackendStartupFailed(error);
+        await captureBackendStartupFailure(error);
+        throw error;
+      }
+    },
+    markReady: markBackendReady,
+    reloadMainWindow: () => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.reload();
+      }
+    },
+    logInfo: console.info,
+    logWarn: console.warn,
+  });
+});
+
 function markBackendStartupFailed(error: unknown): void {
   backendStartupFailed = true;
   backendStartupFailureInfo = classifyBackendStartupFailure(error);
@@ -366,6 +483,7 @@ function markBackendReady(backendPort: number, source: string): void {
   (globalThis as typeof globalThis & { __backendStartupFailed?: boolean }).__backendStartupFailed = false;
   void ensureAdminUserOnce(backendPort);
   scheduleBackendMigrations();
+}
 
   // Auto-install managed CLI tools from bundled resources (offline-first).
   // This ensures claude, hermes, opencode, and openclaw are
@@ -476,20 +594,48 @@ const createWindow = ({ showOnReady = true }: { showOnReady?: boolean } = {}): v
   const disableAutoUpdater =
     process.env.POUNDING_DISABLE_AUTO_UPDATE === '1' || process.env.POUNDING_E2E_TEST === '1' || isCiRuntime;
   if (!disableAutoUpdater) {
-    Promise.all([import('./process/services/autoUpdaterService'), import('./process/bridge/updateBridge')])
-      .then(([{ autoUpdaterService }, { createAutoUpdateStatusBroadcast }]) => {
-        // Create status broadcast callback that emits via ipcBridge (pure emitter, no window binding)
-        const statusBroadcast = createAutoUpdateStatusBroadcast();
-        autoUpdaterService.initialize(statusBroadcast);
-        autoUpdaterService.setBeforeQuitAndInstall(async () => {
-          await backendManager.stop();
-        });
-        // Check for updates after 3 seconds delay
-        // 3秒后检查更新
-        setTimeout(() => {
-          void autoUpdaterService.checkForUpdatesAndNotify();
-        }, 3000);
-      })
+    Promise.all([
+      import('./process/services/portableUpdater'),
+      import('./process/services/autoUpdaterService'),
+      import('./process/bridge/updateBridge'),
+    ])
+      .then(
+        ([
+          { isPortable, fetchPortableUpdate, performPortableUpdate },
+          { autoUpdaterService },
+          { createAutoUpdateStatusBroadcast },
+        ]) => {
+          if (isPortable()) {
+            // Portable (USB) mode: download zip from COS, extract in-place, restart
+            console.log('[POUNDING] Portable mode — checking for zip updates via COS...');
+            setTimeout(() => {
+              fetchPortableUpdate()
+                .then((info) => {
+                  if (info) {
+                    console.log(`[POUNDING] Portable update available: v${info.version}`);
+                    void performPortableUpdate(info);
+                  }
+                })
+                .catch((err) => {
+                  console.warn('[POUNDING] Portable update check failed:', err.message || err);
+                });
+            }, 5000);
+            return;
+          }
+
+          // Installed mode: use electron-updater (NSIS/DMG)
+          const statusBroadcast = createAutoUpdateStatusBroadcast();
+          autoUpdaterService.initialize(statusBroadcast);
+          autoUpdaterService.setBeforeQuitAndInstall(async () => {
+            await backendManager.stop();
+          });
+          // Check for updates after 3 seconds delay
+          // 3秒后检查更新
+          setTimeout(() => {
+            void autoUpdaterService.checkForUpdatesAndNotify();
+          }, 3000);
+        }
+      )
       .catch((error) => {
         console.error('[App] Failed to initialize autoUpdaterService:', error);
       });
@@ -622,71 +768,77 @@ const handleAppReady = async (): Promise<void> => {
     return;
   }
 
-  // Start poundingcore only after initializeProcess(). initStorage may open
-  // the legacy Electron SQLite catalog for a one-shot v26 migration and must
-  // close it before the backend touches the same file.
-  const backendStartup = await startBackendOrExit({
-    startBackend: async () => {
-      assertStartupArchitectureCompatible({
-        arch: process.arch,
-        isPackaged: app.isPackaged,
-        platform: process.platform,
-      });
-      const { getDataPath } = await import('./process/utils/utils');
-      const { getSystemDir } = await import('./process/utils/initStorage');
-      const sysDir = getSystemDir();
-      return backendManager.start(
-        getDataPath(),
-        sysDir.logDir,
-        {
-          cacheDir: sysDir.cacheDir,
-          workDir: sysDir.workDir,
-          logDir: sysDir.logDir,
-        },
-        {
-          allowPendingOnHealthTimeout: !(isWebUIMode || isResetPasswordMode),
-          onHealthTimeout: async (error) => {
-            markBackendStartupFailed(error);
-            await captureBackendStartupFailure(error);
+  const debugBackendStartupFailure = resolveDebugBackendStartupFailure();
+  if (debugBackendStartupFailure) {
+    applyDebugBackendStartupFailure(debugBackendStartupFailure);
+    mark(`debugBackendStartupFailure:${debugBackendStartupFailure.reason}`);
+  } else {
+    // Start aioncore only after initializeProcess(). initStorage may open
+    // the legacy Electron SQLite catalog for a one-shot v26 migration and must
+    // close it before the backend touches the same file.
+    const backendStartup = await startBackendOrExit({
+      startBackend: async () => {
+        assertStartupArchitectureCompatible({
+          arch: process.arch,
+          isPackaged: app.isPackaged,
+          platform: process.platform,
+        });
+        const { getDataPath } = await import('./process/utils/utils');
+        const { getSystemDir } = await import('./process/utils/initStorage');
+        const sysDir = getSystemDir();
+        return backendManager.start(
+          getDataPath(),
+          sysDir.logDir,
+          {
+            cacheDir: sysDir.cacheDir,
+            workDir: sysDir.workDir,
+            logDir: sysDir.logDir,
           },
-          onPendingExit: async (error) => {
-            markBackendStartupFailed(error);
-            await captureBackendStartupFailure(error);
-          },
-          onReady: (backendPort) => {
-            markBackendReady(backendPort, 'backendManager.lateReady');
-          },
+          {
+            allowPendingOnHealthTimeout: !(isWebUIMode || isResetPasswordMode),
+            onHealthTimeout: async (error) => {
+              markBackendStartupFailed(error);
+              await captureBackendStartupFailure(error);
+            },
+            onPendingExit: async (error) => {
+              markBackendStartupFailed(error);
+              await captureBackendStartupFailure(error);
+            },
+            onReady: (backendPort) => {
+              markBackendReady(backendPort, 'backendManager.lateReady');
+            },
+          }
+        );
+      },
+      onStarted: (backendPort) => {
+        exposeBackendPort(backendPort);
+        if (backendManager.status === 'running') {
+          markBackendReady(backendPort, 'backendManager.start');
+          return;
         }
-      );
-    },
-    onStarted: (backendPort) => {
-      exposeBackendPort(backendPort);
-      if (backendManager.status === 'running') {
-        markBackendReady(backendPort, 'backendManager.start');
+        mark(`backendManager.start pending health (port=${backendPort})`);
+      },
+      captureFailure: async (error) => {
+        markBackendStartupFailed(error);
+        await captureBackendStartupFailure(error);
+      },
+      exitApp: (code) => app.exit(code),
+      exitOnFailure: isWebUIMode || isResetPasswordMode,
+      logError: console.error,
+    });
+    if (!backendStartup.ok) {
+      if (isWebUIMode || isResetPasswordMode) {
         return;
       }
-      mark(`backendManager.start pending health (port=${backendPort})`);
-    },
-    captureFailure: async (error) => {
-      markBackendStartupFailed(error);
-      await captureBackendStartupFailure(error);
-    },
-    exitApp: (code) => app.exit(code),
-    exitOnFailure: isWebUIMode || isResetPasswordMode,
-    logError: console.error,
-  });
-  if (!backendStartup.ok) {
-    if (isWebUIMode || isResetPasswordMode) {
-      return;
     }
-  }
 
-  // One-shot WebUI admin credential migration. Must run after the backend is
-  // up (__backendPort set) and before any mode branch below that might log the
-  // user in. Swallows its own errors; the next boot retries.
-  const bootBackendPort = (globalThis as typeof globalThis & { __backendPort?: number }).__backendPort;
-  if (backendStartedOk && bootBackendPort) {
-    await ensureAdminUserOnce(bootBackendPort);
+    // One-shot WebUI admin credential migration. Must run after the backend is
+    // up (__backendPort set) and before any mode branch below that might log the
+    // user in. Swallows its own errors; the next boot retries.
+    const bootBackendPort = (globalThis as typeof globalThis & { __backendPort?: number }).__backendPort;
+    if (backendStartedOk && bootBackendPort) {
+      await ensureAdminUserOnce(bootBackendPort);
+    }
   }
 
   // One-shot backend migrations are deferred until after the renderer finishes
@@ -730,7 +882,7 @@ const handleAppReady = async (): Promise<void> => {
     const resolvedPort = resolveWebUIPort(userConfigInfo.config, getSwitchValue);
     const allowRemote = resolveRemoteAccess(userConfigInfo.config, isRemoteMode);
     try {
-      // Inside Electron (`AionUi --webui` or packaged `aionui-web` mode that
+      // Inside Electron (`POUNDING --webui` or packaged `aionui-web` mode that
       // launches via the Electron shell), reuse the desktop app's data-dir so
       // that conversations / cron jobs created in any path show up everywhere.
       // Matches the desktop IPC path at line 493 above.
@@ -822,6 +974,10 @@ const handleAppReady = async (): Promise<void> => {
     appReadyDone = true;
     mark('createWindow');
 
+    // Show portable storage choice dialog on first USB launch.
+    // Self-guarding: returns immediately if no pending choice exists.
+    void showPortableStorageChoice();
+
     // Initialize desktop pet (delayed to not block main window)
     setTimeout(() => {
       void (async () => {
@@ -857,7 +1013,10 @@ const handleAppReady = async (): Promise<void> => {
       void refreshTrayMenu();
     });
 
-    if (!isE2ETestMode) {
+    // Only attempt WebUI restore when the backend has started successfully.
+    // If the backend failed to start, there is nothing to restore from and the
+    // fetch will fail with a confusing "TypeError: fetch failed" log.
+    if (!isE2ETestMode && backendStartedOk) {
       // 窗口创建后异步恢复 WebUI，不阻塞 UI / Restore WebUI async after window creation, non-blocking
       restoreDesktopWebUIFromPreferences().catch((error) => {
         console.error('[WebUI] Failed to auto-restore:', error);
@@ -912,15 +1071,22 @@ app.on('open-url', (event, url) => {
 // 监听 GPU 子进程崩溃，连续多次后下次启动自动关闭硬件加速（参见 ELECTRON-9A / ELECTRON-9D）。
 installGpuCrashHandler();
 
-// Ensure we don't miss the ready event when running in CLI/WebUI mode
-void app
-  .whenReady()
-  .then(handleAppReady)
-  .catch((error) => {
-    // App initialization failed
-    console.error('[POUNDING] App initialization failed:', error);
-    app.quit();
-  });
+// Register the backend startup flow only when this process owns the single
+// instance lock. A lock-losing instance must NOT spawn a competing aioncore
+// backend — doing so races the first instance's aioncore over the same data
+// directory and produced the "local data repair failed" false alarm
+// (Sentry 135525166). Gating here (rather than at the top-level second-instance
+// block) keeps it after handleAppReady is declared.
+if (shouldRegisterBackendStartup(gotTheLock)) {
+  void app
+    .whenReady()
+    .then(handleAppReady)
+    .catch((error) => {
+      // App initialization failed
+      console.error('[POUNDING] App initialization failed:', error);
+      app.quit();
+    });
+}
 
 // Quit when all windows are closed, except on macOS. There, it's common
 // for applications and their menu bar to stay active until the user quits

@@ -9,23 +9,22 @@ export type TeammateRole = 'leader' | 'teammate';
 export type BackendTeammateStatus = string;
 
 /** Lifecycle status of a teammate agent after frontend normalization */
-export type TeammateStatus = 'pending' | 'idle' | 'active' | 'completed' | 'failed';
+export type TeammateStatus = 'pending' | 'idle' | 'active' | 'completed' | 'failed' | 'dormant';
 
 /** Workspace sharing strategy for the team */
 export type WorkspaceMode = 'shared' | 'isolated';
 
-/** Persisted agent configuration within a team */
-export type TeamAgent = {
+/** Persisted assistant configuration within a team */
+export type TeamAssistant = {
   slot_id: string;
   conversation_id: string;
   role: TeammateRole;
-  agent_type: string;
+  assistant_backend: string;
   icon?: string;
-  agent_name: string;
-  conversation_type: string;
+  assistant_name: string;
   status: TeammateStatus;
   cli_path?: string;
-  custom_agent_id?: string;
+  assistant_id?: string;
   model?: string;
   pending_confirmations?: number;
 };
@@ -37,9 +36,13 @@ export type TTeam = {
   name: string;
   workspace: string;
   workspace_mode: WorkspaceMode;
-  leader_agent_id: string;
-  agents: TeamAgent[];
-  /** Current session permission mode (e.g. 'plan', 'auto'). Persisted so newly spawned agents inherit it. */
+  leader_assistant_id: string;
+  assistants: TeamAssistant[];
+  /** @deprecated Use leader_assistant_id. */
+  leader_agent_id?: string;
+  /** @deprecated Use assistants. */
+  agents?: TeamAssistant[];
+  /** Current session permission mode (e.g. 'plan', 'auto'). Persisted so newly spawned assistants inherit it. */
   session_mode?: string;
   created_at: number;
   updated_at: number;
@@ -57,14 +60,29 @@ export type ISendTeamAgentMessageParams = ISendTeamMessageParams & {
 
 export type TeamRunTargetRole = 'lead' | 'teammate';
 export type TeamRunStatus = 'accepted' | 'running' | 'cancelling' | 'completed' | 'cancelled' | 'failed';
+export type TeamSlotWorkState = 'idle' | 'queued' | 'starting' | 'running' | 'paused' | 'blocked';
+export type TeamSlotBlockedReason = 'runtime_starting' | 'runtime_failed' | 'removing' | 'session_stopped';
+export type TeamMessageEnqueueStatus = 'accepted' | 'queued' | 'blocked_runtime_starting';
+
+export type ITeamSlotWork = {
+  slot_id: string;
+  role: TeamRunTargetRole;
+  state: TeamSlotWorkState;
+  queued_foreground_count: number;
+  queued_background_count: number;
+  active_turn_id: string | null;
+  active_turn_started_at_ms: number | null;
+  active_turn_elapsed_ms: number | null;
+  active_turn_slow: boolean | null;
+  active_turn_slow_threshold_ms: number | null;
+  blocked_reason: TeamSlotBlockedReason | null;
+  team_run_id: string | null;
+};
 
 export type ITeamRunAck = {
-  team_run_id: string;
-  team_id: string;
-  target_slot_id: string;
-  target_role: TeamRunTargetRole;
-  status: TeamRunStatus;
-  message_id?: string;
+  enqueue_status: TeamMessageEnqueueStatus;
+  message_id: string;
+  run: ITeamRunEvent;
 };
 
 export type ICancelTeamRunParams = {
@@ -78,15 +96,27 @@ export type ICancelTeamChildTurnParams = ICancelTeamRunParams & {
   slot_id: string;
 };
 
+export type IPauseTeamSlotParams = ICancelTeamChildTurnParams;
+
 export type ITeamRunEvent = {
   team_id: string;
   team_run_id: string;
+  source: 'user_message';
+  has_user_intervention: boolean;
   target_slot_id: string;
   target_role: TeamRunTargetRole;
   status: TeamRunStatus;
-  active_child_count: number;
-  pending_wake_count: number;
-  starting_child_count: number;
+  queued_intent_count: number;
+  starting_batch_count: number;
+  running_batch_count: number;
+  active_enqueue_lease_count: number;
+  slot_work: ITeamSlotWork[];
+};
+
+export type ITeamRunStateResponse = {
+  session_generation: string | null;
+  active_run: ITeamRunEvent | null;
+  slot_work: ITeamSlotWork[];
 };
 
 export type ITeamChildTurnEvent = {
@@ -97,6 +127,18 @@ export type ITeamChildTurnEvent = {
   conversation_id: string;
   turn_id: string;
   status: TeamRunStatus;
+};
+
+/**
+ * IPC event pushed to the renderer whenever a single slot's work state
+ * transitions, independently of any team run. `team.run*` events only carry
+ * `slot_work` for slots bound to the active tracked run, so run-less work (e.g.
+ * a leader self-wake draining its mailbox) would otherwise leave the per-slot
+ * view stale. Consumers update the one slot verbatim.
+ */
+export type ITeamSlotWorkChangedEvent = {
+  team_id: string;
+  slot_work: ITeamSlotWork;
 };
 
 /** IPC event pushed to renderer when agent status changes */
@@ -110,7 +152,9 @@ export type ITeamAgentStatusEvent = {
 /** IPC event pushed to renderer when a new agent is spawned at runtime */
 export type ITeamAgentSpawnedEvent = {
   team_id: string;
-  agent: TeamAgent;
+  assistant: TeamAssistant;
+  /** @deprecated Use assistant. */
+  agent?: TeamAssistant;
 };
 
 /** IPC event pushed to renderer when an agent is removed from the team */
@@ -124,6 +168,17 @@ export type ITeamAgentRenamedEvent = {
   team_id: string;
   slot_id: string;
   name: string;
+};
+
+export type TeamAgentRuntimeStatus = 'dormant' | 'pending' | 'ready' | 'failed';
+
+/** IPC event pushed to renderer when a team member runtime attach/warmup status changes */
+export type ITeamAgentRuntimeStatusEvent = {
+  team_id: string;
+  slot_id: string;
+  conversation_id: string;
+  status: TeamAgentRuntimeStatus;
+  error?: string;
 };
 
 /** IPC event pushed to renderer when the team list changes (created/removed/agent changes) */
@@ -167,26 +222,18 @@ export type ITeamMessageEvent = {
   conversation_id: string;
 };
 
-/** Phase of the MCP injection pipeline */
-export type TeamMcpPhase =
-  | 'tcp_ready'
-  | 'tcp_error'
-  | 'session_injecting'
-  | 'session_ready'
-  | 'session_error'
-  | 'load_failed'
-  | 'degraded'
-  | 'config_write_failed'
-  | 'mcp_tools_waiting'
-  | 'mcp_tools_ready';
+/** Team-level session availability status. */
+export type TeamSessionStatus = 'starting' | 'ready' | 'failed' | 'stopped';
 
-/** IPC event for MCP injection pipeline status */
-export type ITeamMcpStatusEvent = {
+/** Diagnostic phase for team session startup. */
+export type TeamSessionPhase = 'loading_team' | 'starting_bridge' | 'attaching_agents' | 'recovering';
+
+/** IPC event for team session lifecycle status. */
+export type ITeamSessionStatusChangedEvent = {
   team_id: string;
-  slot_id?: string;
-  phase: TeamMcpPhase;
+  status: TeamSessionStatus;
+  phase?: TeamSessionPhase;
   server_count?: number;
-  port?: number;
   error?: string;
 };
 

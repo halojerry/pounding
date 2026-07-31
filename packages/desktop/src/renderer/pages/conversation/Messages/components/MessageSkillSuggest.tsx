@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -36,7 +36,7 @@ const MessageSkillSuggest: React.FC<{ artifact: ISkillSuggestArtifact }> = ({ ar
         : '';
 
   return (
-    <div data-testid='message-skill-suggest' className='max-w-780px w-full mx-auto'>
+    <div data-testid='message-skill-suggest' className='w-full mx-auto'>
       <SkillSuggestCard
         artifact_id={artifact.id}
         conversation_id={artifact.conversation_id}

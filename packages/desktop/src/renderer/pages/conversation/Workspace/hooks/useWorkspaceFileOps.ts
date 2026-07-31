@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -19,7 +19,6 @@ import { removeWorkspaceEntry, renameWorkspaceEntry } from '@/renderer/utils/fil
 import { useCallback } from 'react';
 import type { MessageApi, RenameModalState, DeleteModalState } from '../types';
 import type { FileOrFolderItem } from '@/renderer/utils/file/fileTypes';
-import { getPathSeparator, replacePathInList, updateTreeForRename } from '../utils/treeHelpers';
 
 interface UseWorkspaceFileOpsOptions {
   workspace: string;
@@ -28,9 +27,7 @@ interface UseWorkspaceFileOpsOptions {
   t: (key: string) => string;
 
   // Dependencies from useWorkspaceTree
-  setFiles: React.Dispatch<React.SetStateAction<IDirOrFile[]>>;
   setSelected: React.Dispatch<React.SetStateAction<string[]>>;
-  setExpandedKeys: React.Dispatch<React.SetStateAction<string[]>>;
   selectedKeysRef: React.MutableRefObject<string[]>;
   selectedNodeRef: React.MutableRefObject<{ relativePath: string; fullPath: string } | null>;
   ensureNodeSelected: (nodeData: IDirOrFile, options?: { emit?: boolean }) => void;
@@ -61,9 +58,7 @@ export function useWorkspaceFileOps(options: UseWorkspaceFileOpsOptions) {
     eventPrefix,
     messageApi,
     t,
-    setFiles,
     setSelected,
-    setExpandedKeys,
     selectedKeysRef,
     selectedNodeRef,
     ensureNodeSelected,
@@ -134,7 +129,7 @@ export function useWorkspaceFileOps(options: UseWorkspaceFileOpsOptions) {
     if (!deleteModal.target) return;
     try {
       setDeleteModal((prev) => ({ ...prev, loading: true }));
-      await removeWorkspaceEntry(deleteModal.target.fullPath);
+      await removeWorkspaceEntry(deleteModal.target.fullPath, workspace);
 
       messageApi.success(t('conversation.workspace.contextMenu.deleteSuccess'));
       setSelected([]);
@@ -202,43 +197,16 @@ export function useWorkspaceFileOps(options: UseWorkspaceFileOpsOptions) {
       return;
     }
 
-    const sep = getPathSeparator(target.fullPath);
-    const parentFull = target.fullPath.slice(0, target.fullPath.lastIndexOf(sep));
-    const newFullPath = parentFull ? `${parentFull}${sep}${trimmedName}` : trimmedName;
-
-    const newRelativePath = (() => {
-      if (!target.relativePath) {
-        return target.isFile ? trimmedName : '';
-      }
-      const segments = target.relativePath.split('/');
-      segments[segments.length - 1] = trimmedName;
-      return segments.join('/');
-    })();
-
     try {
       setRenameLoading(true);
-      await waitWithTimeout(renameWorkspaceEntry(target.fullPath, trimmedName));
+      await waitWithTimeout(renameWorkspaceEntry(target.fullPath, trimmedName, workspace));
 
       closeRenameModal();
-
-      setFiles((prev) => updateTreeForRename(prev, target.relativePath ?? '', trimmedName, newFullPath));
-
-      const oldRelativePath = target.relativePath ?? '';
-      setExpandedKeys((prev) => replacePathInList(prev, oldRelativePath, newRelativePath));
-
-      setSelected((prev) => replacePathInList(prev, oldRelativePath, newRelativePath));
-      selectedKeysRef.current = replacePathInList(selectedKeysRef.current, oldRelativePath, newRelativePath);
-
-      if (!target.isFile) {
-        selectedNodeRef.current = {
-          relativePath: newRelativePath,
-          fullPath: newFullPath,
-        };
-        emitter.emit(`${eventPrefix}.selected.file`, []);
-      } else {
-        selectedNodeRef.current = null;
-      }
-
+      setSelected([]);
+      selectedKeysRef.current = [];
+      selectedNodeRef.current = null;
+      emitter.emit(`${eventPrefix}.selected.file`, []);
+      refreshWorkspace();
       messageApi.success(t('conversation.workspace.contextMenu.renameSuccess'));
     } catch (error) {
       if (error instanceof Error && error.message === 'timeout') {
@@ -255,10 +223,9 @@ export function useWorkspaceFileOps(options: UseWorkspaceFileOpsOptions) {
     messageApi,
     renameLoading,
     renameModal,
+    refreshWorkspace,
     t,
     waitWithTimeout,
-    setFiles,
-    setExpandedKeys,
     setSelected,
     selectedKeysRef,
     selectedNodeRef,
@@ -329,23 +296,17 @@ export function useWorkspaceFileOps(options: UseWorkspaceFileOpsOptions) {
         }
 
         // 打开预览面板并传入文件元数据 / Open preview panel with file metadata.
-        // replace: reuse the single browse preview tab instead of stacking tabs.
-        openPreview(
-          content,
-          contentType,
-          {
-            title: nodeData.name,
-            file_name: nodeData.name,
-            file_path: nodeData.fullPath,
-            workspace: workspace,
-            language: ext,
-            truncated: isLargeTextTruncated,
-            // Markdown 和图片文件默认为只读模式
-            // Markdown and image files default to read-only mode
-            editable: contentType === 'markdown' || contentType === 'image' || isLargeTextTruncated ? false : undefined,
-          },
-          { replace: true }
-        );
+        openPreview(content, contentType, {
+          title: nodeData.name,
+          file_name: nodeData.name,
+          file_path: nodeData.fullPath,
+          workspace: workspace,
+          language: ext,
+          truncated: isLargeTextTruncated,
+          // Markdown 和图片文件默认为只读模式
+          // Markdown and image files default to read-only mode
+          editable: contentType === 'markdown' || contentType === 'image' || isLargeTextTruncated ? false : undefined,
+        });
       } catch (error) {
         const kind = classifyPreviewError(error);
         messageApi.error(t(previewErrorToI18nKey(kind)));

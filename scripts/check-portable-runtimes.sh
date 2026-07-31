@@ -198,7 +198,7 @@ cli_found=0
 cli_missing=0
 
 if [[ -d "${cli_base}" ]]; then
-  for cli_name in claude codex opencode openclaw; do
+  for cli_name in claude openclaw; do
     cli_dir="${cli_base}/${cli_name}"
     if [[ ! -d "${cli_dir}" ]]; then
       echo -e "  ${RED}[MISSING]${NC}  ${cli_name}: directory does not exist"

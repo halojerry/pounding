@@ -1,53 +1,141 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 const {
   verifyBundledPoundingcoreResources,
 } = require('../../../packages/shared-scripts/src/verify-bundled-poundingcore-resources');
 
+const CLAUDE_VERSION = '2.1.215';
+
+function exeSuffix(runtimeKey: string) {
+  return runtimeKey.startsWith('win32') ? '.exe' : '';
+}
+
+function claudeExecutable(runtimeKey: string) {
+  return `claude${exeSuffix(runtimeKey)}`;
+}
+
+function writeFile(filePath: string) {
+  mkdirSync(dirname(filePath), { recursive: true });
+  writeFileSync(filePath, '', { flush: true });
+}
+
+function writeJson(filePath: string, value: unknown) {
+  mkdirSync(dirname(filePath), { recursive: true });
+  writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, { flush: true });
+}
+
+// Materialize a CLI's on-disk layout: claude is a single binary at the root.
+function createManagedCliFixture({
+  managedResourcesDir,
+  name,
+  version,
+  runtimeKey,
+}: {
+  managedResourcesDir: string;
+  name: string;
+  version: string;
+  runtimeKey: string;
+}) {
+  const root = join(managedResourcesDir, 'cli', name, version, runtimeKey);
+  writeFile(join(root, claudeExecutable(runtimeKey)));
+  return root;
+}
+
+function contractCli({ name, version, runtimeKey }: { name: string; version: string; runtimeKey: string }) {
+  if (name === 'claude') {
+    return {
+      name,
+      version,
+      root: `cli/${name}/${version}/${runtimeKey}`,
+      platformDirectory: runtimeKey,
+      executable: claudeExecutable(runtimeKey),
+      requiredFiles: [],
+      requiredDirectories: [],
+    };
+  }
+  // Only claude is supported
+  return {
+    name,
+    version,
+    root: `cli/${name}/${version}/${runtimeKey}`,
+    platformDirectory: runtimeKey,
+    executable: claudeExecutable(runtimeKey),
+    requiredFiles: [],
+    requiredDirectories: [],
+  };
+}
+
+function writeManagedResourcesContract(
+  managedResourcesDir: string,
+  {
+    runtimeKey = 'win32-x64',
+    nodeRoot = 'node/node-v24.11.0-win-x64',
+    nodeExecutable = 'node.exe',
+  }: {
+    runtimeKey?: string;
+    nodeRoot?: string;
+    nodeExecutable?: string;
+  } = {}
+) {
+  writeJson(join(managedResourcesDir, 'manifest.json'), {
+    schemaVersion: 2,
+    runtimeKey,
+    node: {
+      version: '24.11.0',
+      root: nodeRoot,
+      executable: nodeExecutable,
+    },
+    clis: [contractCli({ name: 'claude', version: CLAUDE_VERSION, runtimeKey })],
+  });
+}
+
+function seedRuntimeKey(
+  resourcesDir: string,
+  {
+    runtimeKey,
+    platform,
+    arch,
+    nodeRoot,
+    nodeExecutable,
+  }: { runtimeKey: string; platform: string; arch: string; nodeRoot: string; nodeExecutable: string }
+) {
+  const managedResourcesDir = join(resourcesDir, 'bundled-poundingcore', runtimeKey, 'managed-resources');
+  mkdirSync(join(resourcesDir, 'bundled-poundingcore', runtimeKey), { recursive: true });
+  writeFile(
+    join(resourcesDir, 'bundled-poundingcore', runtimeKey, platform === 'win32' ? 'poundingcore.exe' : 'poundingcore')
+  );
+  writeJson(join(resourcesDir, 'bundled-poundingcore', runtimeKey, 'manifest.json'), { platform, arch });
+  writeFile(join(managedResourcesDir, ...nodeRoot.split('/'), ...nodeExecutable.split('/')));
+  createManagedCliFixture({ managedResourcesDir, name: 'claude', version: CLAUDE_VERSION, runtimeKey });
+  writeManagedResourcesContract(managedResourcesDir, { runtimeKey, nodeRoot, nodeExecutable });
+  return managedResourcesDir;
+}
+
 describe('verifyBundledPoundingcoreResources', () => {
   let tmp: string;
   let resourcesDir: string;
   let managedResourcesDir: string;
-  let codexRoot: string;
 
   beforeEach(() => {
-    tmp = mkdtempSync(join(tmpdir(), 'pounding-bundled-resources-'));
+    tmp = mkdtempSync(join(tmpdir(), 'aionui-bundled-resources-'));
     resourcesDir = join(tmp, 'resources');
-    managedResourcesDir = join(resourcesDir, 'bundled-poundingcore', 'win32-x64', 'managed-resources');
-
-    mkdirSync(join(resourcesDir, 'bundled-poundingcore', 'win32-x64'), { recursive: true });
-    writeFileSync(join(resourcesDir, 'bundled-poundingcore', 'win32-x64', 'poundingcore.exe'), '', { flush: true });
-    writeFileSync(join(resourcesDir, 'bundled-poundingcore', 'win32-x64', 'manifest.json'), '{}', { flush: true });
-
-    const nodeRoot = join(managedResourcesDir, 'node', 'node-v24.11.0-win-x64');
-    mkdirSync(nodeRoot, { recursive: true });
-    writeFileSync(join(nodeRoot, 'node.exe'), '', { flush: true });
-
-    codexRoot = join(managedResourcesDir, 'acp', 'codex-acp', '0.14.0', 'win32-x64');
-    mkdirSync(codexRoot, { recursive: true });
-    writeFileSync(join(codexRoot, 'manifest.json'), JSON.stringify({ entrypoint: 'codex-acp.exe', path_entries: [] }), {
-      flush: true,
+    managedResourcesDir = seedRuntimeKey(resourcesDir, {
+      runtimeKey: 'win32-x64',
+      platform: 'win32',
+      arch: 'x64',
+      nodeRoot: 'node/node-v24.11.0-win-x64',
+      nodeExecutable: 'node.exe',
     });
-    writeFileSync(join(codexRoot, 'codex-acp.exe'), '', { flush: true });
-
-    const claudeRoot = join(managedResourcesDir, 'acp', 'claude-agent-acp', '0.13.0', 'win32-x64');
-    mkdirSync(claudeRoot, { recursive: true });
-    writeFileSync(
-      join(claudeRoot, 'manifest.json'),
-      JSON.stringify({ entrypoint: 'claude-agent-acp.exe', path_entries: [] }),
-      { flush: true }
-    );
-    writeFileSync(join(claudeRoot, 'claude-agent-acp.exe'), '', { flush: true });
   });
 
   afterEach(() => {
     rmSync(tmp, { recursive: true, force: true });
   });
 
-  it('passes when node and managed ACP entrypoints exist', () => {
+  it('passes when the managed resources contract points to existing resources', () => {
     const result = verifyBundledPoundingcoreResources({
       resourcesDir,
       electronPlatformName: 'win32',
@@ -56,10 +144,11 @@ describe('verifyBundledPoundingcoreResources', () => {
 
     expect(result.runtimeKey).toBe('win32-x64');
     expect(result.missing).toEqual([]);
+    expect(result.failures).toEqual([]);
   });
 
-  it('reports missing managed node runtime executable', () => {
-    rmSync(join(managedResourcesDir, 'node', 'node-v24.11.0-win-x64', 'node.exe'));
+  it('fails when managed resources contract is missing', () => {
+    rmSync(join(managedResourcesDir, 'manifest.json'));
 
     const result = verifyBundledPoundingcoreResources({
       resourcesDir,
@@ -67,43 +156,69 @@ describe('verifyBundledPoundingcoreResources', () => {
       targetArch: 'x64',
     });
 
-    expect(result.missing).toContain('bundled-poundingcore/win32-x64/managed-resources/node/*/node.exe');
+    expect(result.missing).toContain('bundled-poundingcore/win32-x64/managed-resources/manifest.json');
+    expect(result.failures).toContainEqual(
+      expect.objectContaining({
+        component: 'managed-resources',
+        reason: 'missing_file',
+      })
+    );
+  });
+
+  it('reports bundle manifest platform and architecture mismatches', () => {
+    writeJson(join(resourcesDir, 'bundled-poundingcore', 'win32-x64', 'manifest.json'), {
+      platform: 'darwin',
+      arch: 'arm64',
+    });
+
+    const result = verifyBundledPoundingcoreResources({
+      resourcesDir,
+      electronPlatformName: 'win32',
+      targetArch: 'x64',
+    });
+
+    expect(result.missing).toContain('bundled-poundingcore/win32-x64/manifest.json<platform:win32>');
+    expect(result.missing).toContain('bundled-poundingcore/win32-x64/manifest.json<arch:x64>');
+    expect(result.failures).toContainEqual(
+      expect.objectContaining({
+        component: 'bundle-manifest',
+        reason: 'runtime_key_mismatch',
+      })
+    );
+  });
+
+  it('passes with the Windows arm64 CLI layout', () => {
+    const arm64ResourcesDir = join(tmp, 'win32-arm64-resources');
+    seedRuntimeKey(arm64ResourcesDir, {
+      runtimeKey: 'win32-arm64',
+      platform: 'win32',
+      arch: 'arm64',
+      nodeRoot: 'node/node-v24.11.0-win-arm64',
+      nodeExecutable: 'node.exe',
+    });
+
+    const result = verifyBundledPoundingcoreResources({
+      resourcesDir: arm64ResourcesDir,
+      electronPlatformName: 'win32',
+      targetArch: 'arm64',
+    });
+
+    expect(result.missing).toEqual([]);
+    expect(result.failures).toEqual([]);
+    expect(result.checked).toContain(
+      'bundled-poundingcore/win32-arm64/managed-resources/cli/claude/2.1.215/win32-arm64/claude.exe'
+    );
   });
 
   it('passes for non-Windows node runtime layout', () => {
     const darwinResourcesDir = join(tmp, 'darwin-resources');
-    const darwinManagedResourcesDir = join(
-      darwinResourcesDir,
-      'bundled-poundingcore',
-      'darwin-arm64',
-      'managed-resources'
-    );
-
-    mkdirSync(join(darwinResourcesDir, 'bundled-poundingcore', 'darwin-arm64'), { recursive: true });
-    writeFileSync(join(darwinResourcesDir, 'bundled-poundingcore', 'darwin-arm64', 'poundingcore'), '', {
-      flush: true,
+    seedRuntimeKey(darwinResourcesDir, {
+      runtimeKey: 'darwin-arm64',
+      platform: 'darwin',
+      arch: 'arm64',
+      nodeRoot: 'node/node-v24.11.0-darwin-arm64',
+      nodeExecutable: 'bin/node',
     });
-    writeFileSync(join(darwinResourcesDir, 'bundled-poundingcore', 'darwin-arm64', 'manifest.json'), '{}', {
-      flush: true,
-    });
-    mkdirSync(join(darwinManagedResourcesDir, 'node', 'node-v24.11.0-darwin-arm64', 'bin'), { recursive: true });
-    writeFileSync(join(darwinManagedResourcesDir, 'node', 'node-v24.11.0-darwin-arm64', 'bin', 'node'), '', {
-      flush: true,
-    });
-
-    const darwinCodexRoot = join(darwinManagedResourcesDir, 'acp', 'codex-acp', '0.14.0', 'darwin-arm64');
-    mkdirSync(darwinCodexRoot, { recursive: true });
-    writeFileSync(join(darwinCodexRoot, 'manifest.json'), JSON.stringify({ entrypoint: 'codex-acp' }), {
-      flush: true,
-    });
-    writeFileSync(join(darwinCodexRoot, 'codex-acp'), '', { flush: true });
-
-    const darwinClaudeRoot = join(darwinManagedResourcesDir, 'acp', 'claude-agent-acp', '0.13.0', 'darwin-arm64');
-    mkdirSync(darwinClaudeRoot, { recursive: true });
-    writeFileSync(join(darwinClaudeRoot, 'manifest.json'), JSON.stringify({ entrypoint: 'claude-agent-acp' }), {
-      flush: true,
-    });
-    writeFileSync(join(darwinClaudeRoot, 'claude-agent-acp'), '', { flush: true });
 
     const result = verifyBundledPoundingcoreResources({
       resourcesDir: darwinResourcesDir,
@@ -112,17 +227,26 @@ describe('verifyBundledPoundingcoreResources', () => {
     });
 
     expect(result.missing).toEqual([]);
-    expect(result.checked).toContain('bundled-poundingcore/darwin-arm64/managed-resources/node/*/bin/node');
+    expect(result.failures).toEqual([]);
+    expect(result.checked).toContain(
+      'bundled-poundingcore/darwin-arm64/managed-resources/node/node-v24.11.0-darwin-arm64/bin/node'
+    );
+    expect(result.checked).toContain(
+      'bundled-poundingcore/darwin-arm64/managed-resources/cli/claude/2.1.215/darwin-arm64/claude'
+    );
   });
 
   it('reports missing non-Windows managed node runtime executable', () => {
     const linuxResourcesDir = join(tmp, 'linux-resources');
-    const linuxManagedResourcesDir = join(linuxResourcesDir, 'bundled-poundingcore', 'linux-x64', 'managed-resources');
-
-    mkdirSync(join(linuxResourcesDir, 'bundled-poundingcore', 'linux-x64'), { recursive: true });
-    writeFileSync(join(linuxResourcesDir, 'bundled-poundingcore', 'linux-x64', 'poundingcore'), '', { flush: true });
-    writeFileSync(join(linuxResourcesDir, 'bundled-poundingcore', 'linux-x64', 'manifest.json'), '{}', { flush: true });
-    mkdirSync(join(linuxManagedResourcesDir, 'node', 'node-v24.11.0-linux-x64'), { recursive: true });
+    const linuxManagedResourcesDir = seedRuntimeKey(linuxResourcesDir, {
+      runtimeKey: 'linux-x64',
+      platform: 'linux',
+      arch: 'x64',
+      nodeRoot: 'node/node-v24.11.0-linux-x64',
+      nodeExecutable: 'bin/node',
+    });
+    // Remove the node executable, leaving the directory.
+    rmSync(join(linuxManagedResourcesDir, 'node', 'node-v24.11.0-linux-x64', 'bin', 'node'), { force: true });
 
     const result = verifyBundledPoundingcoreResources({
       resourcesDir: linuxResourcesDir,
@@ -130,11 +254,20 @@ describe('verifyBundledPoundingcoreResources', () => {
       targetArch: 'x64',
     });
 
-    expect(result.missing).toContain('bundled-poundingcore/linux-x64/managed-resources/node/*/bin/node');
+    expect(result.missing).toContain(
+      'bundled-poundingcore/linux-x64/managed-resources/node/node-v24.11.0-linux-x64/bin/node'
+    );
+    expect(result.failures).toContainEqual(
+      expect.objectContaining({
+        component: 'managed-node',
+        reason: 'missing_file',
+      })
+    );
   });
 
-  it('reports missing managed ACP manifest', () => {
-    rmSync(join(codexRoot, 'manifest.json'));
+  it('fails when contract node root points to the required version but only a wrong node directory exists', () => {
+    rmSync(join(managedResourcesDir, 'node', 'node-v24.11.0-win-x64'), { recursive: true, force: true });
+    writeFile(join(managedResourcesDir, 'node', 'node-v20.0.0-win-x64', 'node.exe'));
 
     const result = verifyBundledPoundingcoreResources({
       resourcesDir,
@@ -143,12 +276,16 @@ describe('verifyBundledPoundingcoreResources', () => {
     });
 
     expect(result.missing).toContain(
-      'bundled-poundingcore/win32-x64/managed-resources/acp/codex-acp/*/win32-x64/manifest.json'
+      'bundled-poundingcore/win32-x64/managed-resources/node/node-v24.11.0-win-x64/node.exe'
     );
   });
 
-  it('reports missing managed ACP entrypoint declared by manifest', () => {
-    rmSync(join(codexRoot, 'codex-acp.exe'));
+  it('ignores unknown contract fields but rejects duplicate cli names', () => {
+    const manifestPath = join(managedResourcesDir, 'manifest.json');
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+    manifest.extraDiagnostic = { ignored: true };
+    manifest.clis.push({ ...manifest.clis[0] });
+    writeJson(manifestPath, manifest);
 
     const result = verifyBundledPoundingcoreResources({
       resourcesDir,
@@ -156,8 +293,91 @@ describe('verifyBundledPoundingcoreResources', () => {
       targetArch: 'x64',
     });
 
-    expect(result.missing).toContain(
-      'bundled-poundingcore/win32-x64/managed-resources/acp/codex-acp/0.14.0/win32-x64/codex-acp.exe'
+    expect(result.failures).toContainEqual(
+      expect.objectContaining({
+        component: 'claude',
+        reason: 'duplicate_cli_name',
+      })
     );
+    expect(result.missing).toContain(
+      'bundled-poundingcore/win32-x64/managed-resources/manifest.json<contract_failure>'
+    );
+  });
+
+  it('fails when a required CLI is missing from the contract', () => {
+    const manifestPath = join(managedResourcesDir, 'manifest.json');
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+    manifest.clis = manifest.clis.filter((cli: { name: string }) => cli.name !== 'claude');
+    writeJson(manifestPath, manifest);
+
+    const result = verifyBundledPoundingcoreResources({
+      resourcesDir,
+      electronPlatformName: 'win32',
+      targetArch: 'x64',
+    });
+
+    expect(result.failures).toContainEqual(
+      expect.objectContaining({
+        component: 'claude',
+        reason: 'missing_required_cli',
+      })
+    );
+  });
+
+  it('fails when the contract is invalid JSON', () => {
+    writeFileSync(join(managedResourcesDir, 'manifest.json'), '{');
+
+    const result = verifyBundledPoundingcoreResources({
+      resourcesDir,
+      electronPlatformName: 'win32',
+      targetArch: 'x64',
+    });
+
+    expect(result.failures).toContainEqual(expect.objectContaining({ reason: 'invalid_json' }));
+  });
+
+  it('fails when the contract schema version is unsupported', () => {
+    const manifestPath = join(managedResourcesDir, 'manifest.json');
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+    manifest.schemaVersion = 1;
+    writeJson(manifestPath, manifest);
+
+    const result = verifyBundledPoundingcoreResources({
+      resourcesDir,
+      electronPlatformName: 'win32',
+      targetArch: 'x64',
+    });
+
+    expect(result.failures).toContainEqual(expect.objectContaining({ reason: 'unsupported_schema_version' }));
+  });
+
+  it('fails when required contract fields have invalid types', () => {
+    const manifestPath = join(managedResourcesDir, 'manifest.json');
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+    manifest.node.root = 42;
+    writeJson(manifestPath, manifest);
+
+    const result = verifyBundledPoundingcoreResources({
+      resourcesDir,
+      electronPlatformName: 'win32',
+      targetArch: 'x64',
+    });
+
+    expect(result.failures).toContainEqual(expect.objectContaining({ reason: 'invalid_schema' }));
+  });
+
+  it('fails when a cli platform directory does not match the runtime key', () => {
+    const manifestPath = join(managedResourcesDir, 'manifest.json');
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+    manifest.clis[0].platformDirectory = 'linux-x64';
+    writeJson(manifestPath, manifest);
+
+    const result = verifyBundledPoundingcoreResources({
+      resourcesDir,
+      electronPlatformName: 'win32',
+      targetArch: 'x64',
+    });
+
+    expect(result.failures).toContainEqual(expect.objectContaining({ reason: 'runtime_key_mismatch' }));
   });
 });

@@ -1,4 +1,4 @@
-# AionUi 功能开发规范模板
+# POUNDING 功能开发规范模板
 
 > 本模板用于规范化向 AI 描述功能开发需求，确保 AI 能够准确理解任务并遵循项目约定。
 
@@ -42,7 +42,7 @@
 - **图标**: Icon Park (@icon-park/react)
 - **CSS**: UnoCSS 原子化样式
 - **状态管理**: React Context (AuthContext / ConversationContext / ThemeContext / LayoutContext)
-- **IPC通信**: @office-ai/platform bridge 系统
+- **IPC通信**: 项目内置 bridge 系统
 - **国际化**: i18next + react-i18next
 - **数据库**: better-sqlite3
 
@@ -195,7 +195,7 @@ src/
 
 ```typescript
 // src/process/bridge/[功能]Bridge.ts
-import { bridge } from '@anthropic/platform';
+import { bridge } from '@/common/platform/bridge';
 
 export const [功能名] = {
   // Provider 模式: 请求-响应 (类似 HTTP 请求)
@@ -360,7 +360,7 @@ export const [功能名] = {
 ## 模板维护
 
 - **创建日期**: 2025-01-27
-- **适用版本**: AionUi v0.x+
+- **适用版本**: POUNDING v0.x+
 - **维护者**: [项目团队]
 
 如需更新模板，请同步修改本文件并通知团队成员。

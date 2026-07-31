@@ -14,6 +14,7 @@
   "system": "Sistem",
   "about": "Hakkımızda",
   "back": "Sohbete Dön",
+  "goBack": "Geri",
   "add": "Ekle",
   "edit": "Düzenle",
   "website": "Web Sitesi",
@@ -73,14 +74,66 @@
   "backendStartup": {
     "incompatibleRuntime": {
       "title": "Bu sistem paketlenmiş backend tarafından desteklenmiyor",
-      "description": "POUNDING açıldı, ancak yerel AionCore backend bu Linux sürümünde çalışamaz. Desteklenen bir Linux dağıtımına yükseltip POUNDING'yi yeniden başlatın.",
+      "description": "POUNDING açıldı, ancak yerel poundingcore backend bu Linux sürümünde çalışamaz. Desteklenen bir Linux dağıtımına yükseltip POUNDING'yi yeniden başlatın.",
       "requiredVersions": "Gerekli çalışma zamanı sembolleri: {{versions}}"
     },
     "incompleteInstallation": {
       "title": "POUNDING kurulumu eksik",
-      "description": "Bu kurulumda gerekli yerel kaynaklar eksik, bu yüzden AionCore başlatılamıyor. Lütfen en son POUNDING sürümünü indirip yeniden kurun.",
+      "description": "Bu kurulumda gerekli yerel kaynaklar eksik, bu yüzden poundingcore başlatılamıyor. Lütfen en son POUNDING sürümünü indirip yeniden kurun.",
       "downloadLatest": "Son sürümü indir",
-      "sendDiagnostics": "Tanı raporu gönder"
+      "sendDiagnostics": "Tanı raporu gönder",
+      "diagnosticsSent": "Tanı raporu gönderildi",
+      "diagnosticsReportSuccess": "Tanı raporu gönderildi",
+      "diagnosticsReportFailed": "Tanı raporu gönderilemedi",
+      "runtimeComponentDescription": "Bu kurulumda gerekli yerleşik çalışma zamanı bileşenleri eksik olduğu için {{resource}} başlatılamıyor. En son POUNDING paketini yeniden yükleyin. Yeniden yükledikten sonra da devam ederse güvenlik veya antivirüs yazılımının POUNDING bileşenlerini karantinaya alıp almadığını kontrol edin."
+    },
+    "packageArchitectureMismatch": {
+      "title": "POUNDING package architecture mismatch",
+      "description": "This POUNDING package is for {{packageArch}}, but this Mac is {{deviceArch}}. You may have downloaded the wrong package. Please download and install the {{expectedArch}} package."
+    },
+    "dataMigration": {
+      "title": "Local data migration failed",
+      "description": "POUNDING opened, but poundingcore stopped while initializing local data. Reinstalling POUNDING may not fix this. Send a diagnostics report or contact support so the local database migration can be inspected.",
+      "sendDiagnostics": "Send diagnostics",
+      "diagnosticsSent": "Diagnostics sent",
+      "diagnosticsReportSuccess": "Diagnostics report sent",
+      "diagnosticsReportFailed": "Failed to send diagnostics report"
+    },
+    "localDataRepair": {
+      "title": "Local data repair failed",
+      "description": "POUNDING açıldı, ancak poundingcore assistant veya agent kayıtları gibi yerel başlangıç verilerini hazırlarken durdu. POUNDING'yi yeniden yüklemek bu sorunu çözmeyebilir. Yerel veritabanının incelenebilmesi için tanılama raporu gönderin veya destek ekibiyle iletişime geçin.",
+      "sendDiagnostics": "Send diagnostics",
+      "diagnosticsSent": "Diagnostics sent",
+      "diagnosticsReportSuccess": "Diagnostics report sent",
+      "diagnosticsReportFailed": "Failed to send diagnostics report"
+    },
+    "startupDirectory": {
+      "title": "Startup directory is unavailable",
+      "description": "POUNDING opened, but poundingcore could not start because the configured work or log directory is missing, unavailable, or blocked by permissions. Check that the configured directories exist and are writable, then restart POUNDING.",
+      "sendDiagnostics": "Send diagnostics",
+      "diagnosticsSent": "Diagnostics sent",
+      "diagnosticsReportSuccess": "Diagnostics report sent",
+      "diagnosticsReportFailed": "Failed to send diagnostics report"
+    },
+    "recoverableDatabaseCorruption": {
+      "title": "Yerel veriler bozulmuş",
+      "description": "POUNDING yerel veritabanının bozulduğunu algıladı ve başlatmaya devam edemiyor. Onaydan sonra eski veritabanı yedeklenecek ve başlatmaya devam etmek için yeni bir yerel veritabanı oluşturulacak. Geçmiş yerel veriler şimdilik gösterilmeyecek, eski veritabanı yedek olarak saklanacak.",
+      "confirmRebuild": "Eski DB'yi yedekle ve yeni DB oluştur",
+      "sendDiagnostics": "Tanılama gönder",
+      "diagnosticsHint": "Tanılama göndermek yerel veritabanını değiştirmez.",
+      "diagnosticsSent": "Tanılama gönderildi",
+      "diagnosticsReportSuccess": "Tanılama raporu gönderildi",
+      "diagnosticsReportFailed": "Tanılama raporu gönderilemedi",
+      "rebuildFailed": "Eski DB yedeklenip yeni DB oluşturulamadı"
+    },
+    "transientConcurrentStartup": {
+      "title": "POUNDING başlatılıyor",
+      "description": "Bu pencere açıldığında başka bir POUNDING başlatma işlemi yerel verileri hâlâ kullanıyordu. Bu geçicidir ve verileriniz güvende — yeniden yükleme gerekmez. Lütfen biraz bekleyip tekrar deneyin veya POUNDING'yi yeniden başlatın.",
+      "sendDiagnostics": "Send diagnostics",
+      "diagnosticsSent": "Diagnostics sent",
+      "diagnosticsReportSuccess": "Diagnostics report sent",
+      "diagnosticsReportFailed": "Failed to send diagnostics report",
+      "diagnosticsHint": "Bu durum tekrar ederse bir tanılama raporu gönderebilirsiniz."
     }
   },
   "fileAttach.addFiles": "Dosya ekle",
@@ -98,5 +151,11 @@
   "import": "İçe Aktar",
   "processing": "İşleniyor...",
   "optional": "(isteğe bağlı)",
-  "clear": "Temizle"
+  "clear": "Temizle",
+  "unit": {
+    "minute_short": "dk",
+    "second_short": "sn"
+  },
+  "selectedCount": "{{count}} seçili",
+  "selectedSkills": "Seçili beceriler"
 }

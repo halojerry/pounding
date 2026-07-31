@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -122,9 +122,3 @@ export function supportsModeSwitch(backend: string | undefined): boolean {
   if (!backend) return false;
   return backend in AGENT_MODES && AGENT_MODES[backend].length > 0;
 }
-
-/**
- * Full-auto mode value per backend.
- * Re-exported from common for backward compatibility.
- */
-export { getFullAutoMode } from '@/common/types/agent/agentModes';

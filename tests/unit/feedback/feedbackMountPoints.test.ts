@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  *
  * Static assertion that every error-surface JSX in the codebase wires the
@@ -37,6 +37,19 @@ describe('FeedbackButton mount points — source-level wiring', () => {
     expect(src).toMatch(/<FeedbackButton\s+module=['"]conversation-session['"]/);
   });
 
+  it('every conversation error surface pairs FeedbackButton with ButlerDiagnoseButton', () => {
+    for (const file of [
+      'packages/desktop/src/renderer/pages/conversation/Messages/components/MessageToolGroup.tsx',
+      'packages/desktop/src/renderer/pages/conversation/Messages/components/MessageTips.tsx',
+      'packages/desktop/src/renderer/pages/conversation/Messages/components/MessageAgentStatus.tsx',
+    ]) {
+      const src = read(file);
+      const feedbackCount = (src.match(/<FeedbackButton/g) ?? []).length;
+      const butlerCount = (src.match(/<ButlerDiagnoseButton/g) ?? []).length;
+      expect(butlerCount, `${file}: each FeedbackButton needs a ButlerDiagnoseButton beside it`).toBe(feedbackCount);
+    }
+  });
+
   it('InlineAgentEditor has no FeedbackButton', () => {
     const src = read('packages/desktop/src/renderer/pages/settings/AgentSettings/InlineAgentEditor.tsx');
     expect(src).not.toMatch(/<FeedbackButton/);
@@ -55,9 +68,7 @@ describe('FeedbackButton mount points — source-level wiring', () => {
   });
 
   it('each referenced module tag exists in FEEDBACK_MODULES', () => {
-    const modulesSrc = read(
-      'packages/desktop/src/renderer/components/settings/SettingsModal/contents/feedbackModules.ts'
-    );
+    const modulesSrc = read('packages/desktop/src/common/types/feedbackDiagnostics.ts');
     const referencedTags = ['conversation-session', 'agent-detection', 'system-settings', 'mcp-tools'];
     for (const tag of referencedTags) {
       expect(modulesSrc).toContain(`tag: '${tag}'`);

@@ -1,23 +1,23 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { getAgentLogo } from '@/renderer/utils/model/agentLogo';
+import { useAgentLogos } from '@/renderer/utils/model/agentLogo';
 import FlexFullContainer from '@/renderer/components/layout/FlexFullContainer';
 import { usePresetAssistantInfo } from '@/renderer/hooks/agent/usePresetAssistantInfo';
 import { CronJobIndicator } from '@/renderer/pages/cron';
+import { resolveConversationLeadingMark } from '@/renderer/pages/conversation/utils/conversationAssistantIdentity';
 import { cleanupSiderTooltips, getSiderTooltipProps } from '@/renderer/utils/ui/siderTooltip';
 import { useLayoutContext } from '@/renderer/hooks/context/LayoutContext';
 import { Checkbox, Dropdown, Menu, Spin, Tooltip } from '@arco-design/web-react';
-import { DeleteOne, EditOne, Export, MessageOne, MoreOne, Pushpin } from '@icon-park/react';
+import { DeleteOne, EditOne, Export, MessageOne, MoreOne, Pushpin, Robot, Timer } from '@icon-park/react';
 import classNames from 'classnames';
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 
 import type { ConversationRowProps } from './types';
-import { getBackendKeyFromConversation } from './utils/exportHelpers';
 import { isConversationPinned } from './utils/groupingHelpers';
 
 const ConversationRow: React.FC<ConversationRowProps> = (props) => {
@@ -32,7 +32,9 @@ const ConversationRow: React.FC<ConversationRowProps> = (props) => {
     selected,
     menuVisible,
     dimIcon = false,
+    dragHandle,
   } = props;
+  const logos = useAgentLogos();
   const layout = useLayoutContext();
   const isMobile = layout?.isMobile ?? false;
   const {
@@ -41,6 +43,7 @@ const ConversationRow: React.FC<ConversationRowProps> = (props) => {
     onOpenMenu,
     onMenuVisibleChange,
     onEditStart,
+    onCreateCronTask,
     onDelete,
     onExport,
     onTogglePin,
@@ -58,36 +61,33 @@ const ConversationRow: React.FC<ConversationRowProps> = (props) => {
       return <CronJobIndicator status={cronStatus} size={16} className='flex-shrink-0' />;
     }
 
-    // When the row is pinned, hovering reveals a pushpin marker that overlays
-    // the leading icon. We dim the resting icon on hover so the pin reads cleanly.
+    // When the row is pinned, hovering reveals an overlay on the leading icon —
+    // the drag handle when the row is sortable, otherwise a pushpin marker.
+    // We dim the resting icon on hover so the overlay reads cleanly.
     const pinnedHoverFade = isPinned ? 'group-hover:opacity-0 transition-opacity' : '';
     const composedClass = classNames(pinnedHoverFade);
 
-    if (assistantInfo) {
-      if (assistantInfo.isEmoji) {
-        return (
-          <span className={classNames('text-16px leading-none flex-shrink-0', composedClass)}>
-            {assistantInfo.logo}
-          </span>
-        );
-      }
+    const leadingMark = resolveConversationLeadingMark(conversation, assistantInfo, logos);
+    if (leadingMark.kind === 'emoji') {
+      return (
+        <span className={classNames('text-16px leading-none flex-shrink-0', composedClass)}>{leadingMark.value}</span>
+      );
+    }
+    if (leadingMark.kind === 'image') {
       return (
         <img
-          src={assistantInfo.logo}
-          alt={assistantInfo.name}
+          src={leadingMark.value}
+          alt={leadingMark.label}
           className={classNames('w-16px h-16px rounded-50% flex-shrink-0', composedClass)}
         />
       );
     }
-
-    const backendKey = getBackendKeyFromConversation(conversation);
-    const logo = getAgentLogo(backendKey);
-    if (logo) {
+    if (leadingMark.kind === 'assistant_fallback') {
       return (
-        <img
-          src={logo}
-          alt={`${backendKey || 'agent'} logo`}
-          className={classNames('w-16px h-16px rounded-50% flex-shrink-0', composedClass)}
+        <Robot
+          theme='outline'
+          size='16'
+          className={classNames('line-height-0 flex-shrink-0 text-t-secondary', composedClass)}
         />
       );
     }
@@ -168,15 +168,19 @@ const ConversationRow: React.FC<ConversationRowProps> = (props) => {
         )}
         <span className='size-22px flex items-center justify-center shrink-0 relative'>
           {isGenerating && !batchMode ? <Spin size={16} /> : renderLeadingIcon()}
-          {/* Pinned indicator: only visible when row is hovered, overlays leading icon */}
-          {!batchMode && isPinned && !isMobile && !isGenerating && (
-            <span
-              className='absolute inset-0 flex-center text-t-secondary pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity'
-              style={{ lineHeight: 0 }}
-            >
-              <Pushpin theme='outline' size='14' />
-            </span>
-          )}
+          {/* Hover overlay on the leading icon: drag handle for sortable pinned rows, pushpin marker otherwise */}
+          {!batchMode &&
+            isPinned &&
+            !isMobile &&
+            !isGenerating &&
+            (dragHandle ?? (
+              <span
+                className='absolute inset-0 flex-center text-t-secondary pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity'
+                style={{ lineHeight: 0 }}
+              >
+                <Pushpin theme='outline' size='14' />
+              </span>
+            ))}
         </span>
         <FlexFullContainer className='h-24px min-w-0 flex-1 collapsed-hidden'>
           <Tooltip
@@ -220,6 +224,10 @@ const ConversationRow: React.FC<ConversationRowProps> = (props) => {
                       onEditStart(conversation);
                       return;
                     }
+                    if (key === 'createCronTask') {
+                      onCreateCronTask(conversation);
+                      return;
+                    }
                     if (key === 'export') {
                       onExport?.(conversation);
                       return;
@@ -239,6 +247,12 @@ const ConversationRow: React.FC<ConversationRowProps> = (props) => {
                     <div className='flex items-center gap-8px'>
                       <EditOne theme='outline' size='14' />
                       <span>{t('conversation.history.rename')}</span>
+                    </div>
+                  </Menu.Item>
+                  <Menu.Item key='createCronTask'>
+                    <div className='flex items-center gap-8px'>
+                      <Timer theme='outline' size='14' />
+                      <span>{t('conversation.history.createCronTask')}</span>
                     </div>
                   </Menu.Item>
                   {onExport && (
@@ -265,6 +279,7 @@ const ConversationRow: React.FC<ConversationRowProps> = (props) => {
               unmountOnExit={false}
             >
               <span
+                data-testid={`conversation-row-menu-${conversation.id}`}
                 className={classNames(
                   'flex-center cursor-pointer transition-colors text-t-secondary hover:text-t-primary size-20px rd-4px sider-action-btn',
                   {

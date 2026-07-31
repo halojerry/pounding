@@ -11,10 +11,10 @@ import {
   Lightning,
   LinkCloud,
   Puzzle,
-  Robot,
   Speed,
   Theme,
   System,
+  Toolkit,
 } from '@icon-park/react';
 import classNames from 'classnames';
 import React, { useMemo } from 'react';
@@ -27,9 +27,9 @@ import { getSiderTooltipProps } from '@/renderer/utils/ui/siderTooltip';
 export const BUILTIN_TAB_IDS = [
   'agent',
   'model',
-  'assistants',
-  'capabilities',
-  'display',
+  'skills',
+  'tools',
+  'appearance',
   'webui',
   'pet',
   'system',
@@ -42,8 +42,9 @@ export const BUILTIN_TAB_IDS = [
  * This keeps older extensions working without requiring them to update.
  */
 export const LEGACY_ANCHOR_REMAP: Record<string, string> = {
-  'skills-hub': 'capabilities',
-  tools: 'capabilities',
+  'skills-hub': 'skills',
+  capabilities: 'skills',
+  display: 'appearance',
 };
 
 /**
@@ -53,7 +54,7 @@ export const LEGACY_ANCHOR_REMAP: Record<string, string> = {
  */
 const GROUP_HEADER_BEFORE: Record<string, string> = {
   agent: 'settings.groupAiCore',
-  display: 'settings.groupApp',
+  appearance: 'settings.groupApp',
   about: 'settings.groupAbout',
 };
 
@@ -82,25 +83,25 @@ const SettingsSider: React.FC<{ collapsed?: boolean; tooltipEnabled?: boolean }>
     // Build builtin items
     const builtinMap: Record<string, SiderItem> = {
       model: { id: 'model', label: t('settings.model'), icon: <LinkCloud />, path: 'model' },
-      assistants: {
-        id: 'assistants',
-        label: t('settings.assistants', { defaultValue: 'Assistants' }),
-        icon: <Robot />,
-        path: 'assistants',
-      },
       agent: {
         id: 'agent',
         label: t('settings.agents', { defaultValue: 'Agents' }),
         icon: <Speed />,
         path: 'agent',
       },
-      capabilities: {
-        id: 'capabilities',
-        label: t('settings.capabilities', { defaultValue: 'Capabilities' }),
+      skills: {
+        id: 'skills',
+        label: t('settings.skills', { defaultValue: 'Skills' }),
         icon: <Lightning />,
-        path: 'capabilities',
+        path: 'skills',
       },
-      display: { id: 'display', label: t('settings.display'), icon: <Theme />, path: 'display' },
+      tools: {
+        id: 'tools',
+        label: t('settings.tools', { defaultValue: 'Tools' }),
+        icon: <Toolkit />,
+        path: 'tools',
+      },
+      appearance: { id: 'appearance', label: t('settings.display'), icon: <Theme />, path: 'appearance' },
       webui: {
         id: 'webui',
         label: t('settings.webui'),
@@ -112,11 +113,13 @@ const SettingsSider: React.FC<{ collapsed?: boolean; tooltipEnabled?: boolean }>
       about: { id: 'about', label: t('settings.about'), icon: <Info />, path: 'about' },
     };
 
-    // Start with ordered builtin IDs, hiding desktop-only tabs in browser mode
-    // and hiding Pet in release builds.
+    // Start with ordered builtin IDs, hiding desktop-only tabs in browser mode,
+    // hiding Pet in release builds, and hiding Agent page in production.
     const isProduction = process.env.NODE_ENV === 'production';
     const result: SiderItem[] = BUILTIN_TAB_IDS.filter(
-      (id) => (isDesktop || id !== 'pet') && (!isProduction || id !== 'pet')
+      (id) =>
+        (isDesktop || id !== 'pet') &&
+        (!isProduction || (id !== 'pet' && id !== 'agent' && id !== 'model' && id !== 'appearance'))
     ).map((id) => builtinMap[id]);
 
     // Extension tabs with position anchoring

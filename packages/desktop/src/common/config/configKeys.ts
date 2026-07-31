@@ -45,33 +45,15 @@ export type ConfigKeyMap = {
   'tools.imageGenerationModel': TProviderWithModel & { switch?: boolean };
   'tools.speechToText': SpeechToTextConfig | undefined;
   'workspace.pasteConfirm': boolean | undefined;
+  'guid.lastAssistantId': string | undefined;
+  /** User-defined order for the enabled assistant picker surfaces. */
+  'assistants.enabledOrder': string[] | undefined;
   'upload.saveToWorkspace': boolean | undefined;
-  'guid.lastSelectedAgent': string | undefined;
   'system.closeToTray': boolean | undefined;
   'system.notificationEnabled': boolean | undefined;
   'system.cronNotificationEnabled': boolean | undefined;
   'system.keepAwake': boolean | undefined;
   'system.autoPreviewOfficeFiles': boolean | undefined;
-  'assistant.telegram.defaultModel': { id: string; use_model: string } | undefined;
-  'assistant.telegram.agent':
-    | { agent_type: string; backend?: string; id?: string; custom_agent_id?: string; name?: string }
-    | undefined;
-  'assistant.lark.defaultModel': { id: string; use_model: string } | undefined;
-  'assistant.lark.agent':
-    | { agent_type: string; backend?: string; id?: string; custom_agent_id?: string; name?: string }
-    | undefined;
-  'assistant.dingtalk.defaultModel': { id: string; use_model: string } | undefined;
-  'assistant.dingtalk.agent':
-    | { agent_type: string; backend?: string; id?: string; custom_agent_id?: string; name?: string }
-    | undefined;
-  'assistant.weixin.defaultModel': { id: string; use_model: string } | undefined;
-  'assistant.weixin.agent':
-    | { agent_type: string; backend?: string; id?: string; custom_agent_id?: string; name?: string }
-    | undefined;
-  'assistant.wecom.defaultModel': { id: string; use_model: string } | undefined;
-  'assistant.wecom.agent':
-    | { agent_type: string; backend?: string; id?: string; custom_agent_id?: string; name?: string }
-    | undefined;
   'skillsMarket.enabled': boolean | undefined;
   'pet.enabled': boolean | undefined;
   'pet.size': number | undefined;

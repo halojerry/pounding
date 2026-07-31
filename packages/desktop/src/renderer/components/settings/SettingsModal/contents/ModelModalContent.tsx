@@ -1,13 +1,24 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
 import { ipcBridge } from '@/common';
 import type { IProvider } from '@/common/config/storage';
+import { supportsOpenAiApiMode } from '@/common/utils/modelCapabilities';
 import { Button, Divider, Message, Popconfirm, Collapse, Tag, Switch, Tooltip } from '@arco-design/web-react';
-import { DeleteFour, Info, Minus, Plus, Write, Heartbeat } from '@icon-park/react';
+import {
+  DeleteFour,
+  Heartbeat,
+  Info,
+  Minus,
+  Plus,
+  PreviewClose,
+  PreviewOpen,
+  SettingTwo,
+  Write,
+} from '@icon-park/react';
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import AddModelModal from '@/renderer/pages/settings/components/AddModelModal';
@@ -15,8 +26,10 @@ import AddPlatformModal from '@/renderer/pages/settings/components/AddPlatformMo
 import { isNewApiPlatform, NEW_API_PROTOCOL_OPTIONS } from '@/renderer/utils/model/modelPlatforms';
 import EditModeModal from '@/renderer/pages/settings/components/EditModeModal';
 import AionScrollArea from '@/renderer/components/base/AionScrollArea';
+import TalkToButlerButton from '@/renderer/components/base/TalkToButlerButton';
 import { useProvidersQuery } from '@/renderer/hooks/agent/useModelProviderList';
 import { useSettingsViewMode } from '../settingsViewContext';
+import SettingsPageHeader from '@/renderer/pages/settings/components/SettingsPageHeader';
 import { consumePendingDeepLink } from '@/renderer/hooks/system/useDeepLink';
 import '../model-provider.css';
 
@@ -323,50 +336,68 @@ const ModelModalContent: React.FC = () => {
     },
   });
 
+  const headerActions = (
+    <>
+      <Button type='text' size='small' onClick={clearAllHealthData} className='!text-t-secondary hover:!text-t-primary'>
+        {t('settings.clearStatus')}
+      </Button>
+      <TalkToButlerButton
+        label={t('settings.addModel')}
+        chatLabel={t('settings.talkToButler.addViaChat', { defaultValue: 'Add via chat' })}
+        onManual={() => addPlatformModalCtrl.open()}
+        manualLabel={t('settings.talkToButler.addManually', { defaultValue: 'Add manually' })}
+        prompt={t('settings.talkToButler.prompt.addModel', {
+          defaultValue: 'Help me add a new LLM provider and API key, then set it as the default model.',
+        })}
+      />
+    </>
+  );
+
+  const supportNote = (
+    <div
+      className='rd-8px px-12px py-8px text-12px leading-5 border border-solid'
+      style={{
+        borderColor: 'rgba(var(--primary-6),0.32)',
+        backgroundColor: 'rgba(var(--primary-6),0.08)',
+        color: 'rgb(var(--primary-6))',
+      }}
+    >
+      {t('settings.customModelSupportNote')}
+    </div>
+  );
+
   return (
-    <div className='flex flex-col bg-2 rd-16px px-16px md:px-24px lg:px-28px py-16px md:py-18px'>
+    <div
+      className={
+        isPageMode
+          ? 'flex flex-col gap-16px'
+          : 'flex flex-col bg-2 rd-16px px-16px md:px-24px lg:px-28px py-16px md:py-18px'
+      }
+    >
       {messageContext}
       {addPlatformModalContext}
       {editModalContext}
       {addModelModalContext}
 
-      {/* Header with Add Button */}
-      <div className='flex-shrink-0 border-b border-[var(--color-border-2)] pb-12px mb-14px flex flex-col gap-10px'>
-        <div className='flex items-center justify-between gap-8px flex-wrap'>
-          <div className='text-20px font-600 text-t-primary leading-34px'>{t('settings.model')}</div>
-          <div className='flex items-center gap-8px flex-wrap'>
-            <Button
-              type='outline'
-              shape='round'
-              size='small'
-              onClick={clearAllHealthData}
-              className='rd-100px border-1 border-solid border-[var(--color-border-2)] h-34px px-14px text-t-secondary hover:text-t-primary'
-            >
-              {t('settings.clearStatus')}
-            </Button>
-            <Button
-              type='outline'
-              shape='round'
-              icon={<Plus size='16' />}
-              onClick={() => addPlatformModalCtrl.open()}
-              className='rd-100px border-1 border-solid border-[var(--color-border-2)] h-34px px-14px text-t-secondary hover:text-t-primary'
-              style={{ display: 'none' }}
-            >
-              {t('settings.addModel')}
-            </Button>
+      {isPageMode ? (
+        <SettingsPageHeader
+          data-testid='model-header'
+          title={t('settings.model')}
+          description={t('settings.modelDescription', {
+            defaultValue: 'Configure LLM providers and API keys for use across all assistants.',
+          })}
+          actions={headerActions}
+        />
+      ) : (
+        /* Modal mode keeps its compact self-contained header. */
+        <div className='flex-shrink-0 border-b border-[var(--color-border-2)] pb-12px mb-14px flex flex-col gap-10px'>
+          <div className='flex items-center justify-between gap-8px flex-wrap'>
+            <div className='text-20px font-600 text-t-primary leading-34px'>{t('settings.model')}</div>
+            <div className='flex items-center gap-8px flex-wrap'>{headerActions}</div>
           </div>
+          {supportNote}
         </div>
-        <div
-          className='rd-8px px-12px py-8px text-12px leading-5 border border-solid'
-          style={{
-            borderColor: 'rgba(var(--primary-6),0.32)',
-            backgroundColor: 'rgba(var(--primary-6),0.08)',
-            color: 'rgb(var(--primary-6))',
-          }}
-        >
-          {t('settings.customModelSupportNote')}
-        </div>
-      </div>
+      )}
 
       {/* Content Area */}
       <AionScrollArea className='flex-1 min-h-0' disableOverflow={isPageMode}>
@@ -482,13 +513,16 @@ const ModelModalContent: React.FC = () => {
                     {(platform.models ?? []).map((model: string, index: number, arr: string[]) => {
                       const isNewApiProvider = isNewApiPlatform(platform.platform);
                       const modelProtocol = platform.model_protocols?.[model] || 'openai';
+                      const modelSettings = platform.model_settings?.[model];
+                      const imageInput = modelSettings?.image_input ?? 'auto';
+                      const showOpenAiApiMode = supportsOpenAiApiMode(platform.platform, modelProtocol);
                       const model_health = platform.model_health?.[model];
                       const healthStatus = model_health?.status || 'unknown';
 
                       return (
                         <div key={model}>
-                          <div className='flex items-center justify-between px-8px py-12px transition-colors hover:bg-[var(--fill-0)]'>
-                            <div className='flex items-center gap-8px'>
+                          <div className='flex items-center justify-between gap-8px px-8px py-12px transition-colors hover:bg-[var(--fill-0)]'>
+                            <div className='flex min-w-0 flex-1 items-center gap-8px'>
                               {/* 健康状态指示器 / Health status indicator */}
                               {healthStatus !== 'unknown' && (
                                 <Tooltip
@@ -517,19 +551,19 @@ const ModelModalContent: React.FC = () => {
                                   }
                                 >
                                   <div
-                                    className={`w-8px h-8px rounded-full ${healthStatus === 'healthy' ? 'bg-green-500' : 'bg-red-500'}`}
+                                    className={`h-8px w-8px shrink-0 rounded-full ${healthStatus === 'healthy' ? 'bg-green-500' : 'bg-red-500'}`}
                                   />
                                 </Tooltip>
                               )}
 
-                              <span className='text-14px text-t-primary'>{model}</span>
+                              <span className='min-w-0 flex-1 truncate text-14px text-t-primary'>{model}</span>
 
                               {/* New API 协议标签（点击循环切换）/ New API protocol badge (click to cycle) */}
                               {isNewApiProvider && (
                                 <Tag
                                   size='small'
                                   color={getProtocolColor(modelProtocol)}
-                                  className='cursor-pointer select-none'
+                                  className='shrink-0 cursor-pointer select-none'
                                   onClick={() => {
                                     const nextProtocol = getNextProtocol(modelProtocol);
                                     const newProtocols = { ...platform.model_protocols };
@@ -541,8 +575,41 @@ const ModelModalContent: React.FC = () => {
                                 </Tag>
                               )}
 
+                              <Tooltip
+                                content={
+                                  imageInput === 'supported'
+                                    ? t('settings.imageInputSupported')
+                                    : imageInput === 'unsupported'
+                                      ? t('settings.imageInputUnsupported')
+                                      : t('settings.imageInputAuto')
+                                }
+                              >
+                                <span
+                                  className={`inline-flex h-20px w-20px shrink-0 items-center justify-center ${
+                                    imageInput === 'supported' ? 'text-success-6' : 'text-t-secondary'
+                                  }`}
+                                >
+                                  {imageInput !== 'unsupported' ? (
+                                    <PreviewOpen theme='outline' size='15' />
+                                  ) : (
+                                    <PreviewClose theme='outline' size='15' />
+                                  )}
+                                </span>
+                              </Tooltip>
+
+                              {showOpenAiApiMode && (
+                                <Tag size='small' className='hidden shrink-0 md:inline-flex'>
+                                  {modelSettings?.openai_api_mode === 'responses'
+                                    ? t('settings.openAiApiModeResponses')
+                                    : modelSettings?.openai_api_mode === 'chat_completions'
+                                      ? t('settings.openAiApiModeChatCompletions')
+                                      : t('settings.openAiApiModeAuto')}
+                                </Tag>
+                              )}
+
                               {/* 模型启用开关 / Model enable switch */}
                               <Switch
+                                className='shrink-0'
                                 size='small'
                                 checked={isModelEnabled(platform, model)}
                                 onChange={(checked) => toggleModelEnabled(platform, model, checked)}
@@ -550,6 +617,15 @@ const ModelModalContent: React.FC = () => {
                             </div>
 
                             <div className='flex items-center gap-6px shrink-0'>
+                              <Tooltip content={t('settings.configureModel')}>
+                                <Button
+                                  size='mini'
+                                  className='!w-28px !h-28px !min-w-28px !bg-[var(--color-bg-1)] text-t-secondary hover:text-t-primary hover:!bg-[var(--fill-0)]'
+                                  icon={<SettingTwo theme='outline' size='16' />}
+                                  onClick={() => addModelModalCtrl.open({ data: platform, model })}
+                                />
+                              </Tooltip>
+
                               {/* 心跳检测按钮 / Health check button */}
                               <Tooltip content={t('settings.healthCheck')}>
                                 <Button
@@ -571,9 +647,11 @@ const ModelModalContent: React.FC = () => {
                                   const newProtocols = { ...platform.model_protocols };
                                   const newModelEnabled = { ...platform.model_enabled };
                                   const newModelHealth = { ...platform.model_health };
+                                  const newModelSettings = { ...platform.model_settings };
                                   delete newProtocols[model];
                                   delete newModelEnabled[model];
                                   delete newModelHealth[model];
+                                  delete newModelSettings[model];
 
                                   updatePlatform(
                                     {
@@ -583,6 +661,7 @@ const ModelModalContent: React.FC = () => {
                                       model_enabled:
                                         Object.keys(newModelEnabled).length > 0 ? newModelEnabled : undefined,
                                       model_health: Object.keys(newModelHealth).length > 0 ? newModelHealth : undefined,
+                                      model_settings: newModelSettings,
                                     },
                                     () => {}
                                   );

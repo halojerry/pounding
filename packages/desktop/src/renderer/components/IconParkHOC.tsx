@@ -1,12 +1,11 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
 import React from 'react';
 import { IconProvider, DEFAULT_ICON_CONFIGS } from '@icon-park/react/es/runtime';
-import { theme } from '@office-ai/platform';
 import { iconColors } from '@/renderer/styles/colors';
 
 type IconParkProps = {
@@ -23,7 +22,7 @@ const IconParkHOC = <T extends object>(Component: React.FunctionComponent<T>): R
       {
         value: {
           ...DEFAULT_ICON_CONFIGS,
-          size: theme.Size.IconSize.normal,
+          size: 16,
         },
       },
       [

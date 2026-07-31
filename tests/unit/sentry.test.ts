@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  *
  * Unit tests for the pure helpers exported from `packages/desktop/src/sentry.ts`:
@@ -11,6 +11,9 @@
 import { describe, it, expect, vi } from 'vitest';
 import { gunzipSync } from 'node:zlib';
 import { randomBytes } from 'node:crypto';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import * as path from 'node:path';
 
 vi.mock('electron', () => ({
   app: { getVersion: () => '0.0.0-test', getPath: () => '/tmp', isPackaged: false },
@@ -43,8 +46,13 @@ vi.mock('@/process/utils/analyticsId', () => ({
   getOrCreateAnalyticsId: () => 'test-device-id',
 }));
 
+const autoUpdateDiagnosticsMock = vi.hoisted(() => ({ readAutoUpdateDiagnostics: vi.fn() }));
+vi.mock('@/process/services/autoUpdateDiagnostics', () => ({
+  readAutoUpdateDiagnostics: autoUpdateDiagnosticsMock.readAutoUpdateDiagnostics,
+}));
+
 import * as Sentry from '@sentry/electron/main';
-import { selectRecentLogFiles, packAndCap, captureBackendStartupFailure, initSentry } from '@/sentry';
+import { listLogFilesSync, selectRecentLogFiles, packAndCap, captureBackendStartupFailure, initSentry } from '@/sentry';
 
 describe('selectRecentLogFiles', () => {
   it('returns every file from the N most recent non-empty days', () => {
@@ -73,6 +81,30 @@ describe('selectRecentLogFiles', () => {
     ];
     const picked = selectRecentLogFiles(files, 7);
     expect(picked).toHaveLength(2);
+  });
+});
+
+describe('listLogFilesSync', () => {
+  it('finds log files under dated year/month/day directories', () => {
+    const logsDir = mkdtempSync(path.join(tmpdir(), 'aionui-sentry-logs-'));
+    try {
+      const datedDir = path.join(logsDir, '2026', '07', '02');
+      mkdirSync(datedDir, { recursive: true });
+      writeFileSync(path.join(datedDir, '2026-07-02.aioncore.log'), 'backend\n');
+      writeFileSync(path.join(datedDir, '2026-07-02.aionrs.log'), 'aionrs\n');
+      writeFileSync(path.join(logsDir, '2026-07-02.log'), 'frontend\n');
+
+      const files = listLogFilesSync(logsDir);
+      const relative = files.map((file) => path.relative(logsDir, file.path).split(path.sep).join('/')).toSorted();
+
+      expect(relative).toEqual([
+        '2026-07-02.log',
+        '2026/07/02/2026-07-02.aioncore.log',
+        '2026/07/02/2026-07-02.aionrs.log',
+      ]);
+    } finally {
+      rmSync(logsDir, { recursive: true, force: true });
+    }
   });
 });
 
@@ -125,6 +157,145 @@ describe('captureBackendStartupFailure', () => {
         platform: process.platform,
       })
     );
+  });
+
+  it('sets flattened incomplete-installation tags for update-related missing directory resources', async () => {
+    scopeSetTag.mockClear();
+    scopeSetContext.mockClear();
+    autoUpdateDiagnosticsMock.readAutoUpdateDiagnostics.mockReturnValue({
+      currentAppVersion: '2.1.8',
+      events: [],
+      lastEvent: {
+        at: '2026-06-01T22:41:03.273Z',
+        status: 'quit-and-install',
+      },
+      lastQuitAndInstallAt: '2026-06-01T22:41:03.273Z',
+    });
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-01T22:41:49.273Z'));
+
+    try {
+      const error = new Error('aioncore startup failed while resolving backend binary') as Error & {
+        details?: Record<string, unknown>;
+      };
+      error.details = {
+        stage: 'resolve_binary',
+        isPackaged: true,
+        runtimeKey: 'win32-x64',
+        binaryName: 'aioncore.exe',
+        resourcesPath: 'C:\\Users\\alice\\AppData\\Local\\Programs\\POUNDING\\resources',
+        bundledDirExists: false,
+        runtimeDirExists: false,
+        resourcesDirEntries: [
+          'app-update.yml',
+          'app.asar',
+          'app.asar.unpacked/',
+          'app.png',
+          'elevate.exe',
+          'manifest.webmanifest',
+          'sw.js',
+        ],
+      };
+
+      await captureBackendStartupFailure(error);
+
+      expect(scopeSetTag).toHaveBeenCalledWith(
+        'pounding.backend_startup.incomplete_installation_kind',
+        'missing_directory_resources'
+      );
+      expect(scopeSetTag).toHaveBeenCalledWith('pounding.backend_startup.missing_bundled_dir', 'true');
+      expect(scopeSetTag).toHaveBeenCalledWith('pounding.backend_startup.missing_runtime_dir', 'true');
+      expect(scopeSetTag).toHaveBeenCalledWith('pounding.backend_startup.missing_binary', 'true');
+      expect(scopeSetTag).toHaveBeenCalledWith('pounding.backend_startup.missing_hub_dir', 'true');
+      expect(scopeSetTag).toHaveBeenCalledWith('pounding.backend_startup.last_update_status', 'quit-and-install');
+      expect(scopeSetTag).toHaveBeenCalledWith('pounding.backend_startup.seconds_since_quit_and_install', '46');
+      // getInstallPathKind still matches the upstream `...\Programs\POUNDING\resources`
+      // pattern; the POUNDING install path classifies as 'custom'.
+      expect(scopeSetTag).toHaveBeenCalledWith('pounding.backend_startup.install_path_kind', 'custom');
+      expect(scopeSetContext).toHaveBeenCalledWith(
+        'poundingcore_startup_classification',
+        expect.objectContaining({
+          incompleteInstallationKind: 'missing_directory_resources',
+          missingBundledAioncoreDir: true,
+          missingRuntimeDir: true,
+          missingBackendBinary: true,
+        })
+      );
+    } finally {
+      vi.useRealTimers();
+      autoUpdateDiagnosticsMock.readAutoUpdateDiagnostics.mockReturnValue(undefined);
+    }
+  });
+
+  it('sets bucketed health polling tags for backend startup timeouts', async () => {
+    scopeSetTag.mockClear();
+    autoUpdateDiagnosticsMock.readAutoUpdateDiagnostics.mockReturnValue(undefined);
+    const error = new Error('aioncore failed to start within timeout') as Error & {
+      details?: Record<string, unknown>;
+    };
+    error.details = {
+      stage: 'health_timeout',
+      binaryPath: '/abs/path/aioncore',
+      port: 33334,
+      healthCheckAttempts: 1,
+      healthCheckExpectedAttempts: 150,
+      healthCheckAttemptDeficit: 149,
+      healthCheckPollingDelayed: true,
+      healthCheckTimeoutOverrunMs: 515_417,
+      healthCheckMaxAttemptGapMs: 0,
+    };
+
+    await captureBackendStartupFailure(error);
+
+    expect(scopeSetTag).toHaveBeenCalledWith('pounding.backend_startup.health_polling_delayed', 'true');
+    expect(scopeSetTag).toHaveBeenCalledWith('pounding.backend_startup.health_attempts_bucket', '1');
+    expect(scopeSetTag).toHaveBeenCalledWith('pounding.backend_startup.health_attempt_deficit_bucket', '76-150');
+    expect(scopeSetTag).toHaveBeenCalledWith('pounding.backend_startup.health_timeout_overrun_bucket', 'over_60s');
+    expect(scopeSetTag).toHaveBeenCalledWith('pounding.backend_startup.health_max_attempt_gap_bucket', '0ms');
+  });
+
+  it('sets backend data migration reason and boundary tags', async () => {
+    scopeSetTag.mockClear();
+    const error = new Error('aioncore exited before health check passed') as Error & {
+      details?: Record<string, unknown>;
+    };
+    error.details = {
+      stage: 'early_exit',
+      backendBoundaryCode: 'BOOTSTRAP_DATA_INIT_FAILED',
+      backendBoundaryStage: 'database.migration',
+      stderrTail:
+        'BOOTSTRAP_DATA_INIT_FAILED stage=database.migration databasePath=/db/aionui-backend.db: failed to initialize application data',
+    };
+
+    await captureBackendStartupFailure(error);
+
+    expect(scopeSetTag).toHaveBeenCalledWith('pounding.backend_startup.reason', 'backend_data_migration_failed');
+    expect(scopeSetTag).toHaveBeenCalledWith('aionui.backend_startup.boundary_code', 'BOOTSTRAP_DATA_INIT_FAILED');
+    expect(scopeSetTag).toHaveBeenCalledWith('aionui.backend_startup.boundary_stage', 'database.migration');
+  });
+
+  it('sets local data repair reason and issue-kind tags', async () => {
+    scopeSetTag.mockClear();
+    const error = new Error('aioncore exited before health check passed') as Error & {
+      details?: Record<string, unknown>;
+    };
+    error.details = {
+      stage: 'early_exit',
+      backendBoundaryCode: 'BOOTSTRAP_SERVICE_INIT_FAILED',
+      backendBoundaryStage: 'services.init',
+      stderrTail:
+        'Failed to hydrate agent registry: Internal error: load agent_metadata: Database query failed: error occurred while decoding column "config_options": invalid utf-8 sequence of 1 bytes from index 793',
+    };
+
+    await captureBackendStartupFailure(error);
+
+    expect(scopeSetTag).toHaveBeenCalledWith('pounding.backend_startup.reason', 'backend_local_data_repair_failed');
+    expect(scopeSetTag).toHaveBeenCalledWith(
+      'aionui.backend_startup.local_data_issue_kind',
+      'agent_metadata_invalid_utf8'
+    );
+    expect(scopeSetTag).toHaveBeenCalledWith('aionui.backend_startup.boundary_code', 'BOOTSTRAP_SERVICE_INIT_FAILED');
+    expect(scopeSetTag).toHaveBeenCalledWith('aionui.backend_startup.boundary_stage', 'services.init');
   });
 });
 
@@ -190,6 +361,29 @@ describe('initSentry beforeSend', () => {
             value: 'BackendStartupError: connect ECONNREFUSED 127.0.0.1:33334',
           },
         ],
+      },
+    };
+
+    expect(sentryInitOptions?.beforeSend?.(event)).toBe(event);
+
+    delete (globalThis as { __backendStartupFailed?: boolean }).__backendStartupFailed;
+  });
+
+  it('keeps user feedback reports even when diagnostics contain backend secondary text', () => {
+    initSentry();
+    (globalThis as { __backendStartupFailed?: boolean }).__backendStartupFailed = true;
+
+    const event = {
+      tags: {
+        type: 'user-feedback',
+        'aionui.installation_integrity.user_report': 'true',
+      },
+      extra: {
+        installation_integrity: {
+          backendStartupFailure: {
+            message: 'BackendStartupError: connect ECONNREFUSED 127.0.0.1:33334',
+          },
+        },
       },
     };
 

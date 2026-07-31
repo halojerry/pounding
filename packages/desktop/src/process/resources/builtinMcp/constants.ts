@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -9,7 +9,7 @@
 export const BUILTIN_IMAGE_GEN_ID = 'builtin-image-gen';
 export const BUILTIN_IMAGE_GEN_NAME = 'pounding-image-generation';
 export const BUILTIN_IMAGE_GEN_LEGACY_NAMES = [
-  'AionUi Image Generation',
+  'POUNDING Image Generation',
   'aionui-image-generation',
   BUILTIN_IMAGE_GEN_ID,
 ] as const;

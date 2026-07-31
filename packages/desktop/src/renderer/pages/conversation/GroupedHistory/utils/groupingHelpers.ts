@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -15,11 +15,6 @@ import { getConversationSortOrder } from './sortOrderHelpers';
 export const isConversationPinned = (conversation: TChatConversation): boolean => {
   const extra = conversation.extra as { pinned?: boolean } | undefined;
   return Boolean(extra?.pinned);
-};
-
-export const isCronJobConversation = (conversation: TChatConversation): boolean => {
-  const extra = conversation.extra as { cron_job_id?: string } | undefined;
-  return Boolean(extra?.cron_job_id);
 };
 
 export const getConversationPinnedAt = (conversation: TChatConversation): number => {
@@ -117,9 +112,7 @@ export const buildGroupedHistory = (
       return getConversationPinnedAt(b) - getConversationPinnedAt(a);
     });
 
-  const normalConversations = visibleConversations.filter(
-    (conversation) => !isConversationPinned(conversation) && !isCronJobConversation(conversation)
-  );
+  const normalConversations = visibleConversations.filter((conversation) => !isConversationPinned(conversation));
 
   return {
     pinnedConversations,

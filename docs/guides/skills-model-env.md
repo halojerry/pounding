@@ -13,7 +13,7 @@ POUNDING 的技能与工具链路必须满足以下原则：
    - skill / MCP / tool 不再单独要求用户填写 URL、Key、Model
 
 2. **单一配置源**
-   - URL、Key、模型名只在 AionUi / POUNDING 的模型配置中心维护一份
+   - URL、Key、模型名只在 POUNDING / POUNDING 的模型配置中心维护一份
    - skill 不自己保存第二份
 
 3. **运行时注入**
@@ -148,7 +148,7 @@ POUNDING 的技能与工具链路必须满足以下原则：
 
 ```text
 POUNDING 登录 / 自动配置模型
-  -> provider 配置写入 AionUi 配置中心
+  -> provider 配置写入 POUNDING 配置中心
   -> 宿主在运行 skill / MCP / tool 时注入 env
   -> skill / tool 从 env 读取
   -> 直接调用 api.mxou.cn 对应模型

@@ -1,4 +1,4 @@
-# Maintainer Checklist — POUNDING Fork (AionUi)
+# Maintainer Checklist — POUNDING Fork (POUNDING)
 
 ## 1. Upstream Sync
 

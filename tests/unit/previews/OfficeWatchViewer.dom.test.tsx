@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  *
  * N4c V8: OfficeWatchViewer export-shape smoke test.
@@ -41,7 +41,7 @@ describe('OfficeWatchViewer module shape', () => {
 
   it('uses official POUNDING OfficeCLI releases page', async () => {
     const mod = await import('@/renderer/pages/conversation/Preview/components/viewers/OfficeWatchViewer');
-    expect(mod.OFFICECLI_INSTALL_URL).toBe('https://github.com/halojerry/OfficeCli/releases');
+    expect(mod.OFFICECLI_INSTALL_URL).toBe('https://github.com/iOfficeAI/OfficeCLI/releases');
   });
 });
 
@@ -101,7 +101,7 @@ describe('resolveOfficeWatchUrl (Electron mode)', () => {
 
 /**
  * Web (server) deployments must not point users at a desktop install link:
- * officecli has to be installed on the machine running AionUi, so the error
+ * officecli has to be installed on the machine running POUNDING, so the error
  * panel shows a copyable server-side command instead (issue #3212 follow-up).
  */
 describe('resolveOfficeErrorActions', () => {

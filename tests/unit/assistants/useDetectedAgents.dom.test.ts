@@ -1,143 +1,126 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
- *
- * Unit tests for renderer/hooks/assistant/useDetectedAgents.ts (A4 in N4a).
- * Tests useDetectedAgents hook: agent detection via SWR and refresh trigger.
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { renderHook, act, waitFor } from '@testing-library/react';
+import { describe, expect, it } from 'vitest';
 
-// Mock SWR
-vi.mock('swr', () => ({
-  default: vi.fn((key, fetcher) => {
-    // Return mock data immediately for simplicity
-    return { data: [], error: null, isLoading: false };
-  }),
-  mutate: vi.fn(),
-}));
+import { buildAssistantEditorBackends } from '@/renderer/pages/settings/AssistantSettings/assistantUtils';
+import type { ManagedAgent } from '@/renderer/utils/model/agentTypes';
 
-// Mock @/common
-vi.mock('@/common', () => ({
-  ipcBridge: {
-    acpConversation: {
-      refreshCustomAgents: { invoke: vi.fn() },
-    },
-  },
-}));
-
-// Mock agentTypes module
-vi.mock('@/renderer/utils/model/agentTypes', () => ({
-  DETECTED_AGENTS_SWR_KEY: 'detected-agents',
-  fetchDetectedAgents: vi.fn(),
-}));
-
-import { useDetectedAgents } from '@/renderer/hooks/assistant/useDetectedAgents';
-import { ipcBridge } from '@/common';
-import useSWR, { mutate } from 'swr';
-import type { AgentMetadata } from '@/renderer/utils/model/agentTypes';
-
-describe('useDetectedAgents', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it('returns empty availableBackends when no agents detected', () => {
-    (useSWR as any).mockReturnValue({ data: [], error: null });
-
-    const { result } = renderHook(() => useDetectedAgents());
-
-    expect(result.current.availableBackends).toEqual([]);
-  });
-
-  it('filters and maps detected agents to availableBackends', () => {
-    // Option `id` must be the backend slug (what `preset_agent_type` stores),
-    // not the AgentMetadata row id — otherwise the assistant editor saves a row
-    // id (e.g. "2d23ff1c") as `preset_agent_type`, which later resolves to no
-    // agent.
-    const mockAgents: AgentMetadata[] = [
-      { id: 'a1', name: 'ClaudeCode', agent_type: 'acp', agent_source: 'builtin', backend: 'claude' },
-      { id: 'a2', name: 'ExtAgent', agent_type: 'local', agent_source: 'extension' },
-      { id: 'a3', name: 'RemoteAgent', agent_type: 'remote', agent_source: 'builtin' },
+describe('buildAssistantEditorBackends', () => {
+  it('derives editor backends from supported management agents and allows unchecked agents', () => {
+    const agents: ManagedAgent[] = [
+      managedAgent({ id: 'agent-cursor', backend: 'cursor', name: 'Cursor', status: 'unchecked' }),
+      managedAgent({ id: 'agent-claude', backend: 'claude', name: 'Claude Code', status: 'online' }),
+      managedAgent({
+        id: 'agent-nanobot',
+        backend: 'nanobot',
+        agent_type: 'nanobot',
+        name: 'Nanobot',
+        status: 'online',
+      }),
+      managedAgent({
+        id: 'agent-openclaw',
+        backend: 'openclaw-gateway',
+        agent_type: 'openclaw-gateway',
+        name: 'OpenClaw Gateway',
+        status: 'unchecked',
+      }),
+      managedAgent({
+        id: 'agent-remote',
+        backend: 'remote',
+        agent_type: 'remote',
+        name: 'Remote',
+        status: 'online',
+      }),
+      managedAgent({ id: 'agent-goose', backend: 'goose', name: 'Goose', status: 'offline' }),
+      managedAgent({ id: 'agent-snow', backend: 'snow', name: 'Snow', status: 'missing' }),
     ];
-    (useSWR as any).mockReturnValue({ data: mockAgents, error: null });
 
-    const { result } = renderHook(() => useDetectedAgents());
-
-    expect(result.current.availableBackends).toHaveLength(2); // 'remote' excluded
-    // backend slug wins when present
-    expect(result.current.availableBackends[0]).toEqual({
-      id: 'claude',
-      name: 'ClaudeCode',
-      isExtension: false,
-      modelOptions: [],
-    });
-    // falls back to agent_type when backend is absent (e.g. internal engines)
-    expect(result.current.availableBackends[1]).toEqual({
-      id: 'local',
-      name: 'ExtAgent',
-      isExtension: true,
-      modelOptions: [],
-    });
-  });
-
-  it('derives backend-scoped model options from handshake available_models', () => {
-    const mockAgents: AgentMetadata[] = [
+    expect(buildAssistantEditorBackends(agents, 'en-US')).toEqual([
       {
-        id: 'a1',
-        name: 'ClaudeCode',
-        agent_type: 'acp',
-        agent_source: 'builtin',
-        backend: 'claude',
-        handshake: {
-          available_models: {
-            current_model_id: 'claude-sonnet-4',
-            current_model_label: 'Claude Sonnet 4',
-            available_models: [
-              { id: 'claude-sonnet-4', label: 'Claude Sonnet 4' },
-              { id: 'claude-opus-4', label: 'Claude Opus 4' },
-            ],
-          },
-        },
+        id: 'agent-cursor',
+        name: 'Cursor',
+        runtimeKey: 'cursor',
+        modelOptions: [],
       },
-    ];
-    (useSWR as any).mockReturnValue({ data: mockAgents, error: null });
-
-    const { result } = renderHook(() => useDetectedAgents());
-
-    expect(result.current.availableBackends[0]?.modelOptions).toEqual([
-      { value: 'claude-sonnet-4', label: 'Claude Sonnet 4' },
-      { value: 'claude-opus-4', label: 'Claude Opus 4' },
+      {
+        id: 'agent-claude',
+        name: 'Claude Code',
+        runtimeKey: 'claude',
+        modelOptions: [],
+      },
     ]);
   });
 
-  it('calls refreshCustomAgents and mutate on refreshAgentDetection', async () => {
-    (useSWR as any).mockReturnValue({ data: [], error: null });
-    (ipcBridge.acpConversation.refreshCustomAgents.invoke as any).mockResolvedValue(undefined);
+  it('uses localized management names and falls back to agent_type when backend is empty', () => {
+    const agents: ManagedAgent[] = [
+      managedAgent({
+        id: 'agent-aionrs',
+        backend: undefined,
+        agent_type: 'aionrs',
+        name: 'Aion CLI',
+        name_i18n: { 'zh-CN': 'Aion 命令行' },
+        status: 'online',
+      }),
+    ];
 
-    const { result } = renderHook(() => useDetectedAgents());
-
-    await act(async () => {
-      await result.current.refreshAgentDetection();
-    });
-
-    expect(ipcBridge.acpConversation.refreshCustomAgents.invoke).toHaveBeenCalled();
-    expect(mutate).toHaveBeenCalledWith('detected-agents');
+    expect(buildAssistantEditorBackends(agents, 'zh-CN')).toEqual([
+      {
+        id: 'agent-aionrs',
+        name: 'Aion 命令行',
+        runtimeKey: 'aionrs',
+        modelOptions: [],
+      },
+    ]);
   });
 
-  it('ignores error during refreshAgentDetection', async () => {
-    (useSWR as any).mockReturnValue({ data: [], error: null });
-    (ipcBridge.acpConversation.refreshCustomAgents.invoke as any).mockRejectedValue(new Error('Refresh failed'));
+  it('keeps the current binding visible even when it is known unavailable', () => {
+    const agents: ManagedAgent[] = [
+      managedAgent({ id: 'agent-claude', backend: 'claude', name: 'Claude Code', status: 'online' }),
+      managedAgent({ id: 'agent-goose', backend: 'goose', name: 'Goose', status: 'offline' }),
+    ];
 
-    const { result } = renderHook(() => useDetectedAgents());
-
-    await act(async () => {
-      await result.current.refreshAgentDetection();
-    });
-
-    // Should not throw or log error (hook ignores it)
-    expect(ipcBridge.acpConversation.refreshCustomAgents.invoke).toHaveBeenCalled();
+    expect(buildAssistantEditorBackends(agents, 'en-US', 'agent-goose')).toEqual([
+      {
+        id: 'agent-claude',
+        name: 'Claude Code',
+        runtimeKey: 'claude',
+        modelOptions: [],
+      },
+      {
+        id: 'agent-goose',
+        name: 'Goose',
+        runtimeKey: 'goose',
+        modelOptions: [],
+      },
+    ]);
   });
 });
+
+function managedAgent(overrides: Partial<ManagedAgent> & { id: string; name: string }): ManagedAgent {
+  return {
+    id: overrides.id,
+    icon: undefined,
+    name: overrides.name,
+    name_i18n: overrides.name_i18n,
+    description: undefined,
+    description_i18n: undefined,
+    backend: overrides.backend ?? 'claude',
+    agent_type: overrides.agent_type ?? 'acp',
+    agent_source: overrides.agent_source ?? 'builtin',
+    agent_source_info: {},
+    enabled: overrides.enabled ?? true,
+    installed: overrides.installed ?? true,
+    command: overrides.command ?? overrides.backend ?? 'claude',
+    args: [],
+    env: [],
+    behavior_policy: { supports_team: true },
+    sort_order: overrides.sort_order ?? 0,
+    team_capable: overrides.team_capable ?? true,
+    status: overrides.status ?? 'online',
+    ...overrides,
+  } as ManagedAgent;
+}

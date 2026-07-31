@@ -1,14 +1,17 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
 import type { CustomAgentAdvancedOverrides } from '@/common/types/platform/acpTypes';
-import type { AgentMetadata } from '@/renderer/utils/model/agentTypes';
-import { acpConversation } from '@/common/adapter/ipcBridge';
-import { Alert, Avatar, Button, Collapse, Input, Typography } from '@arco-design/web-react';
-import { Plus, Delete, CheckOne, CloseOne } from '@icon-park/react';
+import type { AgentMetadata, ManagedAgent } from '@/renderer/utils/model/agentTypes';
+import { acpConversation, dialog, fs } from '@/common/adapter/ipcBridge';
+import { useAssistantList } from '@/renderer/hooks/assistant';
+import { resolveAvatarImageSrc } from '@/renderer/pages/settings/AssistantSettings/assistantUtils';
+import { resolveAssistantAvatar } from '@/renderer/utils/model/assistantAvatar';
+import { Alert, Avatar, Button, Collapse, Input, Message, Typography } from '@arco-design/web-react';
+import { CheckOne, CloseOne } from '@icon-park/react';
 import EmojiPicker from '@/renderer/components/chat/EmojiPicker';
 import CodeMirror from '@uiw/react-codemirror';
 import { json } from '@codemirror/lang-json';
@@ -16,6 +19,60 @@ import { useThemeContext } from '@/renderer/hooks/context/ThemeContext';
 import { uuid } from '@/common/utils';
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import EnvVarEditor, { type EnvVarRow } from './EnvVarEditor';
+
+/**
+ * Longest edge (in px) a custom-agent avatar image is downscaled to before
+ * being re-encoded as a JPEG data URL. Custom agents persist their avatar in
+ * the `icon` TEXT column (there is no `/api/agents/{id}/avatar` route), so we
+ * keep the base64 payload small while staying crisp at the sizes the UI
+ * renders (≤48px in the editor, ≤32px in lists).
+ */
+const AVATAR_MAX_EDGE = 256;
+const AVATAR_JPEG_QUALITY = 0.85;
+
+/**
+ * Downscale an image data URL so it fits within `maxEdge` square and re-encode
+ * it as a JPEG data URL. SVGs are returned untouched — `<canvas>` cannot
+ * rasterize SVG markup, and SVGs are already tiny. Rejects (→ original) if the
+ * image fails to decode; the caller keeps the previous avatar in that case.
+ */
+async function downscaleAvatarDataUrl(
+  sourceDataUrl: string,
+  maxEdge = AVATAR_MAX_EDGE,
+  quality = AVATAR_JPEG_QUALITY
+): Promise<string> {
+  if (sourceDataUrl.startsWith('data:image/svg')) return sourceDataUrl;
+
+  return new Promise((resolve) => {
+    const image = new Image();
+    image.onload = () => {
+      const { width, height } = image;
+      const longest = Math.max(width, height);
+      const scale = longest > maxEdge ? maxEdge / longest : 1;
+      const targetWidth = Math.max(1, Math.round(width * scale));
+      const targetHeight = Math.max(1, Math.round(height * scale));
+
+      const canvas = document.createElement('canvas');
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        resolve(sourceDataUrl);
+        return;
+      }
+      ctx.drawImage(image, 0, 0, targetWidth, targetHeight);
+      try {
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      } catch {
+        // toDataURL can throw on tainted canvases; fall back to the original.
+        resolve(sourceDataUrl);
+      }
+    };
+    image.onerror = () => resolve(sourceDataUrl);
+    image.src = sourceDataUrl;
+  });
+}
 
 type TestStatus = 'idle' | 'testing' | 'success' | 'fail_cli' | 'fail_acp';
 
@@ -35,7 +92,13 @@ export interface CustomAgentDraft {
   /** Preserved across edits; new drafts receive a fresh uuid. */
   id: string;
   name: string;
-  /** User-picked emoji or avatar URL — backend field name is `icon`. */
+  /**
+   * User-picked avatar — backend field name is `icon`. May be:
+   *   - a single emoji glyph,
+   *   - a backend-relative URL (e.g. `/api/assistants/{id}/avatar`, from the
+   *     built-in avatar gallery), or
+   *   - a `data:` URL (uploaded image, client-side downscaled to ≤256px).
+   */
   icon?: string;
   /** Spawn command for the CLI. */
   command: string;
@@ -46,7 +109,7 @@ export interface CustomAgentDraft {
 }
 
 interface InlineAgentEditorProps {
-  agent?: AgentMetadata | null;
+  agent?: AgentMetadata | ManagedAgent | null;
   onSave: (agent: CustomAgentDraft) => void;
   onCancel: () => void;
 }
@@ -95,7 +158,9 @@ export function objectToEnvVars(obj: Record<string, string> | undefined): EnvVar
 
 /** Convert the backend `AgentMetadata.env` array form into the flat record the
  *  form's `{key,value}` rows expect. */
-function agentEnvToRecord(entries: AgentMetadata['env'] | undefined): Record<string, string> | undefined {
+function agentEnvToRecord(
+  entries: Array<{ name: string; value: string }> | undefined
+): Record<string, string> | undefined {
   if (!entries || entries.length === 0) return undefined;
   const out: Record<string, string> = {};
   for (const e of entries) {
@@ -105,7 +170,7 @@ function agentEnvToRecord(entries: AgentMetadata['env'] | undefined): Record<str
 }
 
 /** Rebuild the editor's `advanced` override bag from an `AgentMetadata` row. */
-function agentToAdvanced(agent: AgentMetadata): CustomAgentAdvancedOverrides {
+function agentToAdvanced(agent: AgentMetadata | ManagedAgent): CustomAgentAdvancedOverrides {
   const advanced: CustomAgentAdvancedOverrides = {};
   if (agent.yolo_id) advanced.yolo_id = agent.yolo_id;
   if (agent.native_skills_dirs && agent.native_skills_dirs.length > 0) {
@@ -139,6 +204,59 @@ const InlineAgentEditor: React.FC<InlineAgentEditorProps> = ({ agent, onSave, on
   const [testStatus, setTestStatus] = useState<TestStatus>('idle');
   const [testErrorDetail, setTestErrorDetail] = useState('');
   const runtimeScopeId = useMemo(() => agent?.id || uuid(), [agent?.id]);
+
+  // Built-in avatar gallery: reuse the same source as the assistant editor —
+  // builtin assistants that ship an image avatar (`/api/assistants/{id}/avatar`).
+  // Centralizing this here avoids a new asset directory and keeps the gallery
+  // visually consistent across both editors.
+  const { assistants: builtinAssistants, localeKey } = useAssistantList();
+  const builtinAvatarOptions = useMemo(
+    () =>
+      builtinAssistants
+        .filter((assistant) => assistant.source === 'builtin' && assistant.avatar?.startsWith('/api/assistants/'))
+        .map((assistant) => {
+          const src = resolveAvatarImageSrc(assistant.avatar);
+          if (!src) return null;
+          return {
+            id: assistant.id,
+            label: assistant.name_i18n?.[localeKey] || assistant.name,
+            src,
+          };
+        })
+        .filter((option): option is { id: string; label: string; src: string } => option !== null),
+    [builtinAssistants, localeKey]
+  );
+
+  // Resolve the current `avatar` into an image URL / emoji for the preview.
+  // Mirrors the logic every downstream consumer (AgentCard, guid pill, …)
+  // already runs via resolveAgentAvatar, so what the editor shows matches the
+  // final rendering everywhere else.
+  const avatarPreview = useMemo(() => resolveAssistantAvatar(avatar), [avatar]);
+
+  const handlePickAvatarImage = useCallback(async () => {
+    try {
+      const selectedFiles = await dialog.showOpen.invoke({
+        properties: ['openFile'],
+        filters: [
+          {
+            name: t('settings.assistantAvatarImageFiles', { defaultValue: 'Image files' }),
+            extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg'],
+          },
+        ],
+      });
+      const pickedPath = selectedFiles?.[0];
+      if (!pickedPath) return;
+      // The backend reads the file and returns a `data:` URL; we then shrink
+      // it client-side so the persisted `icon` value stays small.
+      const rawDataUrl = await fs.getImageBase64.invoke({ path: pickedPath });
+      if (!rawDataUrl) return;
+      const resized = await downscaleAvatarDataUrl(rawDataUrl);
+      setAvatar(resized);
+    } catch (error) {
+      console.error('Failed to pick custom agent avatar image:', error);
+      Message.error(t('common.failed', { defaultValue: 'Failed' }));
+    }
+  }, [t]);
 
   // Canonical empty shape shown when the user has not filled anything yet.
   // Keep keys in sync with CustomAgentAdvancedOverrides.
@@ -229,17 +347,9 @@ const InlineAgentEditor: React.FC<InlineAgentEditorProps> = ({ agent, onSave, on
     setArgsString(v);
   }, []);
 
-  const addEnvVar = useCallback(() => {
+  const handleEnvVarsChange = useCallback((rows: EnvVarRow[]) => {
     isJsonEditingRef.current = false;
-    setEnvVars((prev) => [...prev, { id: uuid(), key: '', value: '' }]);
-  }, []);
-  const removeEnvVar = useCallback((id: string) => {
-    isJsonEditingRef.current = false;
-    setEnvVars((prev) => prev.filter((v) => v.id !== id));
-  }, []);
-  const updateEnvVar = useCallback((id: string, field: 'key' | 'value', val: string) => {
-    isJsonEditingRef.current = false;
-    setEnvVars((prev) => prev.map((v) => (v.id === id ? { ...v, [field]: val } : v)));
+    setEnvVars(rows);
   }, []);
 
   const handleTestConnection = useCallback(async () => {
@@ -308,24 +418,50 @@ const InlineAgentEditor: React.FC<InlineAgentEditorProps> = ({ agent, onSave, on
     <div className='flex flex-col gap-16px pt-8px pb-20px'>
       {/* Avatar + Name row */}
       <div className='flex items-center gap-12px'>
-        <EmojiPicker onChange={(emoji) => setAvatar(emoji)}>
-          <div className='cursor-pointer shrink-0'>
-            <Avatar
-              size={48}
-              shape='square'
-              style={{ backgroundColor: 'var(--color-fill-3)', fontSize: 24, borderRadius: 12 }}
-            >
-              {avatar}
-            </Avatar>
-          </div>
-        </EmojiPicker>
+        <div className='flex shrink-0 flex-col items-center gap-6px'>
+          <EmojiPicker
+            value={avatar}
+            builtinAvatars={builtinAvatarOptions}
+            onChange={(next) => setAvatar(next)}
+            placement='br'
+          >
+            <div className='cursor-pointer'>
+              <Avatar
+                size={48}
+                shape='square'
+                style={{
+                  backgroundColor: avatarPreview.kind === 'image' ? 'transparent' : 'var(--color-fill-3)',
+                  fontSize: 24,
+                  borderRadius: 12,
+                }}
+              >
+                {avatarPreview.kind === 'image' ? (
+                  <img src={avatarPreview.value} alt='' className='h-full w-full object-cover' />
+                ) : avatarPreview.kind === 'emoji' ? (
+                  avatarPreview.value
+                ) : (
+                  '🤖'
+                )}
+              </Avatar>
+            </div>
+          </EmojiPicker>
+          <Button
+            type='outline'
+            size='mini'
+            data-testid='btn-agent-avatar-upload'
+            className='!h-auto !w-full !rounded-8px !border-[var(--color-border-2)] !px-6px !py-1px !text-11px'
+            onClick={() => void handlePickAvatarImage()}
+          >
+            {t('settings.assistantAvatarUploadImage', { defaultValue: 'Upload image' })}
+          </Button>
+        </div>
         <div className='min-w-0 flex-1'>
           <Typography.Text className={fieldLabelClassName}>{t('settings.agentDisplayName')}</Typography.Text>
           <Input
             size='large'
             value={name}
             onChange={handleNameChange}
-            placeholder={t('settings.agent_namePlaceholder')}
+            placeholder={t('settings.agentNamePlaceholder')}
           />
         </div>
       </div>
@@ -361,40 +497,7 @@ const InlineAgentEditor: React.FC<InlineAgentEditorProps> = ({ agent, onSave, on
       {/* Environment Variables */}
       <div>
         <Typography.Text className={fieldLabelClassName}>{t('settings.envLabel')}</Typography.Text>
-        <div className='flex flex-col gap-10px'>
-          {envVars.map((envVar) => (
-            <div key={envVar.id} className='grid grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_auto] items-center gap-8px'>
-              <Input
-                size='large'
-                value={envVar.key}
-                onChange={(v) => updateEnvVar(envVar.id, 'key', v)}
-                placeholder={t('settings.envKeyPlaceholder')}
-              />
-              <Input
-                size='large'
-                value={envVar.value}
-                onChange={(v) => updateEnvVar(envVar.id, 'value', v)}
-                placeholder={t('settings.envValuePlaceholder')}
-              />
-              <Button
-                type='text'
-                size='small'
-                icon={<Delete theme='outline' size={16} />}
-                onClick={() => removeEnvVar(envVar.id)}
-                className='!h-36px !w-36px !rounded-10px !px-0 text-t-tertiary hover:text-danger'
-              />
-            </div>
-          ))}
-        </div>
-        <Button
-          type='text'
-          size='small'
-          icon={<Plus theme='outline' size={14} />}
-          onClick={addEnvVar}
-          className='mt-8px !px-0 text-t-secondary hover:!text-primary-6'
-        >
-          {t('settings.addEnvVar')}
-        </Button>
+        <EnvVarEditor value={envVars} onChange={handleEnvVarsChange} />
       </div>
 
       {/* Test Connection */}

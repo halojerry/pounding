@@ -4,6 +4,8 @@
  * Resolution order:
  *  1. GitHub Actions artifact download when AIONUI_BACKEND_RUN_ID is set
  *  2. GitHub release download (requires version or defaults to "latest")
+ *  3. Complete local bundle from AIONUI_BACKEND_LOCAL_BUNDLE_DIR
+ *  4. Local binary fallback from AIONUI_BACKEND_LOCAL_BINARY
  *
  * Output: {projectRoot}/resources/bundled-poundingcore/{platform}-{arch}/
  *   - aioncore[.exe]
@@ -17,6 +19,7 @@ const { execSync, execFileSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { verifyBundledPoundingcoreResources } = require('./verify-bundled-poundingcore-resources');
 
 const GITHUB_OWNER = 'halojerry';
 const GITHUB_REPO = 'poundingcore';
@@ -65,6 +68,15 @@ function removeDirectorySafe(dirPath) {
 function copyFileSafe(sourcePath, targetPath) {
   ensureDirectory(path.dirname(targetPath));
   fs.copyFileSync(sourcePath, targetPath);
+}
+
+function copyDirectorySafe(sourcePath, targetPath) {
+  ensureDirectory(path.dirname(targetPath));
+  fs.cpSync(sourcePath, targetPath, { recursive: true, force: true });
+}
+
+function copyDirectorySync(sourcePath, targetPath) {
+  copyDirectorySafe(sourcePath, targetPath);
 }
 
 function ensureExecutableMode(filePath) {
@@ -139,28 +151,38 @@ function prepareManagedResources(binaryPath, targetDir) {
     copyDirectorySync(vendorCliRoot, bundleCliRoot);
   }
 
+  // Copy vendored runtimes (Python, uv) from vendor/managed-resources/runtimes/
+  const vendorRuntimesRoot = path.join(projectRoot, 'vendor', 'managed-resources', 'runtimes');
+  if (fs.existsSync(vendorRuntimesRoot)) {
+    const bundleRuntimesRoot = path.join(bundleOut, 'runtimes');
+    console.log(`  Bundling vendored runtimes from ${path.relative(process.cwd(), vendorRuntimesRoot)}`);
+    ensureDirectory(bundleRuntimesRoot);
+    copyDirectorySync(vendorRuntimesRoot, bundleRuntimesRoot);
+  }
+
+  // Copy vendored MCP servers (chrome-devtools-mcp) from vendor/managed-resources/mcp/
+  const vendorMcpRoot = path.join(projectRoot, 'vendor', 'managed-resources', 'mcp');
+  if (fs.existsSync(vendorMcpRoot)) {
+    const bundleMcpRoot = path.join(bundleOut, 'mcp');
+    console.log(`  Bundling vendored MCP servers from ${path.relative(process.cwd(), vendorMcpRoot)}`);
+    ensureDirectory(bundleMcpRoot);
+    copyDirectorySync(vendorMcpRoot, bundleMcpRoot);
+  }
+
   return bundleOut;
 }
 
-/**
- * Recursively copy a directory. Creates target directory and preserves
- * symlinks. Equivalent to `cp -R src dst`.
- */
-function copyDirectorySync(src, dest) {
-  ensureDirectory(dest);
-  const entries = fs.readdirSync(src, { withFileTypes: true });
-  for (const entry of entries) {
-    const srcPath = path.join(src, entry.name);
-    const destPath = path.join(dest, entry.name);
-    if (entry.isDirectory()) {
-      copyDirectorySync(srcPath, destPath);
-    } else if (entry.isSymbolicLink()) {
-      const linkTarget = fs.readlinkSync(srcPath);
-      fs.symlinkSync(linkTarget, destPath);
-    } else {
-      fs.copyFileSync(srcPath, destPath);
-    }
+function verifyPreparedAioncoreBundle(projectRoot, platform, arch) {
+  const result = verifyBundledPoundingcoreResources({
+    resourcesDir: path.join(projectRoot, 'resources'),
+    electronPlatformName: platform,
+    targetArch: arch,
+  });
+  if (result.missing.length > 0 || result.failures.length > 0) {
+    const summary = result.missing.length > 0 ? result.missing.join(', ') : JSON.stringify(result.failures);
+    throw new Error(`Prepared aioncore bundle is missing required bundled resource(s): ${summary}`);
   }
+  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -491,6 +513,36 @@ function preparePoundingcore(options) {
   removeDirectorySafe(targetDir);
   ensureDirectory(targetDir);
 
+  const localBundleDir = (process.env.AIONUI_BACKEND_LOCAL_BUNDLE_DIR || '').trim();
+  if (localBundleDir) {
+    const resolvedLocalBundleDir = path.resolve(localBundleDir);
+    const localBinaryPath = path.join(resolvedLocalBundleDir, binaryName);
+    const localManagedResourcesDir = path.join(resolvedLocalBundleDir, 'managed-resources');
+    if (
+      fs.existsSync(resolvedLocalBundleDir) &&
+      fs.statSync(resolvedLocalBundleDir).isDirectory() &&
+      fs.existsSync(localBinaryPath) &&
+      fs.existsSync(localManagedResourcesDir)
+    ) {
+      copyDirectorySafe(resolvedLocalBundleDir, targetDir);
+      ensureExecutableMode(targetBinaryPath);
+      const manifest = {
+        platform,
+        arch,
+        version: tag || `actions-run-${actionsRunId}` || 'local-bundle',
+        generatedAt: new Date().toISOString(),
+        sourceType: 'local-bundle',
+        source: { path: resolvedLocalBundleDir },
+        files: [binaryName, 'managed-resources/'],
+      };
+      writeJson(path.join(targetDir, 'manifest.json'), manifest);
+      verifyPreparedAioncoreBundle(projectRoot, platform, arch);
+      console.log(`  Using local aioncore bundle: ${resolvedLocalBundleDir}`);
+      return { prepared: true, dir: targetDir, sourceType: 'local-bundle' };
+    }
+    console.warn(`  Local aioncore bundle is incomplete or missing: ${resolvedLocalBundleDir}`);
+  }
+
   let sourcePath = null;
   let sourceType = 'none';
   let sourceDetail = {};
@@ -524,6 +576,22 @@ function preparePoundingcore(options) {
     }
   }
 
+  // 3. Use an explicitly supplied local cache when network download is unavailable.
+  if (!sourcePath) {
+    const localBinary = (process.env.AIONUI_BACKEND_LOCAL_BINARY || '').trim();
+    if (localBinary) {
+      const resolvedLocalBinary = path.resolve(localBinary);
+      if (fs.existsSync(resolvedLocalBinary) && fs.statSync(resolvedLocalBinary).isFile()) {
+        sourcePath = resolvedLocalBinary;
+        sourceType = 'local-binary';
+        sourceDetail = { path: resolvedLocalBinary };
+        console.log(`  Using local aioncore binary: ${resolvedLocalBinary}`);
+      } else {
+        console.warn(`  Local aioncore binary not found: ${resolvedLocalBinary}`);
+      }
+    }
+  }
+
   // Write result
   if (sourcePath) {
     copyFileSafe(sourcePath, targetBinaryPath);
@@ -545,6 +613,7 @@ function preparePoundingcore(options) {
     };
 
     writeJson(path.join(targetDir, 'manifest.json'), manifest);
+    verifyPreparedAioncoreBundle(projectRoot, platform, arch);
     console.log(
       `  Bundled poundingcore prepared: resources/bundled-poundingcore/${runtimeKey}/${binaryName} [source=${sourceType}]`
     );
@@ -561,4 +630,5 @@ module.exports = {
   getActionsArtifactMissingMessage,
   getActionsArtifactName,
   preparePoundingcore,
+  verifyPreparedAioncoreBundle,
 };

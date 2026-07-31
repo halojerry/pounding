@@ -13,7 +13,6 @@ import { useTitleRename } from '@/renderer/pages/conversation/hooks/useTitleRena
 import { useWorkspaceCollapse } from '@/renderer/pages/conversation/hooks/useWorkspaceCollapse';
 import { PreviewPanel, usePreviewContext } from '@/renderer/pages/conversation/Preview';
 import { dispatchWorkspaceToggleEvent } from '@/renderer/utils/workspace/workspaceEvents';
-import { useConversationAgents } from '@/renderer/pages/conversation/hooks/useConversationAgents';
 import classNames from 'classnames';
 import { isMacEnvironment, isWindowsEnvironment } from '@/renderer/pages/conversation/utils/detectPlatform';
 import {
@@ -98,17 +97,10 @@ const ChatLayout: React.FC<{
       onRename: props.onRenameTitle,
     });
 
-  // Resolve backend display name from detected agents catalog (backend-authoritative).
-  // Custom ACP agents live in the same catalog with `agent_source === 'custom'`,
-  // so we no longer need a separate `acp.customAgents` ConfigStorage fallback.
-  const { cliAgents } = useConversationAgents();
-  const backendAgentName = backend
-    ? cliAgents.find((a) => a.backend === backend || a.agent_type === backend)?.name
-    : undefined;
   const capitalizedBackend = backend ? backend.charAt(0).toUpperCase() + backend.slice(1) : backend;
 
   // Compute display name with fallback chain
-  const display_name = presetAssistant?.name || agent_name || backendAgentName || capitalizedBackend;
+  const display_name = presetAssistant?.name || agent_name || capitalizedBackend;
 
   const {
     splitRatio: workspaceWidthPxPref,
@@ -215,6 +207,7 @@ const ChatLayout: React.FC<{
                 agent_name={display_name}
                 agentLogo={presetAssistant?.logo}
                 agentLogoIsEmoji={presetAssistant?.isEmoji}
+                agentLogoIsFallback={presetAssistant?.isFallback}
               />
             ))
           }

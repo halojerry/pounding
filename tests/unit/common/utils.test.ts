@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -147,21 +147,27 @@ describe('utils', () => {
       expect(resolveLocaleKey('tr-TR')).toBe('tr-TR');
     });
 
-    it('resolves ru, uk, and pt variants to supported locales', () => {
+    it('resolves ru, uk, pt, de, es, fr, and fa variants to supported locales', () => {
       expect(resolveLocaleKey('ru')).toBe('ru-RU');
       expect(resolveLocaleKey('ru-RU')).toBe('ru-RU');
       expect(resolveLocaleKey('uk')).toBe('uk-UA');
       expect(resolveLocaleKey('uk-UA')).toBe('uk-UA');
       expect(resolveLocaleKey('pt')).toBe('pt-BR');
       expect(resolveLocaleKey('pt-BR')).toBe('pt-BR');
+      expect(resolveLocaleKey('de')).toBe('de-DE');
+      expect(resolveLocaleKey('de-DE')).toBe('de-DE');
+      expect(resolveLocaleKey('es')).toBe('es-ES');
+      expect(resolveLocaleKey('es-ES')).toBe('es-ES');
+      expect(resolveLocaleKey('fr')).toBe('fr-FR');
+      expect(resolveLocaleKey('fr-FR')).toBe('fr-FR');
+      expect(resolveLocaleKey('fa')).toBe('fa-IR');
+      expect(resolveLocaleKey('fa-IR')).toBe('fa-IR');
     });
 
     it('resolves unknown languages to en-US', () => {
       expect(resolveLocaleKey('en')).toBe('en-US');
       expect(resolveLocaleKey('en-US')).toBe('en-US');
-      expect(resolveLocaleKey('fr')).toBe('en-US');
-      expect(resolveLocaleKey('de')).toBe('en-US');
-      expect(resolveLocaleKey('es')).toBe('en-US');
+      expect(resolveLocaleKey('it')).toBe('en-US');
     });
 
     it('is case-insensitive', () => {
@@ -172,6 +178,9 @@ describe('utils', () => {
       expect(resolveLocaleKey('RU')).toBe('ru-RU');
       expect(resolveLocaleKey('UK')).toBe('uk-UA');
       expect(resolveLocaleKey('PT')).toBe('pt-BR');
+      expect(resolveLocaleKey('ES')).toBe('es-ES');
+      expect(resolveLocaleKey('FR')).toBe('fr-FR');
+      expect(resolveLocaleKey('FA')).toBe('fa-IR');
     });
 
     it('handles empty string', () => {

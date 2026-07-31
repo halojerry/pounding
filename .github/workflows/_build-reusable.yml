@@ -27,6 +27,10 @@ on:
         description: 'Optional poundingcore Manual Build workflow run id to bundle instead of the pinned release'
         type: string
         default: ''
+      aff_code:
+        description: 'Dealer affiliate code to inject into platform zip as dealer-config.json (enables invite chain binding)'
+        type: string
+        default: ''
 
 env:
   BUN_INSTALL_REGISTRY: 'https://registry.npmjs.org/'
@@ -52,7 +56,7 @@ jobs:
       - name: Setup bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: '1.3.13'
+          bun-version: latest
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -107,7 +111,7 @@ jobs:
       - name: Setup bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: '1.3.13'
+          bun-version: latest
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -128,8 +132,6 @@ jobs:
           key: electron-cache-${{ runner.os }}-${{ matrix.platform }}-${{ matrix.arch }}-${{ hashFiles('package.json', 'bun.lock') }}
           restore-keys: |
             electron-cache-${{ runner.os }}-${{ matrix.platform }}-${{ matrix.arch }}-
-            electron-cache-${{ runner.os }}-${{ matrix.platform }}-
-            electron-cache-${{ runner.os }}-
 
       - name: Cache status
         run: echo "electron-cache-hit=${{ steps.electron-cache.outputs.cache-hit }}"
@@ -197,6 +199,60 @@ jobs:
           echo "Ref: ${{ inputs.ref || '(default)' }}"
           echo "Commit: ${{ steps.commit.outputs.short }}"
           echo "=========================================="
+
+      - name: Resolve Sentry release name
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./package.json').version")
+
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            RELEASE_NAME="${GITHUB_REF_NAME}"
+          elif [[ "$GITHUB_REF_NAME" == "dev" ]]; then
+            RELEASE_NAME="v${VERSION}-dev-${{ steps.commit.outputs.short }}"
+          else
+            RELEASE_NAME="v${VERSION}-${{ steps.commit.outputs.short }}"
+          fi
+
+          echo "SENTRY_RELEASE=$RELEASE_NAME" >> "$GITHUB_ENV"
+          echo "Sentry release: $RELEASE_NAME"
+
+      - name: Configure Sentry source map upload owner
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ matrix.platform }}" == "linux-x64" ]]; then
+            echo "SENTRY_UPLOAD_SOURCE_MAPS=true" >> "$GITHUB_ENV"
+            echo "Sentry source maps will be uploaded by linux-x64"
+          else
+            echo "SENTRY_UPLOAD_SOURCE_MAPS=false" >> "$GITHUB_ENV"
+            echo "Sentry source map upload skipped for ${{ matrix.platform }}"
+          fi
+
+      - name: Validate Sentry source map upload configuration
+        if: matrix.platform == 'linux-x64'
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=0
+
+          for name in SENTRY_AUTH_TOKEN SENTRY_ORG SENTRY_PROJECT SENTRY_RELEASE; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error title=Sentry configuration missing::$name is required for desktop source map uploads"
+              missing=1
+            fi
+          done
+
+          if [ "$missing" -ne 0 ]; then
+            exit 1
+          fi
+
+          echo "Sentry source map upload configured for $SENTRY_ORG/$SENTRY_PROJECT ($SENTRY_RELEASE)"
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
 
       # macOS code signing certificate installation
       - name: Setup macOS code signing (macOS only)
@@ -310,6 +366,21 @@ jobs:
           MSVS_VERSION: 2022
           GYP_MSVS_VERSION: 2022
 
+      - name: Vendor managed runtimes (Python, uv, MCP, ACP, CLI tools)
+        id: vendor-runtimes
+        shell: bash
+        run: |
+          # Output to vendor/managed-resources/ — preparePoundingcore.js
+          # copies from there into the app bundle below.
+          mkdir -p vendor/managed-resources
+          if bash scripts/prepare-vendor.sh vendor/managed-resources "${{ matrix.platform == 'macos-arm64' && 'darwin-arm64' || matrix.platform == 'macos-x64' && 'darwin-x64' || matrix.platform == 'windows-x64' && 'win32-x64' || matrix.platform == 'windows-arm64' && 'win32-arm64' }}"; then
+            echo "vendor-ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "vendor-ok=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=Vendor Incomplete::Managed runtimes vendor step failed — some CLIs may need network install on first launch"
+          fi
+        continue-on-error: true # non-fatal: if upstream downloads fail, CLIs can still be network-installed
+
       - name: Prepare packaged backend binary
         id: prepare-backend
         shell: bash
@@ -343,12 +414,15 @@ jobs:
           try {
             Write-Host "Running Windows build command: $Command"
             iex $Command
+            if ($LASTEXITCODE -ne 0) {
+              throw "Build command failed with exit code $LASTEXITCODE"
+            }
             Write-Host "Windows build completed successfully"
           } catch {
             $BuildFailed = $true
             $errorMessage = "$_"
             Write-Warning "${{ matrix.platform }} build failed: $errorMessage"
-            echo "::error title=${{ matrix.platform }} Build Failed::$errorMessage"
+            echo "::warning title=${{ matrix.platform }} Build Failed::$errorMessage"
           }
 
           if ($BuildFailed) {
@@ -565,16 +639,26 @@ jobs:
       # Verify desktop asar does not contain packages/web-cli/ contamination
       # 验证桌面 asar 没有被 web-cli 代码污染
 
-      # Pack USB (dealer) zip for Windows and macOS — injects PORTABLE + dealer-config.json
-      # into the platform zip so dealers can distribute on USB drives.
-      # 打包经销商 U 盘版本 — 在平台 zip 中注入 PORTABLE + dealer-config.json
-      - name: Pack USB dealer zip
+      # Inject dealer invite code into the platform zip.
+      # When AFF_CODE is provided, adds PORTABLE marker + dealer-config.json
+      # to the platform zip root so dealers can distribute USB drives with
+      # invite chain pre-bound.
+      # 经销商邀请码注入 — 将 PORTABLE + dealer-config.json 注入平台 zip
+      - name: Inject dealer invite code
         if: >-
           success() &&
-          matrix.platform == 'windows-x64' &&
-          steps.windows-build.outputs.result == 'success'
+          inputs.aff_code != '' &&
+          (!startsWith(matrix.platform, 'windows') || steps.windows-build.outputs.result == 'success')
         shell: bash
-        run: bash scripts/pack-usb-zip.sh out
+        env:
+          AFF_CODE: ${{ inputs.aff_code }}
+        run: |
+          PLATFORM_ZIP=$(ls out/POUNDING-*-${{ matrix.platform == 'macos-arm64' && 'mac-arm64' || matrix.platform == 'macos-x64' && 'mac-x64' || matrix.platform }}.zip 2>/dev/null | head -1)
+          if [ -z "$PLATFORM_ZIP" ]; then
+            echo "::warning::No platform zip found for ${{ matrix.platform }}, skipping dealer inject"
+            exit 0
+          fi
+          bash scripts/pack-usb-zip.sh "$PLATFORM_ZIP" "$AFF_CODE"
       - name: Verify desktop asar isolation
         if: >-
           success() &&
@@ -627,11 +711,9 @@ jobs:
             out/*.msi
             out/*.dmg
             out/*.deb
-            out/POUNDING-*-win-*.zip
-            out/POUNDING-*-mac-*.zip
-            out/dealer-kit.zip
+            out/*.zip
             out/*.yml
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 7
 
   build-summary:

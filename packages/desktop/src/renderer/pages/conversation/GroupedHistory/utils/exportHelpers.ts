@@ -1,12 +1,13 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
 import type { TMessage } from '@/common/chat/chatLib';
 import type { IDirOrFile } from '@/common/adapter/ipcBridge';
 import type { TChatConversation } from '@/common/config/storage';
+import { resolveConversationBackend } from '@/renderer/pages/conversation/utils/conversationAssistantIdentity';
 import { getMessageRoleKey, readMessageContent, sanitizeFileName } from '@/renderer/utils/chat/conversationExport';
 
 import type { ExportZipFile } from '../types';
@@ -47,16 +48,7 @@ export const appendWorkspaceFilesToZip = (
 };
 
 export const getBackendKeyFromConversation = (conversation: TChatConversation): string | undefined => {
-  if (conversation.type === 'acp') {
-    return conversation.extra?.backend;
-  }
-  if (conversation.type === 'openclaw-gateway') {
-    return conversation.extra?.backend || 'openclaw-gateway';
-  }
-  if (conversation.type === 'remote') {
-    return 'remote';
-  }
-  return conversation.type;
+  return resolveConversationBackend(conversation);
 };
 
 export const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> => {

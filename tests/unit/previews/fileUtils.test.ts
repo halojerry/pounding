@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -156,6 +156,17 @@ describe('previewUrls', () => {
     it('encodes URI properly', () => {
       const result = buildPdfSrc('/path/with spaces/doc.pdf');
       expect(result).toContain('file:///path/with%20spaces/doc.pdf');
+    });
+
+    it('builds a valid file:/// URI from a Windows backslash path', () => {
+      // Regression: raw Windows paths previously produced `file://C:%5C...` (ERR_FAILED → blank preview).
+      const result = buildPdfSrc('C:\\Users\\me\\doc.pdf');
+      expect(result).toBe('file:///C:/Users/me/doc.pdf');
+    });
+
+    it('encodes non-ASCII segments in a Windows path', () => {
+      const result = buildPdfSrc('C:\\临时空间\\文章.pdf');
+      expect(result).toBe(`file:///C:/${encodeURIComponent('临时空间')}/${encodeURIComponent('文章')}.pdf`);
     });
   });
 });

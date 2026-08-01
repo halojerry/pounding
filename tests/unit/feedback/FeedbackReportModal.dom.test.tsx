@@ -96,9 +96,21 @@ describe('FeedbackReportModal — prefill', () => {
     sentryMocks.setTag.mockClear();
     sentryMocks.captureEvent.mockClear();
     sentryMocks.withScope.mockClear();
+    // Component mount triggers client-settings/theme fetches; without a global
+    // stub the real fetch hits a relative URL and fails (flaky across runners).
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ success: true, data: {} }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      )
+    );
   });
 
   afterEach(() => {
+    vi.unstubAllGlobals();
     cleanup();
   });
 

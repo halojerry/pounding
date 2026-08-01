@@ -408,7 +408,7 @@ describe('verifyBundledPoundingcoreResources', () => {
     );
   });
 
-  it('fails when hermes wheels are missing (silent vendor failure gate)', () => {
+  it('warns (not fails) when hermes wheels are missing — pyyaml wheel gaps on some platforms', () => {
     rmSync(join(managedResourcesDir, 'runtimes', 'hermes'), { recursive: true, force: true });
 
     const result = verifyBundledPoundingcoreResources({
@@ -417,9 +417,10 @@ describe('verifyBundledPoundingcoreResources', () => {
       targetArch: 'x64',
     });
 
-    expect(result.failures).toContainEqual(
-      expect.objectContaining({ component: 'managed-resources', reason: 'missing_vendor_hermes_wheels' })
-    );
+    // hermes wheels are a warning-level gate: hermes-agent pins pyyaml==6.0.3
+    // which has no wheel on e.g. darwin-x64, so hermes falls back to network.
+    expect(result.failures.filter((f) => f.reason === 'missing_vendor_hermes_wheels')).toEqual([]);
+    expect(result.missing.filter((m) => m.includes('hermes'))).toEqual([]);
   });
 
   it('fails when openclaw bundle is missing (silent vendor failure gate)', () => {

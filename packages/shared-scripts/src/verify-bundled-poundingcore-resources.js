@@ -359,16 +359,17 @@ function verifyVendorComponents(baseDir, runtimeKey, checked, missing, failures)
   }
 
   // hermes: runtimes/hermes must contain at least one wheel.
+  // WARNING level only: hermes-agent 0.19.0 pins pyyaml==6.0.3 which has no
+  // wheel for some platforms (e.g. darwin-x64), so offline hermes install is
+  // impossible there regardless — those platforms fall back to network install.
   const hermesDir = path.join(managedRoot, 'runtimes', 'hermes');
   const hermesOk =
     isDirectory(hermesDir) &&
     fs.readdirSync(hermesDir, { withFileTypes: true }).some((e) => e.isFile() && e.name.endsWith('.whl'));
   if (!hermesOk) {
-    addFailure(failures, missing, [mcp('runtimes/hermes')], {
-      component: 'managed-resources',
-      reason: 'missing_vendor_hermes_wheels',
-      path: mcp('runtimes/hermes'),
-    });
+    console.warn(
+      `[verify] warning: managed-resources/runtimes/hermes has no wheels (hermes will need network install on this platform)`
+    );
   } else {
     checked.push(mcp('runtimes/hermes'));
   }

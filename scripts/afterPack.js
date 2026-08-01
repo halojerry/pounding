@@ -117,7 +117,12 @@ function verifyManagedResources(resourcesDir, runtimeKey, electronPlatformName) 
       fs.existsSync(hermesWheelDir) &&
       fs.readdirSync(hermesWheelDir, { withFileTypes: true }).some((e) => e.isFile() && e.name.endsWith('.whl'));
     if (!hermesOk) {
-      missing.push('managed-resources/runtimes/hermes (no wheels — offline hermes install will fail)');
+      // Warning only: hermes-agent 0.19.0 pins pyyaml==6.0.3 which lacks wheels
+      // on some platforms (darwin-x64) — offline hermes install is impossible
+      // there, it falls back to network install at first launch.
+      console.warn(
+        `   ⚠ managed-resources/runtimes/hermes has no wheels (hermes will need network install on this platform)`
+      );
     }
 
     const openclawOk = fs.existsSync(path.join(baseDir, 'cli', 'openclaw'));

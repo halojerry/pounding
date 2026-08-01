@@ -123,6 +123,9 @@ jobs:
           PACK_ARCH: ${{ matrix.arch }}
           # Version is pinned in repo-root package.json (poundingcoreVersion field).
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # web-cli packing does not run prepare-vendor.sh — the bundle here is
+          # only for static asset checks, not a distributable installer.
+          POUNDING_SKIP_VENDOR_CHECK: 1
 
       - name: Upload tarball artifact
         uses: actions/upload-artifact@v6

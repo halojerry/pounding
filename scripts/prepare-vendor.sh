@@ -82,10 +82,11 @@ OUT_DIR="$(cd "${OUT_DIR}" && pwd)"
 
 # ── 1. Python (portable build) ───────────────────────────────────────────
 
-PYTHON_VERSION="${PYTHON_VERSION:-3.12.9}"
+PYTHON_VERSION="${PYTHON_VERSION:-3.12.13}"
 # NOTE: release tag 20250324 does NOT exist on indygreg/python-build-standalone
-# (HTTP 404, verified 2026-08-01). 20250317 is the correct tag for 3.12.9.
-PYTHON_RELEASE="${PYTHON_RELEASE:-20250317}"
+# (HTTP 404, verified 2026-08-01). 20260728 supports all six platforms incl.
+# win32-arm64 (3.12.13); 20250317 only had 3.12.9 without Windows ARM64.
+PYTHON_RELEASE="${PYTHON_RELEASE:-20260728}"
 
 vendor_python() {
   local triple dest

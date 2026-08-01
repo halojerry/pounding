@@ -233,6 +233,7 @@ vendor_uv() {
 # 4. chrome-devtools-mcp (npm package, installed into node runtime)
 # ---------------------------------------------------------------------------
 vendor_chrome_devtools_mcp() {
+(
   echo "==> chrome-devtools-mcp v${CHROME_DEVTOOLS_MCP_VERSION}"
   IFS=',' read -r -a targets <<<"${TARGETS}"
 
@@ -305,12 +306,15 @@ MANIFEST
     rm -rf "${work}"
     echo "  ${target}: done (${dest})"
   done
+  )
+
 }
 
 # ---------------------------------------------------------------------------
 # 5. ACP tools (Claude, Codex) — same install logic as prepare-managed-acp-tools.sh
 # ---------------------------------------------------------------------------
 vendor_acp_one() {
+(
   local tool_slug="$1" package_name="$2" version="$3"
   echo "==> ${tool_slug} v${version}"
   IFS=',' read -r -a targets <<<"${TARGETS}"
@@ -397,6 +401,8 @@ MANIFEST
     rm -rf "${work}"
     echo "  ${target}: done (${dest})"
   done
+  )
+
 }
 
 vendor_acp() {
@@ -408,6 +414,7 @@ vendor_acp() {
 # 3. CLI binaries (OpenCode, OpenClaw) — structure: cli/<name>/<platform>/
 # ---------------------------------------------------------------------------
 vendor_cli_one() {
+(
   local cli_name="$1" package_name="$2" version="$3"
   echo "==> CLI: ${cli_name} (${package_name}@${version})"
   IFS=',' read -r -a targets <<<"${TARGETS}"
@@ -486,6 +493,8 @@ MANIFEST
     rm -rf "${work}"
     echo "  ${target}: done (${dest})"
   done
+  )
+
 }
 
 vendor_hermes() {

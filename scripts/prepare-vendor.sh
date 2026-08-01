@@ -76,6 +76,9 @@ download() {
 
 echo "==> prepare-vendor ${TARGET} -> ${OUT_DIR}"
 mkdir -p "${OUT_DIR}"
+# Make OUT_DIR absolute: vendor functions cd into npm staging dirs, so any
+# relative dest path would resolve against the wrong CWD afterwards.
+OUT_DIR="$(cd "${OUT_DIR}" && pwd)"
 
 # ── 1. Python (portable build) ───────────────────────────────────────────
 
@@ -158,6 +161,7 @@ vendor_uv() {
 CHROME_DEVTOOLS_MCP_VERSION="${CHROME_DEVTOOLS_MCP_VERSION:-1.4.0}"
 
 vendor_chrome_devtools_mcp() {
+(
   local meta plat arch platdir
   meta="$(target_meta "${TARGET}")"
   IFS='|' read -r plat arch platdir <<<"${meta}"
@@ -218,6 +222,8 @@ MANIFEST
 
   rm -rf "${work}"
   echo "  chrome-devtools-mcp: done"
+  )
+
 }
 
 # ── 4. ACP tools ─────────────────────────────────────────────────────────
@@ -225,6 +231,7 @@ MANIFEST
 CLAUDE_ACP_VERSION="${CLAUDE_ACP_VERSION:-0.52.0}"
 
 vendor_acp_one() {
+(
   local slug="$1" pkg="$2" version="$3"
   local meta plat arch platdir
   meta="$(target_meta "${TARGET}")"
@@ -293,6 +300,8 @@ MANIFEST
 
   rm -rf "${work}"
   echo "  ${slug}: done"
+  )
+
 }
 
 vendor_acp() {
@@ -305,6 +314,7 @@ OPENCLAW_VERSION="${OPENCLAW_VERSION:-2026.6.33}"
 HERMES_VERSION="${HERMES_VERSION:-0.19.0}"
 
 vendor_cli_one() {
+(
   local cli_name="$1" pkg="$2" version="$3"
   local meta plat arch platdir
   meta="$(target_meta "${TARGET}")"
@@ -380,6 +390,8 @@ MANIFEST
 
   rm -rf "${work}"
   echo "  ${cli_name}: done"
+  )
+
 }
 
 vendor_clis() {

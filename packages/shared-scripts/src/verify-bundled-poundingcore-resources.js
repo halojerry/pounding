@@ -341,7 +341,7 @@ function requireContractDirectory(baseDir, runtimeKey, cli, root, relativePath, 
  */
 function verifyVendorComponents(baseDir, runtimeKey, checked, missing, failures) {
   const managedRoot = path.join(baseDir, 'managed-resources');
-  const mcp = (parts) => contractBundledPath(runtimeKey, 'managed-resources', ...parts);
+  const mcp = (rel) => contractBundledPath(runtimeKey, 'managed-resources', rel);
 
   // python-build-standalone layout: runtimes/python/bin/python3 (unix) or
   // runtimes/python/python.exe (win32) — single level, no nested python/.

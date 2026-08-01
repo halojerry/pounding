@@ -528,8 +528,7 @@ exec "${hermesExe}" "$@"
 export function resolveBundledPythonBinary(baseDir: string | null): string | null {
   if (!baseDir) return null;
   const root = path.join(baseDir, 'runtimes', 'python');
-  const candidate =
-    process.platform === 'win32' ? path.join(root, 'python.exe') : path.join(root, 'bin', 'python3');
+  const candidate = process.platform === 'win32' ? path.join(root, 'python.exe') : path.join(root, 'bin', 'python3');
   return fs.existsSync(candidate) ? candidate : null;
 }
 

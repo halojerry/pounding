@@ -49,10 +49,7 @@ vi.mock('./services/NewApiDesktopAccountService', () => ({
   },
 }));
 
-import {
-  installManagedCliBatch,
-  resolveBundledPythonBinary,
-} from '@/process/bridge/managedCliInstallerBridge';
+import { installManagedCliBatch, resolveBundledPythonBinary } from '@/process/bridge/managedCliInstallerBridge';
 
 function makeBundledPythonFixture(): string {
   const root = mkdtempSync(path.join(tmpdir(), 'pounding-bridge-test-'));
@@ -135,9 +132,7 @@ describe('installManagedCli version pins', () => {
     const [result] = await installManagedCliBatch(['claude']);
 
     expect(result.success).toBe(true);
-    const installCall = execFileMock.mock.calls.find((call) =>
-      (call[1] as string[]).includes('install')
-    );
+    const installCall = execFileMock.mock.calls.find((call) => (call[1] as string[]).includes('install'));
     expect(installCall).toBeDefined();
     expect(installCall![1]).toContain('install');
     expect(installCall![1]).toContain('-g');
@@ -158,9 +153,7 @@ describe('installManagedCli version pins', () => {
     const [result] = await installManagedCliBatch(['openclaw']);
 
     expect(result.success).toBe(true);
-    const installCall = execFileMock.mock.calls.find((call) =>
-      (call[1] as string[]).includes('install')
-    );
+    const installCall = execFileMock.mock.calls.find((call) => (call[1] as string[]).includes('install'));
     expect(installCall).toBeDefined();
     expect(installCall![1]).toContain('openclaw@2026.6.33');
   });

@@ -111,6 +111,19 @@ function seedRuntimeKey(
   writeFile(join(managedResourcesDir, ...nodeRoot.split('/'), ...nodeExecutable.split('/')));
   createManagedCliFixture({ managedResourcesDir, name: 'claude', version: CLAUDE_VERSION, runtimeKey });
   writeManagedResourcesContract(managedResourcesDir, { runtimeKey, nodeRoot, nodeExecutable });
+  // Vendored offline-install components (verifyVendorComponents gate)
+  if (platform === 'win32') {
+    writeFile(join(managedResourcesDir, 'runtimes', 'python', 'python.exe'));
+  } else {
+    writeFile(join(managedResourcesDir, 'runtimes', 'python', 'bin', 'python3'));
+  }
+  writeFile(join(managedResourcesDir, 'runtimes', 'hermes', 'hermes_agent-0.19.0-py3-none-any.whl'));
+  writeJson(join(managedResourcesDir, 'cli', 'openclaw', '2026.6.33', runtimeKey, 'manifest.json'), {
+    entrypoint: 'node_modules/openclaw/openclaw.mjs',
+    path_entries: ['.bin'],
+    version: '2026.6.33',
+    platform: runtimeKey,
+  });
   return managedResourcesDir;
 }
 
@@ -379,5 +392,66 @@ describe('verifyBundledPoundingcoreResources', () => {
     });
 
     expect(result.failures).toContainEqual(expect.objectContaining({ reason: 'runtime_key_mismatch' }));
+  });
+
+  it('fails when bundled python is missing (silent vendor failure gate)', () => {
+    rmSync(join(managedResourcesDir, 'runtimes', 'python'), { recursive: true, force: true });
+
+    const result = verifyBundledPoundingcoreResources({
+      resourcesDir,
+      electronPlatformName: 'win32',
+      targetArch: 'x64',
+    });
+
+    expect(result.failures).toContainEqual(
+      expect.objectContaining({ component: 'managed-resources', reason: 'missing_vendor_python' })
+    );
+  });
+
+  it('warns (not fails) when hermes wheels are missing — pyyaml wheel gaps on some platforms', () => {
+    rmSync(join(managedResourcesDir, 'runtimes', 'hermes'), { recursive: true, force: true });
+
+    const result = verifyBundledPoundingcoreResources({
+      resourcesDir,
+      electronPlatformName: 'win32',
+      targetArch: 'x64',
+    });
+
+    // hermes wheels are a warning-level gate: hermes-agent pins pyyaml==6.0.3
+    // which has no wheel on e.g. darwin-x64, so hermes falls back to network.
+    expect(result.failures.filter((f) => f.reason === 'missing_vendor_hermes_wheels')).toEqual([]);
+    expect(result.missing.filter((m) => m.includes('hermes'))).toEqual([]);
+  });
+
+  it('fails when openclaw bundle is missing (silent vendor failure gate)', () => {
+    rmSync(join(managedResourcesDir, 'cli', 'openclaw'), { recursive: true, force: true });
+
+    const result = verifyBundledPoundingcoreResources({
+      resourcesDir,
+      electronPlatformName: 'win32',
+      targetArch: 'x64',
+    });
+
+    expect(result.failures).toContainEqual(
+      expect.objectContaining({ component: 'managed-resources', reason: 'missing_vendor_openclaw' })
+    );
+  });
+
+  it('skips vendor component checks when POUNDING_SKIP_VENDOR_CHECK=1', () => {
+    rmSync(join(managedResourcesDir, 'runtimes', 'python'), { recursive: true, force: true });
+    process.env.POUNDING_SKIP_VENDOR_CHECK = '1';
+
+    try {
+      const result = verifyBundledPoundingcoreResources({
+        resourcesDir,
+        electronPlatformName: 'win32',
+        targetArch: 'x64',
+      });
+
+      expect(result.failures).toEqual([]);
+      expect(result.missing).toEqual([]);
+    } finally {
+      delete process.env.POUNDING_SKIP_VENDOR_CHECK;
+    }
   });
 });

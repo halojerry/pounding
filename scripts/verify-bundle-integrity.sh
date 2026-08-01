@@ -106,6 +106,11 @@ NODEOF
 # Argument parsing
 # ---------------------------------------------------------------------------
 EXPECTED_PLATFORM=""
+# --vendor-only: only check components produced by scripts/prepare-vendor.sh
+# (openclaw / python / hermes / uv). claude and node come from the poundingcore
+# release asset (prepare-managed-resources), so a bare vendor directory would
+# false-positive on them.
+VENDOR_ONLY=false
 
 usage() {
   sed -n '3,16p' "$0" | sed 's/^# \?//'
@@ -122,6 +127,10 @@ while [[ $# -gt 0 ]]; do
       fi
       EXPECTED_PLATFORM="$2"
       shift 2
+      ;;
+    --vendor-only)
+      VENDOR_ONLY=true
+      shift
       ;;
     --help|-h)
       usage
@@ -165,6 +174,10 @@ fi
 echo "--- 1. Directory structure ---"
 
 # Use parallel arrays for compatibility with bash 3.2 (macOS default)
+# NOTE: `acp/` is intentionally NOT expected here — prepare-poundingcore.js only
+# copies {cli, runtimes, mcp} into the app bundle (acp stays in vendor only).
+# In --vendor-only mode, claude and node are excluded (they come from the
+# poundingcore release asset, not from prepare-vendor.sh).
 EXPECTED_DIR_PATHS=(
   "cli/claude"
   "cli/openclaw"
@@ -172,7 +185,6 @@ EXPECTED_DIR_PATHS=(
   "runtimes/python"
   "runtimes/hermes"
   "node"
-  "acp"
 )
 EXPECTED_DIR_LABELS=(
   "CLI: claude"
@@ -181,8 +193,11 @@ EXPECTED_DIR_LABELS=(
   "Runtime: python"
   "Runtime: hermes"
   "Node runtime"
-  "ACP tools"
 )
+if [[ "${VENDOR_ONLY}" == true ]]; then
+  EXPECTED_DIR_PATHS=("cli/openclaw" "runtimes/uv" "runtimes/python" "runtimes/hermes")
+  EXPECTED_DIR_LABELS=("CLI: openclaw" "Runtime: uv" "Runtime: python" "Runtime: hermes")
+fi
 
 for idx in "${!EXPECTED_DIR_PATHS[@]}"; do
   relpath="${EXPECTED_DIR_PATHS[$idx]}"
@@ -202,6 +217,9 @@ echo ""
 echo "--- 2. CLI bundle integrity ---"
 
 CLI_NAMES=(claude openclaw)
+if [[ "${VENDOR_ONLY}" == true ]]; then
+  CLI_NAMES=(openclaw)
+fi
 VALID_PLATFORMS="darwin-arm64 darwin-x64 linux-x64 linux-arm64 win32-x64 win32-arm64"
 
 for cli in "${CLI_NAMES[@]}"; do
@@ -229,10 +247,23 @@ for cli in "${CLI_NAMES[@]}"; do
       fail "Manifest ${rel_manifest}: entrypoint file missing (${entrypoint})"
     fi
 
+    # -- kind: native manifests (written by poundingcore prepare-managed-resources
+    # for claude) carry only entrypoint+kind — version/platform are optional for
+    # those, while vendor_cli_one JS manifests (openclaw) keep version/platform.
+    kind="$(json_query "${manifest_path}" '.kind' | tr -d '[:space:]')"
+    is_native=false
+    if [[ "${kind}" == "native" ]]; then
+      is_native=true
+    fi
+
     # -- version --
     version="$(json_query "${manifest_path}" '.version' | tr -d '[:space:]')"
     if [[ -z "${version}" ]]; then
-      fail "Manifest ${rel_manifest}: missing 'version' field"
+      if [[ "${is_native}" == true ]]; then
+        pass "Manifest ${rel_manifest}: version omitted (native manifest — OK)"
+      else
+        fail "Manifest ${rel_manifest}: missing 'version' field"
+      fi
     elif [[ "${version}" == "0.0.0" ]]; then
       fail "Manifest ${rel_manifest}: version is '0.0.0' (indicates failed version detection)"
     else
@@ -257,6 +288,8 @@ for cli in "${CLI_NAMES[@]}"; do
       else
         fail "Manifest ${rel_manifest}: platform '${platform}' is not a recognized key"
       fi
+    elif [[ "${is_native}" == true ]]; then
+      pass "Manifest ${rel_manifest}: platform omitted (native manifest — OK)"
     else
       fail "Manifest ${rel_manifest}: missing 'platform' field"
     fi
@@ -356,10 +389,16 @@ fi
 echo ""
 
 # ---------------------------------------------------------------------------
-# 4. Node runtime check
+# 4. Node runtime check (skipped in --vendor-only mode: node ships in the
+#    poundingcore release asset, not in the prepare-vendor.sh output)
 # ---------------------------------------------------------------------------
-echo "--- 4. Node runtime ---"
+if [[ "${VENDOR_ONLY}" == true ]]; then
+  echo "--- 4. Node runtime (skipped: --vendor-only) ---"
+else
+  echo "--- 4. Node runtime ---"
+fi
 
+if [[ "${VENDOR_ONLY}" == false ]]; then
 node_dir="${MANAGED_RESOURCES}/node"
 if [[ -d "${node_dir}" ]]; then
   found_node=false
@@ -395,10 +434,14 @@ else
   fail "Node directory missing: node/"
 fi
 
+fi
+
+if [[ "${VENDOR_ONLY}" == false ]]; then
 echo ""
 
 # ---------------------------------------------------------------------------
-# 5. ACP tools check
+# 5. ACP tools check (skipped in --vendor-only mode: acp is not copied into
+#    the app bundle — prepare-poundingcore.js only copies cli/runtimes/mcp)
 # ---------------------------------------------------------------------------
 echo "--- 5. ACP tools ---"
 
@@ -416,6 +459,7 @@ else
 fi
 
 echo ""
+fi
 
 # ---------------------------------------------------------------------------
 # 6. Deep manifest validation (entrypoint + path_entries existence)
@@ -459,7 +503,7 @@ while IFS= read -r manifest_path; do
     fi
   fi
 
-done < <(find "${MANAGED_RESOURCES}" -name 'manifest.json' -type f 2>/dev/null)
+done < <(find "${MANAGED_RESOURCES}" -name 'manifest.json' -type f -not -path '*/node_modules/*' 2>/dev/null)
 
 if [[ ${deep_manifest_count} -eq 0 ]]; then
   fail "Deep validation: no manifest.json files found anywhere in the bundle"

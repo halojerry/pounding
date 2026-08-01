@@ -86,6 +86,9 @@ jobs:
       - name: Run prek checks
         run: prek run --from-ref origin/${{ env.PR_BASE_REF }} --to-ref HEAD
 
+      - name: Check pinned CLI/runtime versions match vendor-versions.env
+        run: bash scripts/check-version-consistency.sh ../poundingcore
+
   # Job 2: Unit tests across all platforms
   unit-tests:
     name: Unit Tests (${{ matrix.os }})
@@ -393,6 +396,10 @@ jobs:
           WindowsTargetPlatformVersion: 10.0.19041.0
           CI: true
           GH_TOKEN: ${{ github.token }}
+          # Build Test skips the vendor step (prepare-vendor.sh runs only in the
+          # release pipeline) — the afterPack hard vendor gate still applies to
+          # release builds in _build-reusable.yml.
+          POUNDING_SKIP_VENDOR_CHECK: 1
 
       - name: Build test (non-Windows)
         if: "!startsWith(matrix.platform, 'windows')"
@@ -412,6 +419,8 @@ jobs:
           npm_config_disturl: https://electronjs.org/headers
           CI: true
           GH_TOKEN: ${{ github.token }}
+          # Build Test skips the vendor step (see Windows step comment).
+          POUNDING_SKIP_VENDOR_CHECK: 1
 
       - name: Verify build artifacts exist
         shell: bash

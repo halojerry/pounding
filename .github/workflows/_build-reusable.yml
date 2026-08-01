@@ -381,6 +381,21 @@ jobs:
           fi
         continue-on-error: true # non-fatal: if upstream downloads fail, CLIs can still be network-installed
 
+      - name: Verify vendored bundle integrity (early feedback, non-fatal)
+        id: verify-vendor
+        shell: bash
+        run: |
+          # Fast structure/manifest validation of the vendor output. The hard
+          # gate lives in afterPack.js (fails the build on missing python /
+          # hermes wheels / openclaw) — this step just surfaces problems early.
+          if bash scripts/verify-bundle-integrity.sh --vendor-only --platform "${{ matrix.platform == 'macos-arm64' && 'darwin-arm64' || matrix.platform == 'macos-x64' && 'darwin-x64' || matrix.platform == 'windows-x64' && 'win32-x64' || matrix.platform == 'windows-arm64' && 'win32-arm64' }}" vendor/managed-resources; then
+            echo "verify-vendor-ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "verify-vendor-ok=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=Vendor Integrity Incomplete::verify-bundle-integrity.sh reported problems (afterPack will hard-fail if critical components are missing)"
+          fi
+        continue-on-error: true # mirrors vendor step: warning-level here, hard gate in afterPack
+
       - name: Prepare packaged backend binary
         id: prepare-backend
         shell: bash

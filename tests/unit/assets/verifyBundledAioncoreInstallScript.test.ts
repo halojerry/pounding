@@ -40,22 +40,19 @@ describe('Windows bundled aioncore install verifier', () => {
 
   const runOnWindows = process.platform === 'win32' ? it : it.skip;
 
-  runOnWindows('fails an old-version-only Codex CLI install directory', () => {
+  runOnWindows('fails an old-version-only Claude CLI install directory', () => {
     const tmp = mkdtempSync(join(tmpdir(), 'aionui-install-verify-'));
     const installDir = join(tmp, 'install');
-    const managedRoot = join(installDir, 'resources', 'bundled-aioncore', 'win32-x64', 'managed-resources');
+    const managedRoot = join(installDir, 'resources', 'bundled-poundingcore', 'win32-x64', 'managed-resources');
     const logPath = join(tmp, 'verify.log');
-    const codexTriple = 'x86_64-pc-windows-msvc';
 
     try {
-      writeFile(join(installDir, 'resources', 'bundled-aioncore', 'win32-x64', 'aioncore.exe'), 'x');
-      writeJson(join(installDir, 'resources', 'bundled-aioncore', 'win32-x64', 'manifest.json'), {
+      writeFile(join(installDir, 'resources', 'bundled-poundingcore', 'win32-x64', 'poundingcore.exe'), 'x');
+      writeJson(join(installDir, 'resources', 'bundled-poundingcore', 'win32-x64', 'manifest.json'), {
         platform: 'win32',
         arch: 'x64',
       });
       writeFile(join(managedRoot, 'node', 'node-v24.11.0-win-x64', 'node.exe'), 'x');
-      // claude is present at its pinned version.
-      writeFile(join(managedRoot, 'cli', 'claude', '2.1.215', 'win32-x64', 'claude.exe'), 'x');
       writeJson(join(managedRoot, 'manifest.json'), {
         schemaVersion: 2,
         runtimeKey: 'win32-x64',
@@ -74,21 +71,12 @@ describe('Windows bundled aioncore install verifier', () => {
             requiredFiles: [],
             requiredDirectories: [],
           },
-          {
-            name: 'codex',
-            version: '0.144.6',
-            root: 'cli/codex/0.144.6/win32-x64',
-            platformDirectory: 'win32-x64',
-            executable: `vendor/${codexTriple}/bin/codex.exe`,
-            requiredFiles: [],
-            requiredDirectories: [`vendor/${codexTriple}`],
-          },
         ],
       });
 
-      // Only an OLD codex version exists on disk; the contract pins 0.144.6.
-      const oldRoot = join(managedRoot, 'cli', 'codex', '0.100.0', 'win32-x64');
-      writeFile(join(oldRoot, 'vendor', codexTriple, 'bin', 'codex.exe'), 'x');
+      // Only an OLD claude version exists on disk; the contract pins 2.1.215.
+      const oldRoot = join(managedRoot, 'cli', 'claude', '2.1.200', 'win32-x64');
+      writeFile(join(oldRoot, 'claude.exe'), 'x');
 
       const result = spawnSync(
         'powershell.exe',
@@ -110,7 +98,7 @@ describe('Windows bundled aioncore install verifier', () => {
 
       expect(result.status).not.toBe(0);
       const log = readFileSync(logPath, 'utf8');
-      expect(log).toContain('cli/codex/0.144.6');
+      expect(log).toContain('cli/claude/2.1.215');
       expect(log).toContain('result=fail');
     } finally {
       rmSync(tmp, { recursive: true, force: true });

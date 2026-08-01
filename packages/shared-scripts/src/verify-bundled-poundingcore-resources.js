@@ -332,6 +332,75 @@ function requireContractDirectory(baseDir, runtimeKey, cli, root, relativePath, 
   }
 }
 
+/**
+ * Verify vendored offline-install components produced by scripts/prepare-vendor.sh:
+ * bundled python, hermes wheels, openclaw CLI. A silently-failed vendor step used
+ * to ship broken bundles (offline first-launch installs failed at runtime).
+ * Skippable with POUNDING_SKIP_VENDOR_CHECK=1 (shared with afterPack.js) so local
+ * bundle debugging via AIONUI_BACKEND_LOCAL_BUNDLE_DIR is not killed.
+ */
+function verifyVendorComponents(baseDir, runtimeKey, checked, missing, failures) {
+  const managedRoot = path.join(baseDir, 'managed-resources');
+  // contractBundledPath already prefixes bundled-poundingcore/<key>/managed-resources
+  const mcp = (rel) => contractBundledPath(runtimeKey, rel);
+
+  // python-build-standalone layout: runtimes/python/bin/python3 (unix) or
+  // runtimes/python/python.exe (win32) — single level, no nested python/.
+  const pythonDir = path.join(managedRoot, 'runtimes', 'python');
+  const pythonOk = isFile(path.join(pythonDir, 'bin', 'python3')) || isFile(path.join(pythonDir, 'python.exe'));
+  if (!pythonOk) {
+    addFailure(failures, missing, [mcp('runtimes/python')], {
+      component: 'managed-resources',
+      reason: 'missing_vendor_python',
+      path: mcp('runtimes/python'),
+    });
+  } else {
+    checked.push(mcp('runtimes/python'));
+  }
+
+  // hermes: runtimes/hermes must contain at least one wheel.
+  // WARNING level only: hermes-agent 0.19.0 pins pyyaml==6.0.3 which has no
+  // wheel for some platforms (e.g. darwin-x64), so offline hermes install is
+  // impossible there regardless — those platforms fall back to network install.
+  const hermesDir = path.join(managedRoot, 'runtimes', 'hermes');
+  const hermesOk =
+    isDirectory(hermesDir) &&
+    fs.readdirSync(hermesDir, { withFileTypes: true }).some((e) => e.isFile() && e.name.endsWith('.whl'));
+  if (!hermesOk) {
+    console.warn(
+      `[verify] warning: managed-resources/runtimes/hermes has no wheels (hermes will need network install on this platform)`
+    );
+  } else {
+    checked.push(mcp('runtimes/hermes'));
+  }
+
+  // openclaw: cli/openclaw/<version>/<platdir>/manifest.json (vendor_cli_one layout).
+  const openclawManifest = findVendoredCliManifest(path.join(managedRoot, 'cli', 'openclaw'));
+  if (!openclawManifest) {
+    addFailure(failures, missing, [mcp('cli/openclaw')], {
+      component: 'managed-resources',
+      reason: 'missing_vendor_openclaw',
+      path: mcp('cli/openclaw'),
+    });
+  } else {
+    checked.push(mcp('cli/openclaw'));
+  }
+}
+
+/** Find the first cli/<name>/<version>/<platdir>/manifest.json under cliRoot. */
+function findVendoredCliManifest(cliRoot) {
+  if (!isDirectory(cliRoot)) return null;
+  for (const versionEntry of fs.readdirSync(cliRoot, { withFileTypes: true })) {
+    if (!versionEntry.isDirectory()) continue;
+    for (const platEntry of fs.readdirSync(path.join(cliRoot, versionEntry.name), { withFileTypes: true })) {
+      if (!platEntry.isDirectory()) continue;
+      const manifestPath = path.join(cliRoot, versionEntry.name, platEntry.name, 'manifest.json');
+      if (isFile(manifestPath)) return manifestPath;
+    }
+  }
+  return null;
+}
+
 function verifyBundledPoundingcoreResources({ resourcesDir, electronPlatformName, targetArch }) {
   const runtimeKey = `${electronPlatformName}-${targetArch}`;
   const baseDir = path.join(resourcesDir, 'bundled-poundingcore', runtimeKey);
@@ -343,6 +412,9 @@ function verifyBundledPoundingcoreResources({ resourcesDir, electronPlatformName
   verifyBundleManifest(baseDir, runtimeKey, electronPlatformName, targetArch, checked, missing, failures);
   requireRelativeDirectory(baseDir, runtimeKey, ['managed-resources'], checked, missing, failures);
   verifyManagedResourcesContract(baseDir, runtimeKey, checked, missing, failures);
+  if (process.env.POUNDING_SKIP_VENDOR_CHECK !== '1') {
+    verifyVendorComponents(baseDir, runtimeKey, checked, missing, failures);
+  }
   if (failures.length > 0 && missing.length === 0) {
     missing.push(`${contractBundledPath(runtimeKey, 'manifest.json')}<contract_failure>`);
   }

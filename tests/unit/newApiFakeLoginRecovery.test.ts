@@ -62,14 +62,23 @@ describe('isPoundingBaseUrl', () => {
 describe('recoverManagedRuntimeSnapshotFromClaudeSettings', () => {
   let homeDir: string;
   const originalHome = process.env.HOME;
+  const originalUserProfile = process.env.USERPROFILE;
 
   beforeEach(() => {
     homeDir = mkdtempSync(path.join(tmpdir(), 'pounding-fakelogin-'));
     process.env.HOME = homeDir;
+    // os.homedir() on Windows reads USERPROFILE, not HOME — without this the
+    // isolated .claude/settings.json is never seen and the test fails.
+    process.env.USERPROFILE = homeDir;
   });
 
   afterEach(() => {
     process.env.HOME = originalHome;
+    if (originalUserProfile === undefined) {
+      delete process.env.USERPROFILE;
+    } else {
+      process.env.USERPROFILE = originalUserProfile;
+    }
     rmSync(homeDir, { recursive: true, force: true });
   });
 

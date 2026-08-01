@@ -96,9 +96,16 @@ describe('FeedbackReportModal — prefill', () => {
     sentryMocks.setTag.mockClear();
     sentryMocks.captureEvent.mockClear();
     sentryMocks.withScope.mockClear();
+    // Component mount triggers client-settings/theme fetches at a relative
+    // URL; without a global stub the real fetch fails non-deterministically
+    // across runners. Reject so diagnostics collection reports "no data"
+    // (the same state the test asserted before), while tests that need a
+    // successful fetch stub it themselves.
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('fetch disabled in tests')));
   });
 
   afterEach(() => {
+    vi.unstubAllGlobals();
     cleanup();
   });
 
@@ -207,9 +214,14 @@ describe('FeedbackReportModal — prefill', () => {
     await user.type(screen.getByPlaceholderText('settings.bugReportDescriptionPlaceholder'), 'provider failed');
     await user.click(screen.getByText('settings.bugReportSubmit'));
 
-    await waitFor(() => {
-      expect(sentryMocks.captureEvent).toHaveBeenCalledTimes(1);
-    });
+    // Submit awaits a dynamic import of @sentry/electron/renderer — CI runners
+    // can exceed waitFor's default 1s timeout (pre-existing flake).
+    await waitFor(
+      () => {
+        expect(sentryMocks.captureEvent).toHaveBeenCalledTimes(1);
+      },
+      { timeout: 8000 }
+    );
 
     expect(sentryMocks.setTag).toHaveBeenCalledWith('type', 'user-feedback');
     expect(sentryMocks.setTag).toHaveBeenCalledWith('module', 'conversation-session');

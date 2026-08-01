@@ -32,7 +32,22 @@ function getCliBinDir(): string {
 type ExecCommandOptions = {
   env?: NodeJS.ProcessEnv;
   cwd?: string;
+  /** Hard kill timeout in ms (default: no timeout). */
+  timeoutMs?: number;
 };
+
+// ── Pinned CLI versions (single source of truth: scripts/vendor-versions.env) ──
+// Keep in sync with vendor-versions.env — scripts/check-version-consistency.sh
+// enforces this in CI. Verified against upstream registries 2026-08-01.
+const CLAUDE_CLI_VERSION = '2.1.215';
+const OPENCLAW_VERSION = '2026.6.33';
+const HERMES_VERSION = '0.19.0';
+// Per-step timeouts so a blocked network degrades to the bundled fallback
+// instead of stalling the first-launch OOBE forever.
+const NPM_INSTALL_TIMEOUT_MS = 300_000;
+const PIP_INSTALL_TIMEOUT_MS = 600_000;
+const VENV_TIMEOUT_MS = 120_000;
+const PROBE_TIMEOUT_MS = 15_000;
 
 type ManagedCliDescriptor = {
   target: ManagedCliInstallTarget;
@@ -104,11 +119,18 @@ function runCommand(command: string, args: string[], options: ExecCommandOptions
         cwd: options.cwd,
         shell: false,
         maxBuffer: 16 * 1024 * 1024,
+        // Hard timeout so a blocked network (npm/pip hang) degrades to the
+        // bundled fallback instead of stalling the first-launch OOBE forever.
+        timeout: options.timeoutMs,
       },
       (error, stdout, stderr) => {
         if (error) {
           const detail = [stderr, stdout, error.message].filter(Boolean).join('\n').trim();
-          reject(new Error(detail || `${command} ${args.join(' ')} failed`));
+          const suffix =
+            (error as NodeJS.ErrnoException).code === 'ETIMEDOUT' || error.killed
+              ? ` (timed out after ${Math.round((options.timeoutMs ?? 0) / 1000)}s)`
+              : '';
+          reject(new Error(`${detail || `${command} ${args.join(' ')} failed`}${suffix}`));
           return;
         }
         resolve();
@@ -132,11 +154,16 @@ function runCommandOutput(command: string, args: string[], options: ExecCommandO
         cwd: options.cwd,
         shell: false,
         maxBuffer: 16 * 1024 * 1024,
+        timeout: options.timeoutMs,
       },
       (error, stdout, stderr) => {
         if (error) {
           const detail = [stderr, stdout, error.message].filter(Boolean).join('\n').trim();
-          reject(new Error(detail || `${command} ${args.join(' ')} failed`));
+          const suffix =
+            (error as NodeJS.ErrnoException).code === 'ETIMEDOUT' || error.killed
+              ? ` (timed out after ${Math.round((options.timeoutMs ?? 0) / 1000)}s)`
+              : '';
+          reject(new Error(`${detail || `${command} ${args.join(' ')} failed`}${suffix}`));
           return;
         }
         resolve(stdout);
@@ -429,19 +456,24 @@ async function getGlobalJsCommand(): Promise<string> {
   throw new Error('No npm available to install JavaScript CLIs.');
 }
 
-async function installNpmPackage(packageName: string): Promise<void> {
+async function installNpmPackage(
+  packageName: string,
+  options: { version?: string; timeoutMs?: number } = {}
+): Promise<void> {
+  const spec = options.version ? `${packageName}@${options.version}` : packageName;
   let lastError: unknown;
   for (const registry of [NPM_MIRROR_REGISTRY, NPM_DEFAULT_REGISTRY]) {
     try {
-      await runCommand(getNpmCommand(), ['install', '-g', packageName], {
+      await runCommand(getNpmCommand(), ['install', '-g', spec], {
         env: getNpmEnv(registry),
+        timeoutMs: options.timeoutMs ?? NPM_INSTALL_TIMEOUT_MS,
       });
       return;
     } catch (error) {
       lastError = error;
     }
   }
-  throw lastError instanceof Error ? lastError : new Error(`Failed to install ${packageName}`);
+  throw lastError instanceof Error ? lastError : new Error(`Failed to install ${spec}`);
 }
 
 async function uninstallNpmPackage(packageName: string): Promise<void> {
@@ -484,14 +516,26 @@ exec "${hermesExe}" "$@"
   }
 }
 
+/**
+ * Resolve the bundled Python runtime inside managed-resources.
+ *
+ * Layout (python-build-standalone install_only, verified 2026-08-01):
+ *   unix:  <base>/runtimes/python/bin/python3
+ *   win32: <base>/runtimes/python/python.exe   (no python3.exe on Windows)
+ * The tarball top-level is `python/` and vendor scripts extract with
+ * --strip-components=1 — do NOT re-introduce a nested `python/python` path.
+ */
+export function resolveBundledPythonBinary(baseDir: string | null): string | null {
+  if (!baseDir) return null;
+  const root = path.join(baseDir, 'runtimes', 'python');
+  const candidate = process.platform === 'win32' ? path.join(root, 'python.exe') : path.join(root, 'bin', 'python3');
+  return fs.existsSync(candidate) ? candidate : null;
+}
+
 function resolvePython3Binary(): string | null {
   // Try bundled Python from managed-resources first (offline path)
-  const bundledResourcesDir = resolveBundledResourcesDir();
-  if (bundledResourcesDir) {
-    const pythonBinDir = path.join(bundledResourcesDir, 'runtimes', 'python', 'python', 'bin');
-    const pythonBinary = path.join(pythonBinDir, process.platform === 'win32' ? 'python3.exe' : 'python3');
-    if (fs.existsSync(pythonBinary)) return pythonBinary;
-  }
+  const bundledPython = resolveBundledPythonBinary(resolveBundledResourcesDir());
+  if (bundledPython) return bundledPython;
   // Fallback to system python3
   return process.env.PYTHON_BINARY || 'python3';
 }
@@ -501,11 +545,13 @@ async function installHermes(): Promise<void> {
   if (!pythonBinary)
     throw new Error('Python3 not found. Bundled Python runtime is missing and no system python3 available.');
 
-  const packageName = 'hermes-agent[acp]';
+  // Pin to the same version the vendor bundle ships (vendor-versions.env)
+  // so network install and bundled install never drift.
+  const packageName = `hermes-agent[acp]==${HERMES_VERSION}`;
   const indexUrls = ['https://pypi.tuna.tsinghua.edu.cn/simple', 'https://pypi.org/simple'];
 
   ensureDir(path.dirname(HERMES_VENV_DIR));
-  await runCommand(pythonBinary, ['-m', 'venv', '--clear', HERMES_VENV_DIR]);
+  await runCommand(pythonBinary, ['-m', 'venv', '--clear', HERMES_VENV_DIR], { timeoutMs: VENV_TIMEOUT_MS });
   const venvPython =
     process.platform === 'win32'
       ? path.join(HERMES_VENV_DIR, 'Scripts', 'python.exe')
@@ -514,16 +560,11 @@ async function installHermes(): Promise<void> {
   let lastError: unknown;
   for (const indexUrl of indexUrls) {
     try {
-      await runCommand(venvPython, [
-        '-m',
-        'pip',
-        'install',
-        '--disable-pip-version-check',
-        '-i',
-        indexUrl,
-        '-U',
-        packageName,
-      ]);
+      await runCommand(
+        venvPython,
+        ['-m', 'pip', 'install', '--disable-pip-version-check', '-i', indexUrl, '-U', packageName],
+        { timeoutMs: PIP_INSTALL_TIMEOUT_MS }
+      );
       writeHermesShim();
       return;
     } catch (error) {
@@ -542,7 +583,6 @@ export async function preinstallHermesFromBundle(bundledResourcesDir: string): P
   const hermesDescriptor = DESCRIPTORS.hermes;
   if (await isManagedCliInstalled(hermesDescriptor)) return true;
 
-  const pythonDir = path.join(bundledResourcesDir, 'runtimes', 'python');
   const uvBinary = path.join(bundledResourcesDir, 'runtimes', 'uv', process.platform === 'win32' ? 'uv.exe' : 'uv');
   const hermesWheelDir = path.join(bundledResourcesDir, 'runtimes', 'hermes');
 
@@ -551,13 +591,11 @@ export async function preinstallHermesFromBundle(bundledResourcesDir: string): P
   if (wheelFiles.length === 0) return false;
 
   // Require vendored Python to create the venv.
-  if (!fs.existsSync(pythonDir)) return false;
-  const pythonBinDir = path.join(pythonDir, 'python', 'bin');
-  const pythonBinary = path.join(pythonBinDir, process.platform === 'win32' ? 'python3.exe' : 'python3');
-  if (!fs.existsSync(pythonBinary)) return false;
+  const pythonBinary = resolveBundledPythonBinary(bundledResourcesDir);
+  if (!pythonBinary) return false;
 
   try {
-    await runCommand(pythonBinary, ['-m', 'venv', '--clear', HERMES_VENV_DIR]);
+    await runCommand(pythonBinary, ['-m', 'venv', '--clear', HERMES_VENV_DIR], { timeoutMs: VENV_TIMEOUT_MS });
 
     const uvCmd = fs.existsSync(uvBinary) ? uvBinary : 'uv';
     const venvPython = path.join(
@@ -570,21 +608,20 @@ export async function preinstallHermesFromBundle(bundledResourcesDir: string): P
       // Legacy: single wheel (old vendor format). Install it, then
       // explicitly add agent-client-protocol for the [acp] extra.
       const wheelPath = path.join(hermesWheelDir, wheelFiles[0]);
-      await runCommand(uvCmd, ['pip', 'install', '--python', venvPython, wheelPath]);
-      await runCommand(uvCmd, ['pip', 'install', '--python', venvPython, 'agent-client-protocol']);
+      await runCommand(uvCmd, ['pip', 'install', '--python', venvPython, wheelPath], {
+        timeoutMs: PIP_INSTALL_TIMEOUT_MS,
+      });
+      await runCommand(uvCmd, ['pip', 'install', '--python', venvPython, 'agent-client-protocol==0.9.0'], {
+        timeoutMs: PIP_INSTALL_TIMEOUT_MS,
+      });
     } else {
       // Multi-wheel vendor bundle (pip download). Install everything from
       // the local directory — no network at all.
-      await runCommand(uvCmd, [
-        'pip',
-        'install',
-        '--python',
-        venvPython,
-        '--no-index',
-        '--find-links',
-        hermesWheelDir,
-        'hermes-agent[acp]',
-      ]);
+      await runCommand(
+        uvCmd,
+        ['pip', 'install', '--python', venvPython, '--no-index', '--find-links', hermesWheelDir, 'hermes-agent[acp]'],
+        { timeoutMs: PIP_INSTALL_TIMEOUT_MS }
+      );
     }
 
     writeHermesShim();
@@ -629,7 +666,7 @@ async function commandExists(command: string): Promise<boolean> {
   if (isAbsoluteExecutablePath(command)) return true;
   const locator = process.platform === 'win32' ? 'where' : 'which';
   try {
-    await runCommand(locator, [command]);
+    await runCommand(locator, [command], { timeoutMs: PROBE_TIMEOUT_MS });
     return true;
   } catch {
     return false;
@@ -649,7 +686,9 @@ const DESCRIPTORS: Record<ManagedCliInstallTarget, ManagedCliDescriptor> = {
       path.join(BUN_BIN_DIR, process.platform === 'win32' ? 'claude.cmd' : 'claude'),
     ],
     install: async () => {
-      await installNpmPackage('@anthropic-ai/claude-code');
+      // Pin to the bundled version (vendor-versions.env) so network install
+      // and bundle never drift.
+      await installNpmPackage('@anthropic-ai/claude-code', { version: CLAUDE_CLI_VERSION });
     },
     uninstall: async () => {
       await uninstallGlobalPackage('@anthropic-ai/claude-code');
@@ -670,7 +709,8 @@ const DESCRIPTORS: Record<ManagedCliInstallTarget, ManagedCliDescriptor> = {
       path.join(BUN_BIN_DIR, process.platform === 'win32' ? 'openclaw.cmd' : 'openclaw'),
     ],
     install: async () => {
-      await installNpmPackage('openclaw');
+      // Pin to the extended-stable version (vendor-versions.env).
+      await installNpmPackage('openclaw', { version: OPENCLAW_VERSION });
     },
     uninstall: async () => {
       await uninstallGlobalPackage('openclaw');

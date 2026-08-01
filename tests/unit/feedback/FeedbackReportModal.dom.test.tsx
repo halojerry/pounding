@@ -214,9 +214,14 @@ describe('FeedbackReportModal — prefill', () => {
     await user.type(screen.getByPlaceholderText('settings.bugReportDescriptionPlaceholder'), 'provider failed');
     await user.click(screen.getByText('settings.bugReportSubmit'));
 
-    await waitFor(() => {
-      expect(sentryMocks.captureEvent).toHaveBeenCalledTimes(1);
-    });
+    // Submit awaits a dynamic import of @sentry/electron/renderer — CI runners
+    // can exceed waitFor's default 1s timeout (pre-existing flake).
+    await waitFor(
+      () => {
+        expect(sentryMocks.captureEvent).toHaveBeenCalledTimes(1);
+      },
+      { timeout: 8000 }
+    );
 
     expect(sentryMocks.setTag).toHaveBeenCalledWith('type', 'user-feedback');
     expect(sentryMocks.setTag).toHaveBeenCalledWith('module', 'conversation-session');

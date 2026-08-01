@@ -5,7 +5,6 @@
  */
 
 import { ipcBridge } from '@/common';
-import { httpRequest } from '@/common/adapter/httpBridge';
 import type { AgentMetadata } from '@/renderer/utils/model/agentTypes';
 import type {
   ManagedCliInstallOptions,
@@ -673,10 +672,6 @@ async function commandExists(command: string): Promise<boolean> {
   }
 }
 
-async function refreshAgents(): Promise<void> {
-  await httpRequest('POST', '/api/agents/refresh');
-}
-
 const DESCRIPTORS: Record<ManagedCliInstallTarget, ManagedCliDescriptor> = {
   claude: {
     target: 'claude',
@@ -737,12 +732,10 @@ async function isManagedCliInstalled(descriptor: ManagedCliDescriptor): Promise<
 
 async function syncAfterInstall(target: ManagedCliInstallTarget): Promise<void> {
   await newApiDesktopAccountService.reconcileManagedRuntimeState({ cliTarget: target });
-  await refreshAgents();
 }
 
 async function syncAfterUninstall(target: ManagedCliInstallTarget): Promise<void> {
   await newApiDesktopAccountService.clearManagedRuntimeForCliTarget(target);
-  await refreshAgents();
 }
 
 async function installManagedCli(input: ManagedCliInstallOptions): Promise<ManagedCliInstallResult> {

@@ -1,4 +1,3 @@
-import { ipcBridge } from '@/common';
 import type { AcpModelInfo } from '@/common/types/platform/acpTypes';
 import type { AgentMetadata } from '@/renderer/utils/model/agentTypes';
 import { DETECTED_AGENTS_SWR_KEY, fetchDetectedAgents } from '@/renderer/utils/model/agentTypes';
@@ -62,7 +61,6 @@ export const useDetectedAgents = () => {
 
   const refreshAgentDetection = useCallback(async () => {
     try {
-      await ipcBridge.acpConversation.refreshCustomAgents.invoke();
       await mutate(DETECTED_AGENTS_SWR_KEY);
     } catch {
       // ignore

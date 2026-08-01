@@ -153,11 +153,16 @@
   "processing": "Обробка...",
   "optional": "(необов'язково)",
   "clear": "Очистити",
-  "cli.prepOffice": "POUNDING готує ваш офіс",
   "unit": {
     "minute_short": "хв",
     "second_short": "с"
   },
   "selectedCount": "Вибрано {{count}}",
-  "selectedSkills": "Вибрані навички"
+  "selectedSkills": "Вибрані навички",
+  "cli": {
+    "prepOffice": "POUNDING готує ваш офіс",
+    "prepWorkspace": "Готуємо ваш робочий простір…",
+    "prepAgents": "Налаштовуємо ваших ШІ-агентів…",
+    "prepRuntimes": "Готуємо середовища виконання…"
+  }
 }

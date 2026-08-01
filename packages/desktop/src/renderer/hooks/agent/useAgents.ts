@@ -4,7 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { ipcBridge } from '@/common';
 import type { AgentMetadata } from '@/renderer/utils/model/agentTypes';
 import { DETECTED_AGENTS_SWR_KEY, fetchDetectedAgents } from '@/renderer/utils/model/agentTypes';
 import useSWR, { mutate } from 'swr';
@@ -15,7 +14,7 @@ export type UseAgentsResult = {
   error: unknown;
   /** Force re-fetch of `/api/agents` and broadcast to all subscribers. */
   revalidate: () => Promise<AgentMetadata[] | undefined>;
-  /** POST `/api/agents/refresh` then revalidate — use this for explicit "refresh" buttons. */
+  /** Revalidate the detected-agent cache — the backend auto-hydrates agents, so no refresh POST is needed. */
   refreshCustomAgents: () => Promise<void>;
 };
 
@@ -35,7 +34,6 @@ export const useAgents = (): UseAgentsResult => {
     error,
     revalidate: () => mutate<AgentMetadata[]>(DETECTED_AGENTS_SWR_KEY),
     refreshCustomAgents: async () => {
-      await ipcBridge.acpConversation.refreshCustomAgents.invoke();
       await mutate(DETECTED_AGENTS_SWR_KEY);
     },
   };
@@ -58,10 +56,10 @@ export async function getAgents(): Promise<AgentMetadata[]> {
 }
 
 /**
- * Non-hook entry point to trigger a backend re-scan (`POST /api/agents/refresh`)
- * and revalidate the shared cache. Safe to call from plain async code.
+ * Non-hook entry point to trigger a revalidation of the shared detected-agent
+ * cache. Safe to call from plain async code. The backend auto-hydrates agents,
+ * so no explicit refresh POST is needed.
  */
 export async function refreshAgents(): Promise<void> {
-  await ipcBridge.acpConversation.refreshCustomAgents.invoke();
   await mutate(DETECTED_AGENTS_SWR_KEY);
 }

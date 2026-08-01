@@ -4,7 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { ipcBridge } from '@/common';
 import type { ManagedAgent } from '@/renderer/utils/model/agentTypes';
 import { MANAGED_AGENTS_SWR_KEY, fetchManagedAgents } from '@/renderer/utils/model/agentTypes';
 import useSWR, { mutate } from 'swr';
@@ -57,7 +56,6 @@ export const useManagedAgents = (): UseManagedAgentsResult => {
     revalidate: revalidateManaged,
     refreshCatalog: refreshManagedAgentCatalogAndAssistants,
     refreshCustomAgents: async () => {
-      await ipcBridge.acpConversation.refreshCustomAgents.invoke();
       await refreshManagedAgentCatalogAndAssistants();
     },
   };

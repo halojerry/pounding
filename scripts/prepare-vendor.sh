@@ -31,6 +31,13 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# ── Shared version pins (single source of truth) ─────────────────────────
+# Canonical values live in vendor-versions.env. Env vars / CLI args still
+# override after sourcing (keep both in sync; check-version-consistency.sh).
+if [ -f "${SCRIPT_DIR}/vendor-versions.env" ]; then
+  . "${SCRIPT_DIR}/vendor-versions.env"
+fi
+
 # ── Helpers ──────────────────────────────────────────────────────────────
 
 target_meta() {
@@ -73,7 +80,9 @@ mkdir -p "${OUT_DIR}"
 # ── 1. Python (portable build) ───────────────────────────────────────────
 
 PYTHON_VERSION="${PYTHON_VERSION:-3.12.9}"
-PYTHON_RELEASE="${PYTHON_RELEASE:-20250324}"
+# NOTE: release tag 20250324 does NOT exist on indygreg/python-build-standalone
+# (HTTP 404, verified 2026-08-01). 20250317 is the correct tag for 3.12.9.
+PYTHON_RELEASE="${PYTHON_RELEASE:-20250317}"
 
 vendor_python() {
   local triple dest
@@ -183,7 +192,7 @@ PKGJSON
 
   rm -rf "${dest}"
   mkdir -p "${dest}"
-  cp -R "${work}/project/node_modules/." "${dest}/"
+  cp -R "${work}/project/node_modules" "${dest}/node_modules"
 
   # Resolve entrypoint from package.json bin field
   local entrypoint
@@ -273,7 +282,7 @@ NODESCRIPT
 
   rm -rf "${dest}"
   mkdir -p "${dest}"
-  cp -R "${work}/project/node_modules/." "${dest}/"
+  cp -R "${work}/project/node_modules" "${dest}/node_modules"
 
   cat > "${dest}/manifest.json" <<MANIFEST
 {
@@ -292,8 +301,8 @@ vendor_acp() {
 
 # ── 5. CLI tools ─────────────────────────────────────────────────────────
 
-OPENCLAW_VERSION="${OPENCLAW_VERSION:-0.1.0}"
-HERMES_VERSION="${HERMES_VERSION:-0.1.0}"
+OPENCLAW_VERSION="${OPENCLAW_VERSION:-2026.6.33}"
+HERMES_VERSION="${HERMES_VERSION:-0.19.0}"
 
 vendor_cli_one() {
   local cli_name="$1" pkg="$2" version="$3"
@@ -331,7 +340,7 @@ PKGJSON
 
   rm -rf "${dest}"
   mkdir -p "${dest}"
-  cp -R "${work}/project/node_modules/." "${dest}/"
+  cp -R "${work}/project/node_modules" "${dest}/node_modules"
 
   local bin_rel
   bin_rel="$(node - "${pkg}" "${work}/project" <<'NODESCRIPT'
@@ -349,14 +358,23 @@ function resolveBin(bin, name) {
   return Object.values(bin)[0];
 }
 const ep = resolveBin(pj.bin, pj.name);
-console.log(typeof ep === 'string' ? ep.replace(/\\/g, '/') : ep.replace(/\\/g, '/'));
+// entrypoint must be relative to the CLI root and point into node_modules.
+// The frontend materializeFromBundled() resolves bundledDir/entrypoint AND
+// derives the package dir from the node_modules path segment.
+// NOTE: keep this heredoc ASCII-only with PAIRED quotes only. bash 3.2 (macOS)
+// mis-parses a quoted heredoc nested in a command substitution: backticks,
+// command-substitution syntax, multibyte chars, and UNPAIRED single quotes
+// all break the script on macOS while CI (bash 5) stays green.
+console.log(path.posix.join('node_modules', ...segs, String(ep).replace(/\\/g, '/')));
 NODESCRIPT
 )"
 
   cat > "${dest}/manifest.json" <<MANIFEST
 {
   "entrypoint": "${bin_rel}",
-  "path_entries": [".bin"]
+  "path_entries": ["node_modules/.bin"],
+  "version": "${version}",
+  "platform": "${platdir}"
 }
 MANIFEST
 
@@ -379,49 +397,15 @@ vendor_hermes() {
 
   echo "  hermes: downloading wheels"
 
-  # Strategy 1: vendored or system uv (preferred)
-  local uv_bin=""
-  for candidate in \
-    "${OUT_DIR}/runtimes/uv/uv" \
-    "${OUT_DIR}/runtimes/uv/uv.exe" \
-    "${HOME}/.local/bin/uv" \
-    "${HOME}/.cargo/bin/uv"; do
-    if [ -x "${candidate}" ]; then
-      uv_bin="${candidate}"
-      break
-    fi
-  done
-  if [ -z "${uv_bin}" ] && command -v uv >/dev/null 2>&1; then
-    uv_bin="uv"
-  fi
-
-  if [ -n "${uv_bin}" ]; then
-    if "${uv_bin}" pip download --help >/dev/null 2>&1; then
-      echo "    using uv: ${uv_bin}"
-      rm -rf "${dest}"
-      mkdir -p "${dest}"
-
-      "${uv_bin}" pip download "hermes-agent[acp]>=${HERMES_VERSION}" \
-        --dest "${dest}" 2>&1 | tail -3 || {
-        echo "    uv pip download FAILED (will try pip)"
-        rm -rf "${dest}"
-        uv_bin=""
-      }
-
-      if [ -n "${uv_bin}" ] && [ -d "${dest}" ] && ls "${dest}"/*.whl >/dev/null 2>&1; then
-        echo "${HERMES_VERSION}" > "${dest}/.version"
-        echo "  hermes: done via uv ($(ls "${dest}"/*.whl 2>/dev/null | wc -l) wheels)"
-        return 0
-      fi
-    else
-      echo "    uv too old (no pip download), will try pip"
-    fi
-  fi
-
-  # Strategy 2: system Python + pip
+  # Prefer the bundled Python's pip (vendored by vendor_python above) so the
+  # wheels exactly match the bundled runtime. NOTE: uv pip download does NOT
+  # exist in uv (verified through 0.12.x) — always use pip download here.
   local python_bin=""
-  for candidate in python3 python; do
-    if command -v "${candidate}" >/dev/null 2>&1; then
+  for candidate in \
+    "${OUT_DIR}/runtimes/python/bin/python3" \
+    "${OUT_DIR}/runtimes/python/python.exe" \
+    python3 python; do
+    if [ -x "${candidate}" ] || command -v "${candidate}" >/dev/null 2>&1; then
       python_bin="${candidate}"
       break
     fi
@@ -442,14 +426,13 @@ vendor_hermes() {
     rm -rf "${dest}"
     mkdir -p "${dest}"
 
-    "${python_bin}" -m pip download "hermes-agent[acp]>=${HERMES_VERSION}" \
+    "${python_bin}" -m pip download "hermes-agent[acp]==${HERMES_VERSION}" \
       --dest "${dest}" \
       --python-version 3.12 \
       --platform "${plat_tag}" \
       --only-binary :all: 2>&1 | tail -5 || {
-      echo "    pip download FAILED (non-fatal)"
+      echo "    pip download FAILED (non-fatal, no .version marker — retried next run)"
       rm -rf "${dest}"
-      echo "${HERMES_VERSION}" > "${dest}/.version"
       return 0
     }
 
@@ -460,9 +443,8 @@ vendor_hermes() {
     fi
   fi
 
-  echo "  hermes: no working Python/uv found (non-fatal)"
+  echo "  hermes: no working Python found (non-fatal, no .version marker — retried next run)"
   rm -rf "${dest}"
-  echo "${HERMES_VERSION}" > "${dest}/.version"
   return 0
 }
 

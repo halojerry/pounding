@@ -12,10 +12,17 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 VENDOR_DIR="${PROJECT_DIR}/vendor/managed-resources"
 
+# ── Shared version pins (single source of truth) ─────────────────────────
+if [ -f "${SCRIPT_DIR}/vendor-versions.env" ]; then
+  . "${SCRIPT_DIR}/vendor-versions.env"
+fi
+
 NODE_VERSION="${NODE_VERSION:-24.11.0}"
-HERMES_VERSION="${HERMES_VERSION:-0.1.0}"
-OPENCLAW_VERSION="${OPENCLAW_VERSION:-0.1.0}"
-PYTHON_BUILD_STANDALONE_RELEASE="${PYTHON_BUILD_STANDALONE_RELEASE:-20250324}"
+HERMES_VERSION="${HERMES_VERSION:-0.19.0}"
+OPENCLAW_VERSION="${OPENCLAW_VERSION:-2026.6.33}"
+# NOTE: 20250324 does NOT exist on indygreg/python-build-standalone (404);
+# 20250317 is the correct tag for cpython 3.12.9 (verified 2026-08-01).
+PYTHON_BUILD_STANDALONE_RELEASE="${PYTHON_BUILD_STANDALONE_RELEASE:-20250317}"
 PYTHON_VERSION="${PYTHON_VERSION:-3.12.9}"
 UV_VERSION="${UV_VERSION:-0.7.16}"
 CHROME_DEVTOOLS_MCP_VERSION="${CHROME_DEVTOOLS_MCP_VERSION:-1.4.0}"
@@ -270,7 +277,7 @@ PKGJSON
     mkdir -p "${dest}"
 
     # Copy everything
-    cp -R "${work}/project/node_modules/." "${dest}/"
+    cp -R "${work}/project/node_modules" "${dest}/node_modules"
 
     # Resolve entry point from package.json bin field
     local entrypoint
@@ -446,7 +453,7 @@ PKGJSON
     mkdir -p "${dest}"
 
     # Copy everything (binary + deps)
-    cp -R "${work}/project/node_modules/." "${dest}/"
+    cp -R "${work}/project/node_modules" "${dest}/node_modules"
 
     # Resolve bin entry
     local bin_rel
@@ -472,7 +479,7 @@ NODESCRIPT
     cat > "${dest}/manifest.json" <<MANIFEST
 {
   "entrypoint": "${bin_rel}",
-  "path_entries": [".bin"]
+  "path_entries": ["node_modules/.bin"]
 }
 MANIFEST
 
@@ -490,15 +497,16 @@ vendor_hermes() {
     meta="$(target_meta "${target}")"
     IFS='|' read -r plat arch platdir <<<"${meta}"
 
-    local dest="${VENDOR_DIR}/cli/hermes/${HERMES_VERSION}/${platdir}"
-    if [[ -d "${dest}" ]] && [[ -f "${dest}/manifest.json" ]]; then
-      echo "  ${target}: already vendored"
+    # Runtime expects wheels in runtimes/hermes (same layout as prepare-vendor.sh);
+    # cli/hermes/<ver>/ is a legacy layout the runtime never reads.
+    local dest="${VENDOR_DIR}/runtimes/hermes"
+    if [ -f "${dest}/.version" ] && [ "$(cat "${dest}/.version")" = "${HERMES_VERSION}" ]; then
+      echo "  ${target}: already vendored (v${HERMES_VERSION})"
       continue
     fi
 
-    # Hermes is a Python package — pip install into vendor directory.
-    # Platform filtering: only vendor for the current host platform since
-    # pip cannot cross-install for other OS/arch.
+    # Hermes is a Python package — download wheels (cross-platform not supported
+    # by pip for other OS/arch; same policy as prepare-vendor.sh).
     local host_target
     case "$(uname -s)" in
       Darwin) host_target="darwin-$(uname -m | sed 's/x86_64/x64/;s/arm64/arm64/')" ;;
@@ -510,31 +518,36 @@ vendor_hermes() {
       continue
     fi
 
-    echo "  ${target}: pip install"
+    echo "  ${target}: pip download"
     rm -rf "${dest}"
     mkdir -p "${dest}"
-    pip3 install \
-      --target "${dest}" \
+    local plat_tag=""
+    case "${target}" in
+      darwin-arm64) plat_tag="macosx_11_0_arm64" ;;
+      darwin-x64)   plat_tag="macosx_10_9_x86_64" ;;
+      linux-x64)    plat_tag="manylinux2014_x86_64" ;;
+      linux-arm64)  plat_tag="manylinux2014_aarch64" ;;
+      win32-x64)    plat_tag="win_amd64" ;;
+      win32-arm64)  plat_tag="win_arm64" ;;
+    esac
+    pip3 download \
+      --dest "${dest}" \
       --python-version 3.12 \
+      --platform "${plat_tag}" \
       --only-binary :all: \
-      --no-deps \
       "hermes-agent[acp]==${HERMES_VERSION}" 2>&1 | tail -3 || {
-        echo "  ${target}: pip install FAILED, trying with deps"
-        pip3 install --target "${dest}" "hermes-agent[acp]==${HERMES_VERSION}" 2>&1 | tail -3 || {
-          echo "  ${target}: pip install FAILED, skipping"
-          rm -rf "${dest}"
-          continue
-        }
+        echo "  ${target}: pip download FAILED, skipping (no .version marker — retried next run)"
+        rm -rf "${dest}"
+        continue
       }
 
-    # Write manifest
-    cat > "${dest}/manifest.json" <<MANIFEST
-{
-  "entrypoint": "bin/hermes",
-  "path_entries": ["bin"]
-}
-MANIFEST
-    echo "  ${target}: done (${dest})"
+    if ls "${dest}"/*.whl >/dev/null 2>&1; then
+      echo "${HERMES_VERSION}" > "${dest}/.version"
+      echo "  ${target}: done (${dest}, $(ls "${dest}"/*.whl | wc -l | tr -d ' ') wheels)"
+    else
+      echo "  ${target}: no wheels downloaded, skipping"
+      rm -rf "${dest}"
+    fi
   done
 }
 

@@ -97,6 +97,35 @@ function verifyManagedResources(resourcesDir, runtimeKey, electronPlatformName) 
     }
   }
 
+  // Verify vendored offline components (python / hermes wheels / openclaw).
+  // These are produced by scripts/prepare-vendor.sh in CI; a silently failed
+  // vendor step previously shipped broken bundles (offline first-launch
+  // installs would fail at runtime). POUNDING_SKIP_VENDOR_CHECK=1 bypasses
+  // this for local bundle debugging (CI never sets it).
+  if (process.env.POUNDING_SKIP_VENDOR_CHECK !== '1') {
+    // python-build-standalone layout: runtimes/python/bin/python3 (unix) or
+    // runtimes/python/python.exe (win32) — single-level, no nested python/.
+    const pythonOk =
+      fs.existsSync(path.join(baseDir, 'runtimes', 'python', 'bin', 'python3')) ||
+      fs.existsSync(path.join(baseDir, 'runtimes', 'python', 'python.exe'));
+    if (!pythonOk) {
+      missing.push('managed-resources/runtimes/python (vendor step likely failed — no bundled python)');
+    }
+
+    const hermesWheelDir = path.join(baseDir, 'runtimes', 'hermes');
+    const hermesOk =
+      fs.existsSync(hermesWheelDir) &&
+      fs.readdirSync(hermesWheelDir, { withFileTypes: true }).some((e) => e.isFile() && e.name.endsWith('.whl'));
+    if (!hermesOk) {
+      missing.push('managed-resources/runtimes/hermes (no wheels — offline hermes install will fail)');
+    }
+
+    const openclawOk = fs.existsSync(path.join(baseDir, 'cli', 'openclaw'));
+    if (!openclawOk) {
+      missing.push('managed-resources/cli/openclaw (vendor step likely failed — offline openclaw install will fail)');
+    }
+  }
+
   if (missing.length > 0) {
     throw new Error(`Managed resources incomplete for ${runtimeKey}: ${missing.join(', ')}`);
   }

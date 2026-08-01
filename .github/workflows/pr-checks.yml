@@ -86,6 +86,9 @@ jobs:
       - name: Run prek checks
         run: prek run --from-ref origin/${{ env.PR_BASE_REF }} --to-ref HEAD
 
+      - name: Check pinned CLI/runtime versions match vendor-versions.env
+        run: bash scripts/check-version-consistency.sh ../poundingcore
+
   # Job 2: Unit tests across all platforms
   unit-tests:
     name: Unit Tests (${{ matrix.os }})

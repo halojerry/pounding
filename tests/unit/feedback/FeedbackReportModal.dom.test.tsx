@@ -96,17 +96,12 @@ describe('FeedbackReportModal — prefill', () => {
     sentryMocks.setTag.mockClear();
     sentryMocks.captureEvent.mockClear();
     sentryMocks.withScope.mockClear();
-    // Component mount triggers client-settings/theme fetches; without a global
-    // stub the real fetch hits a relative URL and fails (flaky across runners).
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue(
-        new Response(JSON.stringify({ success: true, data: {} }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        })
-      )
-    );
+    // Component mount triggers client-settings/theme fetches at a relative
+    // URL; without a global stub the real fetch fails non-deterministically
+    // across runners. Reject so diagnostics collection reports "no data"
+    // (the same state the test asserted before), while tests that need a
+    // successful fetch stub it themselves.
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('fetch disabled in tests')));
   });
 
   afterEach(() => {

@@ -152,11 +152,16 @@
   "processing": "处理中...",
   "optional": "（可选）",
   "clear": "清除",
-  "cli.prepOffice": "POUNDING正在为您准备办公室",
   "unit": {
     "minute_short": "分",
     "second_short": "秒"
   },
   "selectedCount": "已选 {{count}}",
-  "selectedSkills": "已选技能"
+  "selectedSkills": "已选技能",
+  "cli": {
+    "prepOffice": "POUNDING正在为您准备办公室",
+    "prepWorkspace": "工作空间为您准备中…",
+    "prepAgents": "正在配置您的 AI 助手…",
+    "prepRuntimes": "正在准备运行环境…"
+  }
 }

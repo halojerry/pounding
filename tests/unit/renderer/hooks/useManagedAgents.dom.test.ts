@@ -97,7 +97,7 @@ describe('useManagedAgents', () => {
     expect(mutate).toHaveBeenCalledWith('assistants');
   });
 
-  it('refreshCustomAgents triggers a backend rescan then refreshes management and assistant caches', async () => {
+  it('refreshCustomAgents refreshes management and assistant caches without a backend rescan', async () => {
     (useSWR as any).mockReturnValue({ data: [], error: null, isLoading: false });
 
     const { result } = renderHook(() => useManagedAgents());
@@ -106,7 +106,7 @@ describe('useManagedAgents', () => {
       await result.current.refreshCustomAgents();
     });
 
-    expect(ipcBridge.acpConversation.refreshCustomAgents.invoke).toHaveBeenCalled();
+    expect(ipcBridge.acpConversation.refreshCustomAgents.invoke).not.toHaveBeenCalled();
     expect(mutate).toHaveBeenCalledWith('agents.managed');
     expect(mutate).toHaveBeenCalledWith('assistants.list');
     expect(mutate).toHaveBeenCalledWith('assistants');

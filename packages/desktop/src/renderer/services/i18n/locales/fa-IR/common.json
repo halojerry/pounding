@@ -158,5 +158,11 @@
     "second_short": "ث"
   },
   "selectedCount": "{{count}} انتخاب‌شده",
-  "selectedSkills": "مهارت‌های انتخاب‌شده"
+  "selectedSkills": "مهارت‌های انتخاب‌شده",
+  "cli": {
+    "prepOffice": "POUNDING در حال آماده‌سازی دفتر شماست",
+    "prepWorkspace": "در حال آماده‌سازی فضای کاری شما…",
+    "prepAgents": "در حال راه‌اندازی عامل‌های هوش مصنوعی شما…",
+    "prepRuntimes": "در حال آماده‌سازی محیط‌های اجرا…"
+  }
 }

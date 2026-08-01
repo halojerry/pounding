@@ -157,5 +157,11 @@
     "second_short": "с"
   },
   "selectedCount": "Выбрано {{count}}",
-  "selectedSkills": "Выбранные навыки"
+  "selectedSkills": "Выбранные навыки",
+  "cli": {
+    "prepOffice": "POUNDING готовит ваш офис",
+    "prepWorkspace": "Готовим ваше рабочее пространство…",
+    "prepAgents": "Настраиваем ваших ИИ-агентов…",
+    "prepRuntimes": "Готовим среды выполнения…"
+  }
 }

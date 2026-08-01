@@ -867,7 +867,6 @@ export const acpConversation = {
     (p) => `/api/agents/${encodeURIComponent(p.id)}/overrides`,
     (p) => ({ command_override: p.command_override, env_override: p.env_override })
   ),
-  refreshCustomAgents: httpPost<void, void>('/api/agents/refresh'),
   testCustomAgent: httpPost<
     { step: 'success' } | { step: 'fail_cli'; error: string } | { step: 'fail_acp'; error: string },
     { command: string; acp_args?: string[]; env?: Record<string, string>; runtime_scope_id?: string }

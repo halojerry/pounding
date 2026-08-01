@@ -158,5 +158,11 @@
   },
   "goBack": "Zurück",
   "selectedCount": "{{count}} ausgewählt",
-  "selectedSkills": "Ausgewählte Skills"
+  "selectedSkills": "Ausgewählte Skills",
+  "cli": {
+    "prepOffice": "POUNDING bereitet Ihr Büro vor",
+    "prepWorkspace": "Ihr Arbeitsbereich wird vorbereitet…",
+    "prepAgents": "Ihre KI-Agenten werden eingerichtet…",
+    "prepRuntimes": "Laufzeitumgebungen werden vorbereitet…"
+  }
 }

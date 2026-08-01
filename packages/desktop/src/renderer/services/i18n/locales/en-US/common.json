@@ -152,11 +152,16 @@
   "processing": "Processing...",
   "optional": "(optional)",
   "clear": "Clear",
-  "cli.prepOffice": "POUNDING is preparing your office",
   "unit": {
     "minute_short": "m",
     "second_short": "s"
   },
   "selectedCount": "Selected {{count}}",
-  "selectedSkills": "Selected skills"
+  "selectedSkills": "Selected skills",
+  "cli": {
+    "prepOffice": "POUNDING is preparing your office",
+    "prepWorkspace": "Preparing your workspace…",
+    "prepAgents": "Setting up your AI agents…",
+    "prepRuntimes": "Preparing runtimes…"
+  }
 }

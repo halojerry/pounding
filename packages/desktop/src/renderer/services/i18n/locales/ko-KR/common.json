@@ -157,5 +157,11 @@
     "second_short": "초"
   },
   "selectedCount": "선택됨 {{count}}",
-  "selectedSkills": "선택된 스킬"
+  "selectedSkills": "선택된 스킬",
+  "cli": {
+    "prepOffice": "POUNDING가 사무실을 준비하고 있습니다",
+    "prepWorkspace": "작업 공간을 준비하고 있습니다…",
+    "prepAgents": "AI 에이전트를 설정하고 있습니다…",
+    "prepRuntimes": "런타임을 준비하고 있습니다…"
+  }
 }

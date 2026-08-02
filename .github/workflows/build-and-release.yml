@@ -441,16 +441,20 @@ jobs:
         run: |
           set -euo pipefail
 
+          # Use the public global-acceleration endpoint (cross-border friendly
+          # from GitHub US runners). The *internal* acceleration domain
+          # (cos-internal.*.tencentcos.cn) is unreachable outside Tencent Cloud.
           coscli_cmd() {
             ./coscli "$@" \
-              -e "cos.${COS_REGION}.myqcloud.com" \
+              -e "cos.accelerate.myqcloud.com" \
               -i "$COS_SECRET_ID" \
               -k "$COS_SECRET_KEY" \
               --init-skip=true \
               --disable-log=true
           }
 
-          coscli_cmd cp -r release-assets/ "cos://${COS_BUCKET}/pounding/releases/download/${{ steps.version.outputs.tag_name }}/"
+          # --routines: parallel files, --thread-num: parallel parts per file.
+          coscli_cmd cp -r --routines 8 --thread-num 16 release-assets/ "cos://${COS_BUCKET}/pounding/releases/download/${{ steps.version.outputs.tag_name }}/"
 
       - name: Mirror release assets to COS (latest)
         timeout-minutes: 120
@@ -464,17 +468,22 @@ jobs:
         run: |
           set -euo pipefail
 
+          # Use the public global-acceleration endpoint (cross-border friendly
+          # from GitHub US runners). The *internal* acceleration domain
+          # (cos-internal.*.tencentcos.cn) is unreachable outside Tencent Cloud.
           coscli_cmd() {
             ./coscli "$@" \
-              -e "cos.${COS_REGION}.myqcloud.com" \
+              -e "cos.accelerate.myqcloud.com" \
               -i "$COS_SECRET_ID" \
               -k "$COS_SECRET_KEY" \
               --init-skip=true \
               --disable-log=true
           }
 
+          # Server-side copy from the versioned directory just uploaded — no
+          # re-upload of the full asset set (zero egress), instant.
           coscli_cmd rm -r -f "cos://${COS_BUCKET}/pounding/releases/latest/" || true
-          coscli_cmd cp -r release-assets/ "cos://${COS_BUCKET}/pounding/releases/latest/"
+          coscli_cmd cp -r "cos://${COS_BUCKET}/pounding/releases/download/${{ steps.version.outputs.tag_name }}/" "cos://${COS_BUCKET}/pounding/releases/latest/"
 
           find release-assets -maxdepth 1 -type f \( -name '*.yml' -o -name '*.blockmap' \) | sort | while read -r file; do
             name="$(basename "$file")"

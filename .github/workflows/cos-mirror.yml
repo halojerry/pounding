@@ -1,0 +1,109 @@
+name: COS Mirror
+
+# Standalone COS mirror: re-runs ONLY the "mirror release assets to COS"
+# steps of build-and-release.yml without rebuilding anything. Use this when
+# a release's GitHub assets are published but the COS mirror step was slow,
+# failed, or was skipped.
+#
+# Downloads the tag's release assets from GitHub, then uploads them to the
+# versioned COS directory and server-side-copies to latest/.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release tag to mirror to COS (e.g. v2.1.41)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  cos-mirror:
+    name: Mirror release assets to COS
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      TAG_NAME: ${{ inputs.tag_name }}
+      COS_BUCKET: ${{ secrets.TENCENT_COS_BUCKET }}
+      COS_REGION: ${{ secrets.TENCENT_COS_REGION }}
+      COS_SECRET_ID: ${{ secrets.TENCENT_COS_SECRET_ID }}
+      COS_SECRET_KEY: ${{ secrets.TENCENT_COS_SECRET_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Validate COS configuration
+        run: |
+          test -n "$COS_BUCKET" || { echo "::error::Missing repository secret TENCENT_COS_BUCKET"; exit 1; }
+          test -n "$COS_REGION" || { echo "::error::Missing repository secret TENCENT_COS_REGION"; exit 1; }
+          test -n "$COS_SECRET_ID" || { echo "::error::Missing repository secret TENCENT_COS_SECRET_ID"; exit 1; }
+          test -n "$COS_SECRET_KEY" || { echo "::error::Missing repository secret TENCENT_COS_SECRET_KEY"; exit 1; }
+
+      - name: Install COSCLI
+        run: |
+          curl -L --fail --retry 3 --retry-delay 2 \
+            -o coscli \
+            https://cosbrowser.cloud.tencent.com/software/coscli/coscli-linux-amd64
+          # NOTE: This checksum pins a specific coscli binary version from Tencent COS.
+          # Update if Tencent releases a new coscli version or the binary changes.
+          echo '7165f2ae16c5f7ac495864c963ca574a76e04ec72680d7bc8a8eee3234d8cf91  coscli' | sha256sum -c -
+          chmod 755 coscli
+          ./coscli --version
+
+      - name: Download release assets
+        run: |
+          mkdir -p release-assets
+          gh release download "$TAG_NAME" --dir release-assets --clobber
+          echo "Downloaded $(find release-assets -type f | wc -l) files:"
+          find release-assets -maxdepth 1 -type f -printf '%f (%s bytes)\n' | sort
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Mirror release assets to COS (versioned)
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Use the public global-acceleration endpoint (cross-border friendly
+          # from GitHub US runners). The *internal* acceleration domain
+          # (cos-internal.*.tencentcos.cn) is unreachable outside Tencent Cloud.
+          coscli_cmd() {
+            ./coscli "$@" \
+              -e "cos.accelerate.myqcloud.com" \
+              -i "$COS_SECRET_ID" \
+              -k "$COS_SECRET_KEY" \
+              --init-skip=true \
+              --disable-log=true
+          }
+
+          # --routines: parallel files, --thread-num: parallel parts per file.
+          coscli_cmd cp -r --routines 8 --thread-num 16 release-assets/ "cos://${COS_BUCKET}/pounding/releases/download/${TAG_NAME}/"
+
+      - name: Mirror release assets to COS (latest)
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          coscli_cmd() {
+            ./coscli "$@" \
+              -e "cos.accelerate.myqcloud.com" \
+              -i "$COS_SECRET_ID" \
+              -k "$COS_SECRET_KEY" \
+              --init-skip=true \
+              --disable-log=true
+          }
+
+          # Server-side copy from the versioned directory just uploaded — no
+          # re-upload of the full asset set (zero egress), instant.
+          coscli_cmd rm -r -f "cos://${COS_BUCKET}/pounding/releases/latest/" || true
+          coscli_cmd cp -r "cos://${COS_BUCKET}/pounding/releases/download/${TAG_NAME}/" "cos://${COS_BUCKET}/pounding/releases/latest/"
+
+          find release-assets -maxdepth 1 -type f \( -name '*.yml' -o -name '*.blockmap' \) | sort | while read -r file; do
+            name="$(basename "$file")"
+            coscli_cmd cp \
+              "$file" \
+              "cos://${COS_BUCKET}/pounding/releases/latest/${name}" \
+              --meta 'Cache-Control:no-cache,max-age=0'
+          done

@@ -95,10 +95,11 @@ jobs:
               --disable-log=true
           }
 
-          # Server-side copy from the versioned directory just uploaded — no
-          # re-upload of the full asset set (zero egress), instant.
+          # Upload from local assets (accelerated + concurrent). Server-side
+          # cos->cos recursive copy is unreliable on this coscli version
+          # (all objects fail with zero transfer), so upload locally instead.
           coscli_cmd rm -r -f "cos://${COS_BUCKET}/pounding/releases/latest/" || true
-          coscli_cmd cp -r "cos://${COS_BUCKET}/pounding/releases/download/${TAG_NAME}/" "cos://${COS_BUCKET}/pounding/releases/latest/"
+          coscli_cmd cp -r --routines 8 --thread-num 16 release-assets/ "cos://${COS_BUCKET}/pounding/releases/latest/"
 
           find release-assets -maxdepth 1 -type f \( -name '*.yml' -o -name '*.blockmap' \) | sort | while read -r file; do
             name="$(basename "$file")"

@@ -106,6 +106,8 @@ jobs:
       )
     with:
       skip_code_quality: true
+      # release 构建：关键 vendor 组件下载失败 → 硬失败（不 shipping 残缺 bundle）
+      strict_vendor: true
       aff_code: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.aff_code || '' }}
       ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.ref || '' }}
       matrix: >-

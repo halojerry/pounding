@@ -103,7 +103,7 @@ vendor_python() {
   local tmp="/tmp/${archive}"
 
   echo "  python: downloading ${archive}"
-  download "${url}" "${tmp}" || return 0  # non-fatal
+  download "${url}" "${tmp}" || return 1  # 关键组件：失败向主流程报告
 
   echo "  python: extracting"
   rm -rf "${dest}"
@@ -139,7 +139,7 @@ vendor_uv() {
   local tmp="/tmp/${uv_name}"
 
   echo "  uv: downloading ${uv_name}"
-  download "${url}" "${tmp}" || return 0  # non-fatal
+  download "${url}" "${tmp}" || return 1  # 关键组件：失败向主流程报告
 
   echo "  uv: extracting"
   rm -rf "${dest_dir}"
@@ -190,9 +190,9 @@ PKGJSON
   echo "  chrome-devtools-mcp: npm install"
   cd "${work}/project"
   npm install --cpu "${arch}" --os "${plat}" --no-audit --no-fund --silent 2>&1 | tail -3 || {
-    echo "  chrome-devtools-mcp: npm install FAILED (non-fatal)"
+    echo "  chrome-devtools-mcp: npm install FAILED"
     rm -rf "${work}"
-    return 0
+    return 1  # 关键组件：失败向主流程报告
   }
 
   rm -rf "${dest}"
@@ -261,9 +261,9 @@ PKGJSON
   echo "  ${slug}: npm install"
   cd "${work}/project"
   npm install --cpu "${arch}" --os "${plat}" --no-audit --no-fund --silent 2>&1 | tail -3 || {
-    echo "  ${slug}: npm install FAILED (non-fatal)"
+    echo "  ${slug}: npm install FAILED"
     rm -rf "${work}"
-    return 0
+    return 1  # 关键组件：失败向主流程报告
   }
 
   local entrypoint
@@ -344,9 +344,9 @@ PKGJSON
   echo "  ${cli_name}: npm install"
   cd "${work}/project"
   npm install --cpu "${arch}" --os "${plat}" --no-audit --no-fund --silent 2>&1 | tail -3 || {
-    echo "  ${cli_name}: npm install FAILED (non-fatal)"
+    echo "  ${cli_name}: npm install FAILED"
     rm -rf "${work}"
-    return 0
+    return 1  # 关键组件：失败向主流程报告
   }
 
   rm -rf "${dest}"
@@ -463,19 +463,31 @@ vendor_hermes() {
 
 # ── Main ─────────────────────────────────────────────────────────────────
 
+# 关键组件失败 → 非零退出（CI release 构建会硬失败，防止 shipping 残缺 bundle；
+# pr-checks / 手动构建仍可经 workflow 的 strict_vendor 开关保持 warning）。
+# hermes wheels 例外：某些平台（如 darwin-x64）pyyaml==6.0.3 无 wheel，
+# 离线装不了时回退网络安装——失败不置 FAILED（维持 warning 语义）。
+FAILED=0
+
 echo ""
-vendor_python
+vendor_python || FAILED=1
 echo ""
-vendor_uv
+vendor_uv || FAILED=1
 echo ""
-vendor_chrome_devtools_mcp
+vendor_chrome_devtools_mcp || FAILED=1
 echo ""
-vendor_acp
+vendor_acp || FAILED=1
 echo ""
-vendor_clis
+vendor_clis || FAILED=1
 echo ""
 vendor_hermes
 echo ""
 
 echo "==> Vendor done: ${OUT_DIR}"
 du -sh "${OUT_DIR}" 2>/dev/null || true
+
+if [ "${FAILED}" = "1" ]; then
+  echo "==> ERROR: one or more critical vendor components failed (see above)" >&2
+  exit 1
+fi
+exit 0

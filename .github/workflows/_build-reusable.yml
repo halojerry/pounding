@@ -31,6 +31,10 @@ on:
         description: 'Dealer affiliate code to inject into platform zip as dealer-config.json (enables invite chain binding)'
         type: string
         default: ''
+      strict_vendor:
+        description: 'Fail the build when critical vendor components (openclaw/python/uv/chrome-devtools-mcp) fail to download. Release builds set this; PR/manual builds keep warning-level to avoid flaky US-runner network reds.'
+        type: boolean
+        default: false
 
 env:
   BUN_INSTALL_REGISTRY: 'https://registry.npmjs.org/'
@@ -369,17 +373,26 @@ jobs:
       - name: Vendor managed runtimes (Python, uv, MCP, ACP, CLI tools)
         id: vendor-runtimes
         shell: bash
+        # release 构建（strict_vendor=true）硬失败：不 shipping 装不上 CLI 的残缺
+        # bundle。pr-checks/手动构建保持 warning（US runner 网络抖动不红 PR）。
+        continue-on-error: ${{ !inputs.strict_vendor }}
         run: |
           # Output to vendor/managed-resources/ — preparePoundingcore.js
           # copies from there into the app bundle below.
           mkdir -p vendor/managed-resources
-          if bash scripts/prepare-vendor.sh vendor/managed-resources "${{ matrix.platform == 'macos-arm64' && 'darwin-arm64' || matrix.platform == 'macos-x64' && 'darwin-x64' || matrix.platform == 'windows-x64' && 'win32-x64' || matrix.platform == 'windows-arm64' && 'win32-arm64' }}"; then
+          TARGET_KEY="${{ matrix.platform == 'macos-arm64' && 'darwin-arm64' || matrix.platform == 'macos-x64' && 'darwin-x64' || matrix.platform == 'windows-x64' && 'win32-x64' || matrix.platform == 'windows-arm64' && 'win32-arm64' }}"
+          if [ "${{ inputs.strict_vendor }}" == "true" ]; then
+            # prepare-vendor.sh 内部已聚合关键组件退出码（hermes wheels 例外，维持 warning）
+            bash scripts/prepare-vendor.sh vendor/managed-resources "$TARGET_KEY"
             echo "vendor-ok=true" >> "$GITHUB_OUTPUT"
           else
-            echo "vendor-ok=false" >> "$GITHUB_OUTPUT"
-            echo "::warning title=Vendor Incomplete::Managed runtimes vendor step failed — some CLIs may need network install on first launch"
+            if bash scripts/prepare-vendor.sh vendor/managed-resources "$TARGET_KEY"; then
+              echo "vendor-ok=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "vendor-ok=false" >> "$GITHUB_OUTPUT"
+              echo "::warning title=Vendor Incomplete::Managed runtimes vendor step failed — some CLIs may need network install on first launch"
+            fi
           fi
-        continue-on-error: true # non-fatal: if upstream downloads fail, CLIs can still be network-installed
 
       - name: Verify vendored bundle integrity (early feedback, non-fatal)
         id: verify-vendor
@@ -659,6 +672,9 @@ jobs:
       # to the platform zip root so dealers can distribute USB drives with
       # invite chain pre-bound.
       # 经销商邀请码注入 — 将 PORTABLE + dealer-config.json 注入平台 zip
+      # 注意：仅 zip（U盘/便携）支持经销商自配；exe/dmg 安装包签名后无法注入
+      # （macOS 往 .app 写文件会破坏签名），需要 exe/dmg 经销商绑定走
+      # workflow_dispatch 传 aff_code 预埋（库存 release 不注入，aff_code 默认空）。
       - name: Inject dealer invite code
         if: >-
           success() &&
@@ -713,6 +729,30 @@ jobs:
           rm -f out/*.blockmap out/*.zip out/*.yml out/builder-debug.yml 2>/dev/null || true
           echo "Remaining artifacts:"
           ls -lh out/ || true
+
+      # OOB Gate：release 构建时真实启动本 job 打包产物，验证开箱即用
+      # （CLI 离线安装 + 内置 MCP 默认启用）。失败 → release job 失败，
+      # 宁可不发也不发装不上 CLI / MCP 不默认开的包。
+      # 仅 Windows/macOS 主平台（Linux 不是主要客户群，跳过省时间）。
+      - name: Verify OOB CLI install + builtin MCP
+        if: >-
+          success() &&
+          inputs.strict_vendor &&
+          (startsWith(matrix.platform, 'windows') || startsWith(matrix.platform, 'macos')) &&
+          (!startsWith(matrix.platform, 'windows') || steps.windows-build.outputs.result == 'success')
+        shell: bash
+        env:
+          CI: 'true'
+          E2E_PACKAGED: '1'
+          E2E_OOB_GATE: '1'
+          E2E_SCREENSHOTS: '0'
+          BUN_INSTALL_REGISTRY: 'https://registry.npmjs.org/'
+        run: |
+          set -euo pipefail
+          echo "OOB Gate: launching packaged app from out/ to verify CLI + builtin MCP"
+          bunx playwright test --config playwright.config.ts \
+            tests/e2e/specs/oob-cli-install.e2e.ts \
+            --reporter=line --workers=1
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v6

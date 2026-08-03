@@ -667,26 +667,35 @@ jobs:
       # Verify desktop asar does not contain packages/web-cli/ contamination
       # 验证桌面 asar 没有被 web-cli 代码污染
 
-      # Inject dealer invite code into the platform zip.
-      # When AFF_CODE is provided, adds PORTABLE marker + dealer-config.json
-      # to the platform zip root so dealers can distribute USB drives with
-      # invite chain pre-bound.
-      # 经销商邀请码注入 — 将 PORTABLE + dealer-config.json 注入平台 zip
-      # 注意：仅 zip（U盘/便携）支持经销商自配；exe/dmg 安装包签名后无法注入
-      # （macOS 往 .app 写文件会破坏签名），需要 exe/dmg 经销商绑定走
+      # Inject PORTABLE marker (always) + dealer invite code (when AFF_CODE set)
+      # into the platform zip. PORTABLE is required for the portable zip to work:
+      #   - userData lands in exe-dir/data/ (data not written to %APPDATA%)
+      #   - single-instance lock auto-isolates per exe dir (no more "double-click
+      #     does nothing" from colliding with an installed copy's lock)
+      # 经销商邀请码注入 — 将 PORTABLE 无条件 + dealer-config.json(aff_code 非空时)
+      # 注入平台 zip。注意：仅 zip（U盘/便携）支持经销商自配；exe/dmg 安装包签名后
+      # 无法注入（macOS 往 .app 写文件会破坏签名），需要 exe/dmg 经销商绑定走
       # workflow_dispatch 传 aff_code 预埋（库存 release 不注入，aff_code 默认空）。
       - name: Inject dealer invite code
         if: >-
           success() &&
-          inputs.aff_code != '' &&
           (!startsWith(matrix.platform, 'windows') || steps.windows-build.outputs.result == 'success')
         shell: bash
         env:
           AFF_CODE: ${{ inputs.aff_code }}
         run: |
-          PLATFORM_ZIP=$(ls out/POUNDING-*-${{ matrix.platform == 'macos-arm64' && 'mac-arm64' || matrix.platform == 'macos-x64' && 'mac-x64' || matrix.platform }}.zip 2>/dev/null | head -1)
+          # electron-builder artifactName uses ${os} = win/mac (not windows/macos).
+          # Map matrix platform → zip artifact name suffix.
+          case "${{ matrix.platform }}" in
+            windows-x64)   ZIP_SUFFIX="win-x64" ;;
+            windows-arm64) ZIP_SUFFIX="win-arm64" ;;
+            macos-arm64)   ZIP_SUFFIX="mac-arm64" ;;
+            macos-x64)     ZIP_SUFFIX="mac-x64" ;;
+            *)             ZIP_SUFFIX="${{ matrix.platform }}" ;;
+          esac
+          PLATFORM_ZIP=$(ls out/POUNDING-*-${ZIP_SUFFIX}.zip 2>/dev/null | head -1)
           if [ -z "$PLATFORM_ZIP" ]; then
-            echo "::warning::No platform zip found for ${{ matrix.platform }}, skipping dealer inject"
+            echo "::warning::No platform zip found for ${{ matrix.platform }} (glob -${ZIP_SUFFIX}.zip), skipping PORTABLE/dealer inject"
             exit 0
           fi
           bash scripts/pack-usb-zip.sh "$PLATFORM_ZIP" "$AFF_CODE"

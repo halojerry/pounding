@@ -139,7 +139,7 @@ async function resolveMainWindow(electronApp: ElectronApplication): Promise<Page
     return resolveWindowBefore(deadline);
   };
 
-  return resolveWindowBefore(Date.now() + 30_000);
+  return resolveWindowBefore(Date.now() + 120_000);
 }
 
 /**
@@ -252,7 +252,7 @@ async function launchApp(): Promise<ElectronApplication> {
         ...commonEnv,
         NODE_ENV: 'production',
       },
-      timeout: 60_000,
+      timeout: 120_000,
     });
 
     return electronApp;

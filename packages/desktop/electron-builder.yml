@@ -134,6 +134,19 @@ nsis:
   uninstallDisplayName: ${productName}
   artifactName: ${productName}-${version}-${os}-${arch}.${ext}
   differentialPackage: false
+  # Custom NSIS hooks (see scripts/nsis-installer.nsh): surface honest progress
+  # during the large-file extraction phase so the installer never looks stuck.
+  include: scripts/nsis-installer.nsh
+
+  # NOTE: electron-builder NSIS only supports LZMA (zlib is not exposed via
+  # config or the include script — see electron-builder NSIS docs). Extraction
+  # speed levers are: code signing (below), honest progress (include above) and
+  # the CI silent-install duration assertion in _build-reusable.yml.
+
+  # Authenticode signing: electron-builder picks up CSC_LINK / CSC_KEY_PASSWORD
+  # from the environment automatically. Add those secrets to the repo (or the
+  # 'release' environment) to sign the installer — this cuts Defender scan time
+  # during extraction and removes the SmartScreen warning on first run.
 
 mac:
   target:

@@ -408,6 +408,12 @@ function markBackendStartupFailed(error: unknown): void {
   backendStartupFailed = true;
   backendStartupFailureInfo = classifyBackendStartupFailure(error);
   (globalThis as typeof globalThis & { __backendStartupFailed?: boolean }).__backendStartupFailed = true;
+  // Let an early boot splash swap to the failure dialog instead of spinning forever.
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) {
+      win.webContents.send('backend:startup-failed');
+    }
+  }
 }
 
 function registerCronResumeBridge(backendPort: number): void {
@@ -456,6 +462,13 @@ function exposeBackendPort(backendPort: number): void {
   // ipcBridge.* invoke from the main process — the renderer side reads
   // window.__backendPort via preload, but main has no `window`.
   (globalThis as typeof globalThis & { __backendPort?: number }).__backendPort = backendPort;
+  // Push the port to an already-created window (the boot splash). The renderer
+  // reloads on this event so its preload re-injects the real port.
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) {
+      win.webContents.send('backend:port-updated', backendPort);
+    }
+  }
 }
 
 function ensureAdminUserOnce(backendPort: number): Promise<void> {
@@ -778,6 +791,17 @@ const handleAppReady = async (): Promise<void> => {
     return;
   }
 
+  // Desktop UI only: create the main window BEFORE the backend is ready so the
+  // renderer can show an immediate boot splash. Previously the window was
+  // created only after the backend reported ready, which on slow/Intel/Rosetta
+  // machines left users staring at nothing for 60-120s+ (perceived as "won't
+  // open", and it made the release OOB gate time out on macos-x64).
+  if (!isWebUIMode && !isResetPasswordMode) {
+    createWindow({ showOnReady: true });
+    appReadyDone = true;
+    mark('createWindow');
+  }
+
   // Start aioncore only after initializeProcess(). initStorage may open
   // the legacy Electron SQLite catalog for a one-shot v26 migration and must
   // close it before the backend touches the same file.
@@ -973,10 +997,11 @@ const handleAppReady = async (): Promise<void> => {
     }
 
     const showMainWindowOnReady = !(wasLaunchedAtLogin() && getCloseToTrayEnabled());
-
-    createWindow({ showOnReady: showMainWindowOnReady });
-    appReadyDone = true;
-    mark('createWindow');
+    // Window was already created before backend start (boot splash). Apply the
+    // close-to-tray "hide at login" preference now that the setting is known.
+    if (!showMainWindowOnReady && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.hide();
+    }
 
     // Show portable storage choice dialog on first USB launch.
     // Self-guarding: returns immediately if no pending choice exists.

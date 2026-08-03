@@ -8,6 +8,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { EventEmitter } from 'node:events';
 import type { ChildProcess } from 'node:child_process';
 import type { Socket } from 'node:net';
+import os from 'node:os';
+import path from 'node:path';
 
 // ---- Module-level mocks ----
 vi.mock('node:child_process', () => ({
@@ -237,7 +239,14 @@ describe('buildSpawnEnv', () => {
     expect(env.AIONUI_CACHE_DIR).toBe('/c');
     expect(env.AIONUI_WORK_DIR).toBe('/w');
     expect(env.AIONUI_LOG_DIR).toBe('/l');
-    expect(env.PATH).toBe(process.env.PATH); // inherits
+    // Managed CLI bin dirs are prepended so poundingcore can spawn the
+    // hermes/claude/openclaw shims (deduped when already on PATH); the original
+    // PATH entries are preserved.
+    expect(env.PATH?.split(path.delimiter)).toContain(path.join(os.homedir(), '.local', 'bin'));
+    expect(env.PATH?.split(path.delimiter)).toContain(
+      path.join(process.env.BUN_INSTALL?.trim() || path.join(os.homedir(), '.bun'), 'bin')
+    );
+    expect(env.PATH).toContain(process.env.PATH ?? '');
   });
 });
 

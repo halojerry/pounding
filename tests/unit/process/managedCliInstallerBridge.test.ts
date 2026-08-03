@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { mkdtempSync, rmSync } from 'fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import path from 'path';
 
@@ -49,7 +49,11 @@ vi.mock('./services/NewApiDesktopAccountService', () => ({
   },
 }));
 
-import { installManagedCliBatch, resolveBundledPythonBinary } from '@/process/bridge/managedCliInstallerBridge';
+import {
+  installManagedCli,
+  installManagedCliBatch,
+  resolveBundledPythonBinary,
+} from '@/process/bridge/managedCliInstallerBridge';
 
 function makeBundledPythonFixture(): string {
   const root = mkdtempSync(path.join(tmpdir(), 'pounding-bridge-test-'));
@@ -156,5 +160,107 @@ describe('installManagedCli version pins', () => {
     const installCall = execFileMock.mock.calls.find((call) => (call[1] as string[]).includes('install'));
     expect(installCall).toBeDefined();
     expect(installCall![1]).toContain('openclaw@2026.6.33');
+  });
+
+  it('uses the bundled managed npm (offline bundle) instead of system npm', async () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'pounding-managed-npm-'));
+    // Fixture mirrors the managed-resources layout for the CURRENT platform
+    // (resolveBundledResourcesDir builds the key as `${platform}-${arch}`):
+    //   unix:  node/<ver>/bin/{node,npm}
+    //   win32: node/<ver>/{node.exe,npm.cmd}
+    const platformKey = `${process.platform}-${process.arch}`;
+    const isWin = process.platform === 'win32';
+    const nodeDir = isWin
+      ? path.join(root, 'bundled-poundingcore', platformKey, 'managed-resources', 'node', `node-v24.0.0-${platformKey}`)
+      : path.join(
+          root,
+          'bundled-poundingcore',
+          platformKey,
+          'managed-resources',
+          'node',
+          `node-v24.0.0-${platformKey}`,
+          'bin'
+        );
+    const nodeName = isWin ? 'node.exe' : 'node';
+    const npmName = isWin ? 'npm.cmd' : 'npm';
+    mkdirSync(nodeDir, { recursive: true });
+    writeFileSync(path.join(nodeDir, nodeName), '');
+    writeFileSync(path.join(nodeDir, npmName), '');
+
+    const originalResourcesPath = (process as { resourcesPath?: string }).resourcesPath;
+    Object.defineProperty(process, 'resourcesPath', { value: root, configurable: true });
+    try {
+      // probe not-installed → install via managed npm → probe installed
+      execFileMock.mockImplementationOnce((_c: string, _a: string[], _o: unknown, cb: (e?: Error) => void) => {
+        cb(new Error('not found'));
+      });
+      let managedNpmCommand: string | null = null;
+      execFileMock.mockImplementationOnce((cmd: string, args: string[], _o: unknown, cb: (e?: Error) => void) => {
+        if ((args as string[]).includes('install')) {
+          managedNpmCommand = cmd;
+        }
+        cb();
+      });
+      execFileMock.mockImplementationOnce((_c: string, _a: string[], _o: unknown, cb: (e?: Error) => void) => {
+        cb();
+      });
+
+      const result = await installManagedCli({ target: 'claude' });
+      expect(result.success).toBe(true);
+      expect(managedNpmCommand).toBe(path.join(nodeDir, npmName));
+    } finally {
+      if (originalResourcesPath === undefined) {
+        delete (process as { resourcesPath?: string }).resourcesPath;
+      } else {
+        Object.defineProperty(process, 'resourcesPath', { value: originalResourcesPath, configurable: true });
+      }
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('serializes concurrent installs of the same target (in-flight mutex)', async () => {
+    vi.clearAllMocks();
+    let releaseInstall: (() => void) | null = null;
+    const installGate = new Promise<void>((resolve) => {
+      releaseInstall = () => resolve();
+    });
+    let installCompleted = false;
+    const installCalls: string[] = [];
+
+    execFileMock.mockImplementation((_cmd: string, args: string[], _o: unknown, cb: (e?: Error) => void) => {
+      const argv = args as string[];
+      if (argv.includes('install')) {
+        installCalls.push(argv.find((a) => a.includes('@')) ?? 'install');
+        void installGate.then(() => {
+          installCompleted = true;
+          cb();
+        });
+        return { unref: () => {} };
+      }
+      // probe (which/where): only reports installed after the install finished
+      if (installCompleted) {
+        cb();
+      } else {
+        cb(new Error('not found'));
+      }
+      return { unref: () => {} };
+    });
+
+    const first = installManagedCli({ target: 'claude' });
+    // Wait for the first install to actually be in flight
+    await vi.waitFor(() => {
+      expect(installCalls.length).toBe(1);
+    });
+
+    const second = installManagedCli({ target: 'claude' });
+    // The second call must block on the mutex: no probe/install calls yet
+    await new Promise((r) => setTimeout(r, 50));
+    expect(execFileMock.mock.calls.length).toBe(2); // probe + install of the first call only
+
+    releaseInstall?.();
+    const [a, b] = await Promise.all([first, second]);
+    expect(a.success).toBe(true);
+    expect(b.success).toBe(true);
+    expect(installCalls.length).toBe(1);
   });
 });

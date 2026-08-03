@@ -533,22 +533,30 @@ vendor_hermes() {
     local plat_tag=""
     case "${target}" in
       darwin-arm64) plat_tag="macosx_11_0_arm64" ;;
-      darwin-x64)   plat_tag="macosx_10_9_x86_64" ;;
+      # pyyaml==6.0.3 only ships macosx_10_13_x86_64 wheels (see
+      # build-missing-hermes-wheels.sh).
+      darwin-x64)   plat_tag="macosx_10_13_x86_64" ;;
       linux-x64)    plat_tag="manylinux2014_x86_64" ;;
       linux-arm64)  plat_tag="manylinux2014_aarch64" ;;
       win32-x64)    plat_tag="win_amd64" ;;
       win32-arm64)  plat_tag="win_arm64" ;;
     esac
-    pip3 download \
+    if ! pip3 download \
       --dest "${dest}" \
       --python-version 3.12 \
       --platform "${plat_tag}" \
       --only-binary :all: \
-      "hermes-agent[acp]==${HERMES_VERSION}" 2>&1 | tail -3 || {
-        echo "  ${target}: pip download FAILED, skipping (no .version marker — retried next run)"
-        rm -rf "${dest}"
+      "hermes-agent[acp]==${HERMES_VERSION}" 2>&1 | tail -3; then
+      echo "  ${target}: pip download incomplete — trying source build fallback"
+      if bash "${SCRIPT_DIR}/build-missing-hermes-wheels.sh" "${target}" "${dest}" "pip3" "${HERMES_VERSION}"; then
+        echo "${HERMES_VERSION}" > "${dest}/.version"
+        echo "  ${target}: done via pip + local wheel build ($(ls "${dest}"/*.whl | wc -l | tr -d ' ') wheels)"
         continue
-      }
+      fi
+      echo "  ${target}: pip download FAILED, skipping (no .version marker — runtime network fallback)"
+      rm -rf "${dest}"
+      continue
+    fi
 
     if ls "${dest}"/*.whl >/dev/null 2>&1; then
       echo "${HERMES_VERSION}" > "${dest}/.version"

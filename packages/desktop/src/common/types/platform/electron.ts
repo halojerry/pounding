@@ -66,9 +66,16 @@ declare global {
     electronAPI?: ElectronBridgeAPI;
     __initialLanguage?: string | null;
     __aionuiE2ETest?: boolean;
+    __backendPort?: number;
     __backendStartupFailed?: boolean;
     __backendStartupFailure?: BackendStartupFailureInfo | null;
     __installationIntegrityReportCount?: number;
     __lastInstallationIntegrityReportMessage?: string;
+    /**
+     * Registered by the boot splash. The main process broadcasts the backend
+     * port once poundingcore reports ready; the splash reloads on that event so
+     * the preload can re-inject the real `window.__backendPort`.
+     */
+    __onBackendPortUpdate?: (listener: (port: number) => void) => (() => void) | undefined;
   }
 }

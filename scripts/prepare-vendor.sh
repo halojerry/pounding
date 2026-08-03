@@ -428,7 +428,10 @@ vendor_hermes() {
     local plat_tag=""
     case "${TARGET}" in
       darwin-arm64) plat_tag="macosx_11_0_arm64" ;;
-      darwin-x64)   plat_tag="macosx_10_9_x86_64" ;;
+      # pyyaml==6.0.3 only ships macosx_10_13_x86_64 wheels; the legacy 10_9
+      # tag is rejected by pip, which silently left Intel-mac bundles without
+      # hermes wheels (verified 2026-08-03).
+      darwin-x64)   plat_tag="macosx_10_13_x86_64" ;;
       linux-x64)    plat_tag="manylinux2014_x86_64" ;;
       linux-arm64)  plat_tag="manylinux2014_aarch64" ;;
       win32-x64)    plat_tag="win_amd64" ;;
@@ -439,15 +442,21 @@ vendor_hermes() {
     rm -rf "${dest}"
     mkdir -p "${dest}"
 
-    "${python_bin}" -m pip download "hermes-agent[acp]==${HERMES_VERSION}" \
+    if ! "${python_bin}" -m pip download "hermes-agent[acp]==${HERMES_VERSION}" \
       --dest "${dest}" \
       --python-version 3.12 \
       --platform "${plat_tag}" \
-      --only-binary :all: 2>&1 | tail -5 || {
-      echo "    pip download FAILED (non-fatal, no .version marker — retried next run)"
+      --only-binary :all: 2>&1 | tail -5; then
+      echo "    pip download incomplete — trying to build missing wheels from source"
+      if bash "${SCRIPT_DIR}/build-missing-hermes-wheels.sh" "${TARGET}" "${dest}" "${python_bin}" "${HERMES_VERSION}"; then
+        echo "${HERMES_VERSION}" > "${dest}/.version"
+        echo "  hermes: done via pip + local wheel build ($(ls "${dest}"/*.whl 2>/dev/null | wc -l) wheels)"
+        return 0
+      fi
+      echo "    pip download FAILED (non-fatal, no .version marker — runtime network fallback)"
       rm -rf "${dest}"
       return 0
-    }
+    fi
 
     if [ -d "${dest}" ] && ls "${dest}"/*.whl >/dev/null 2>&1; then
       echo "${HERMES_VERSION}" > "${dest}/.version"

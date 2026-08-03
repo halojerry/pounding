@@ -168,6 +168,17 @@ jobs:
           command: |
             choco install visualstudio2022buildtools --yes --params "'--add Microsoft.VisualStudio.Component.VC.Tools.ARM64 --add Microsoft.VisualStudio.Component.Windows11SDK.22000 --includeRecommended --includeOptional'"
 
+      # cryptography==46.0.7 (hermes dep) has no cp312 win_arm64 wheel — the
+      # vendor fallback builds it from source, which needs the Rust toolchain
+      # targeting aarch64-pc-windows-msvc (present on the windows-11-arm image).
+      - name: Setup Rust (Windows ARM64 only)
+        if: matrix.platform == 'windows-arm64'
+        shell: pwsh
+        run: |
+          rustup default stable 2>$null
+          rustup target add aarch64-pc-windows-msvc
+          rustc --version
+
       - name: Setup Windows build environment (for Windows only)
         if: startsWith(matrix.platform, 'windows')
         run: |
@@ -699,6 +710,52 @@ jobs:
             exit 0
           fi
           bash scripts/pack-usb-zip.sh "$PLATFORM_ZIP" "$AFF_CODE"
+
+      # Verify the platform zip actually carries the PORTABLE marker (and, when
+      # an affiliate code was given, dealer-config.json). Without PORTABLE the
+      # extracted zip shares %APPDATA% + the single-instance lock with the
+      # installed version and silently exits on double-click (v2.1.41 bug, PR #17).
+      # This gate runs on every release build so a future glob/name regression
+      # fails the build instead of shipping a broken portable zip.
+      - name: Verify PORTABLE marker in platform zip
+        if: >-
+          success() &&
+          (!startsWith(matrix.platform, 'windows') || steps.windows-build.outputs.result == 'success')
+        shell: bash
+        env:
+          AFF_CODE: ${{ inputs.aff_code }}
+        run: |
+          set -euo pipefail
+          # electron-builder artifactName uses ${os} = win/mac (not windows/macos).
+          case "${{ matrix.platform }}" in
+            windows-x64)   ZIP_SUFFIX="win-x64" ;;
+            windows-arm64) ZIP_SUFFIX="win-arm64" ;;
+            macos-arm64)   ZIP_SUFFIX="mac-arm64" ;;
+            macos-x64)     ZIP_SUFFIX="mac-x64" ;;
+            *)             ZIP_SUFFIX="${{ matrix.platform }}" ;;
+          esac
+          PLATFORM_ZIP=$(ls out/POUNDING-*-${ZIP_SUFFIX}.zip 2>/dev/null | head -1)
+          if [ -z "$PLATFORM_ZIP" ]; then
+            echo "::error::No platform zip found for ${{ matrix.platform }} (glob -${ZIP_SUFFIX}.zip); cannot verify PORTABLE marker"
+            exit 1
+          fi
+          python3 - "$PLATFORM_ZIP" "$AFF_CODE" <<'PY'
+          import os, sys, zipfile
+          zip_path, aff_code = sys.argv[1], sys.argv[2]
+          names = zipfile.ZipFile(zip_path).namelist()
+          base = {os.path.basename(n) for n in names}
+          missing = []
+          if 'PORTABLE' not in base:
+              missing.append('PORTABLE')
+          if aff_code and 'dealer-config.json' not in base:
+              missing.append('dealer-config.json')
+          if missing:
+              print(f"::error::{zip_path} is missing required marker(s): {', '.join(missing)}")
+              print('zip entries:', sorted(names)[:20])
+              sys.exit(1)
+          print("OK: " + zip_path + " carries PORTABLE" + (" + dealer-config.json" if aff_code else ""))
+          PY
+
       - name: Verify desktop asar isolation
         if: >-
           success() &&
@@ -761,7 +818,43 @@ jobs:
           echo "OOB Gate: launching packaged app from out/ to verify CLI + builtin MCP"
           bunx playwright test --config playwright.config.ts \
             tests/e2e/specs/oob-cli-install.e2e.ts \
+            tests/e2e/specs/pounding-portable-mode.e2e.ts \
             --reporter=line --workers=1
+
+      # Windows install smoke: silently install the NSIS build and fail if the
+      # extraction phase exceeds 5 minutes (slow lzma + AV scanning is the
+      # reported "卡在一半" symptom). Only release builds (strict_vendor) pay
+      # the extra minutes.
+      - name: Verify NSIS installer completes quickly (Windows)
+        if: >-
+          success() &&
+          inputs.strict_vendor &&
+          startsWith(matrix.platform, 'windows') &&
+          (!startsWith(matrix.platform, 'windows') || steps.windows-build.outputs.result == 'success')
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ matrix.platform }}" in
+            windows-x64)   SUFFIX="win-x64" ;;
+            windows-arm64) SUFFIX="win-arm64" ;;
+          esac
+          INSTALLER=$(ls out/POUNDING-*-${SUFFIX}.exe 2>/dev/null | head -1)
+          if [ -z "$INSTALLER" ]; then
+            echo "::error::No NSIS installer found for ${{ matrix.platform }} (glob -${SUFFIX}.exe)"
+            exit 1
+          fi
+          echo "Running silent install of $(basename "$INSTALLER")..."
+          START=$(date +%s)
+          "$INSTALLER" /S /D=C:\\pounding-smoke-install
+          END=$(date +%s)
+          DURATION=$((END - START))
+          echo "install-smoke-seconds=$DURATION"
+          taskkill //IM POUNDING.exe //F >/dev/null 2>&1 || true
+          if [ "$DURATION" -ge 300 ]; then
+            echo "::error::NSIS install took ${DURATION}s (>= 300s) — extraction stuck"
+            exit 1
+          fi
+          echo "✅ NSIS silent install completed in ${DURATION}s"
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v6

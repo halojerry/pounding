@@ -403,6 +403,11 @@ jobs:
           body: |
             **POUNDING Desktop App ${{ steps.version.outputs.tag_name }}**
 
+            - **便携 zip（PORTABLE）**：所有平台 zip 已注入 PORTABLE 标记，解压后数据隔离到
+              `exe目录/data`，不再与安装版共享单实例锁。旧版（≤2.1.41）zip 缺少该标记，
+              解压后双击可能"没反应"——请使用本版本。
+            - **Windows SmartScreen**：安装包尚未配置 Authenticode 证书时，首次运行可能提示
+              "Windows 已保护你的电脑"，选择"仍要运行"即可；证书配置后自动消除。
             See [install-web.sh](https://yss-1256275613.cos.ap-guangzhou.myqcloud.com/pounding/releases/download/${{ steps.version.outputs.tag_name }}/install-web.sh) for Web UI deployment.
           draft: ${{ steps.version.outputs.is_dev == 'true' }}
           prerelease: ${{ steps.version.outputs.is_dev == 'true' || contains(steps.version.outputs.tag_name, 'beta') || contains(steps.version.outputs.tag_name, 'alpha') || contains(steps.version.outputs.tag_name, 'rc') }}

@@ -93,6 +93,8 @@ import { useAuth } from './hooks/context/AuthContext';
 import { ConversationHistoryProvider } from './hooks/context/ConversationHistoryContext';
 import HOC from './utils/ui/HOC';
 import type { BackendStartupFailureInfo } from '@/common/types/platform/electron';
+import BackendStartingSplash from './components/layout/BackendStartingSplash';
+import { resolveBootGateState } from './services/bootGate';
 import type { IRuntimeStatusEvent, RuntimeFailureKind } from '@/common/adapter/ipcBridge';
 import {
   InstallationIntegrityContent,
@@ -398,21 +400,32 @@ void registerPwa();
 
 const root = createRoot(document.getElementById('root')!);
 const backendStartupFailure = window.__backendStartupFailure;
-const shouldShowBackendStartupFailureDialog =
-  backendStartupFailure?.reason === 'backend_incompatible_runtime' ||
-  backendStartupFailure?.reason === 'backend_incomplete_installation' ||
-  backendStartupFailure?.reason === 'backend_package_architecture_mismatch' ||
-  backendStartupFailure?.reason === 'backend_data_migration_failed' ||
-  backendStartupFailure?.reason === 'backend_local_data_repair_failed' ||
-  backendStartupFailure?.reason === 'backend_recoverable_database_corruption' ||
-  backendStartupFailure?.reason === 'backend_transient_concurrent_startup' ||
-  backendStartupFailure?.reason === 'backend_startup_failed';
-if (backendStartupFailure && shouldShowBackendStartupFailureDialog) {
+const bootGateState = resolveBootGateState(window.__backendPort ?? 0, backendStartupFailure);
+
+if (bootGateState === 'failure') {
   root.render(
     <Config>
-      <BackendStartupFailureDialog failure={backendStartupFailure} />
+      <BackendStartupFailureDialog failure={backendStartupFailure!} />
     </Config>
   );
+} else if (bootGateState === 'splash') {
+  // Window was created before the backend reported ready (slow-machine fix).
+  // Wait for the main process to broadcast the backend port (or a startup
+  // failure), then reload so the preload injects the real values.
+  root.render(
+    <Config>
+      <BackendStartingSplash />
+    </Config>
+  );
+  const onStartupFailed = () => window.location.reload();
+  window.addEventListener('backend-startup-failed', onStartupFailed);
+  const unsubscribe = window.__onBackendPortUpdate?.((port: number) => {
+    if (port > 0) {
+      unsubscribe?.();
+      window.removeEventListener('backend-startup-failed', onStartupFailed);
+      window.location.reload();
+    }
+  });
 } else {
   root.render(
     <AppProviders>

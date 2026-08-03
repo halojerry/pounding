@@ -64,6 +64,31 @@ contextBridge.exposeInMainWorld('__aionuiE2ETest', process.env.POUNDING_E2E_TEST
 contextBridge.exposeInMainWorld('__backendStartupFailed', backendStartupFailed === true);
 contextBridge.exposeInMainWorld('__backendStartupFailure', backendStartupFailure ?? null);
 
+// The main window is now created before the backend is ready (boot splash).
+// When poundingcore reports its port (or fails to start), the main process
+// broadcasts it here so the splash can reload and boot the real app with a
+// valid `__backendPort`.
+const backendPortListeners: Array<(port: number) => void> = [];
+ipcRenderer.on('backend:port-updated', (_event, port: unknown) => {
+  if (typeof port === 'number' && port > 0) {
+    for (const listener of backendPortListeners) {
+      listener(port);
+    }
+  }
+});
+ipcRenderer.on('backend:startup-failed', () => {
+  window.dispatchEvent(new CustomEvent('backend-startup-failed'));
+});
+contextBridge.exposeInMainWorld('__onBackendPortUpdate', (listener: (port: number) => void) => {
+  backendPortListeners.push(listener);
+  return () => {
+    const index = backendPortListeners.indexOf(listener);
+    if (index >= 0) {
+      backendPortListeners.splice(index, 1);
+    }
+  };
+});
+
 // 托盘事件监听 - 将 IPC 事件转换为 DOM 事件
 // Tray event listeners - convert IPC events to DOM events
 const trayEvents = [

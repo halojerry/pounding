@@ -11,6 +11,8 @@
 import { type ChildProcess, spawn } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import { connect, createServer, type Socket } from 'node:net';
+import os from 'node:os';
+import path from 'node:path';
 import { cleanupRegisteredAgentProcesses } from './agent-process-registry.js';
 import type { AppMetadata, BackendBinaryResolver } from './types.js';
 
@@ -209,8 +211,23 @@ export function buildSpawnArgs(config: SpawnConfig): string[] {
  * ProcessEnv('aionui.dir').
  */
 export function buildSpawnEnv(dirs: BackendDirConfig): NodeJS.ProcessEnv {
+  // Inject the POUNDING-managed CLI bin dirs into the backend process PATH so
+  // poundingcore's doctor/repair can spawn the hermes/claude/openclaw shims
+  // that live outside the user's PATH (especially Windows: ~/.local/bin is not
+  // on PATH by default, which surfaced as `spawn command hermes not on $PATH`).
+  // Same pattern as the OPENCODE_CONFIG injection in the ACP factory: the
+  // desktop owns the managed CLI install dirs, the backend just inherits them.
+  const home = process.env.HOME || os.homedir();
+  const localBin = path.join(home, '.local', 'bin');
+  const bunBin = path.join(process.env.BUN_INSTALL?.trim() || path.join(home, '.bun'), 'bin');
+  const basePath = process.env.PATH || '';
+  const existing = basePath ? basePath.split(path.delimiter) : [];
+  const managedEntries = [localBin, bunBin].filter((entry) => !existing.includes(entry));
+  const pathValue = managedEntries.length > 0 ? [...managedEntries, ...existing].join(path.delimiter) : basePath;
+
   return {
     ...process.env,
+    PATH: pathValue,
     AIONUI_CACHE_DIR: dirs.cacheDir,
     AIONUI_WORK_DIR: dirs.workDir,
     AIONUI_LOG_DIR: dirs.logDir,

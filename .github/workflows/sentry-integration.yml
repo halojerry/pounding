@@ -24,7 +24,11 @@ jobs:
           import json, os, subprocess
           from urllib.request import Request, urlopen
 
-          sentry_token = os.environ["SENTRY_AUTH_TOKEN"]
+          sentry_token = os.environ.get("SENTRY_AUTH_TOKEN", "")
+          if not sentry_token:
+              print("::warning::SENTRY_AUTH_TOKEN secret is not configured — skipping Sentry sync")
+              print("::warning::Add SENTRY_AUTH_TOKEN to repo secrets to re-enable (see AGENTS.md § Sentry Integration)")
+              raise SystemExit(0)
           sentry_org = os.environ["SENTRY_ORG"]
           sentry_project = os.environ["SENTRY_PROJECT"]
           github_repo = os.environ["GITHUB_REPO"]

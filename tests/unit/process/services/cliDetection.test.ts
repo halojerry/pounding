@@ -17,6 +17,10 @@ const execFileMock = vi.hoisted(() => vi.fn());
 vi.hoisted(() => {
   process.env.HOME = '/nonexistent-pounding-test-home';
   process.env.BUN_INSTALL = '/nonexistent-pounding-test-bun';
+  // Pin the platform to unix semantics so the PATH-enumeration mocks
+  // (`which -a`) are deterministic on every runner. The win32-specific test
+  // below re-mocks process.platform and restores it afterwards.
+  Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true });
 });
 
 vi.mock('child_process', () => ({

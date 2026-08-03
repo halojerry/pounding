@@ -605,11 +605,7 @@ const COS_CLI_BASE_URL = 'https://yss-1256275613.cos.ap-guangzhou.myqcloud.com/p
 const COS_DOWNLOAD_TIMEOUT_MS = 300_000;
 const COS_EXTRACT_TIMEOUT_MS = 120_000;
 
-export type CosBundleDownloader = (
-  target: ManagedCliInstallTarget,
-  version: string,
-  destDir: string
-) => Promise<void>;
+export type CosBundleDownloader = (target: ManagedCliInstallTarget, version: string, destDir: string) => Promise<void>;
 
 function getCliVersion(target: ManagedCliInstallTarget): string {
   switch (target) {

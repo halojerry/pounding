@@ -8,7 +8,12 @@ import { execFile } from 'child_process';
 import { existsSync } from 'fs';
 import os from 'os';
 import path from 'path';
-import type { CliEnvironmentTarget, CliInstallation, CliSource, CliTargetStatus } from '@/common/types/agent/cliEnvironment';
+import type {
+  CliEnvironmentTarget,
+  CliInstallation,
+  CliSource,
+  CliTargetStatus,
+} from '@/common/types/agent/cliEnvironment';
 
 export type CliTargetName = CliEnvironmentTarget;
 export type { CliInstallation, CliSource, CliTargetStatus } from '@/common/types/agent/cliEnvironment';

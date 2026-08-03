@@ -257,11 +257,7 @@ const CLI_EXECUTABLE_BASENAMES = new Set([
  * at a known executable file are reduced to their parent directory; plain
  * directories are used as-is. Duplicates are removed, first occurrence wins.
  */
-export function resolveManagedPathEntries(
-  home: string,
-  bunHome: string,
-  overrides: Record<string, string>
-): string[] {
+export function resolveManagedPathEntries(home: string, bunHome: string, overrides: Record<string, string>): string[] {
   const entries: string[] = [];
   const seen = new Set<string>();
   const addEntry = (raw: string) => {

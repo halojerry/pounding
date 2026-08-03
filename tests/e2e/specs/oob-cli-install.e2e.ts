@@ -59,16 +59,18 @@ test.describe('OOB Gate — 开箱即用', () => {
   test('claude / hermes / openclaw 离线安装后 doctor 可用', async ({ page }) => {
     test.setTimeout(300_000);
 
-    // 等待后端就绪（__backendPort 由 preload 注入，httpGet 失败会抛错）
+    // 等待后端就绪（__backendPort 由 preload 注入，httpGet 失败会抛错）。
+    // 120s 而非 60s：Intel mac（macos-x64 runner）与慢机上打包应用后端
+    // 冷启动可能超过 60s（macos-arm64 快所以早先通过）。
     let report: AgentDiagnosticReport | null = null;
-    for (let i = 0; i < 12 && !report; i++) {
+    for (let i = 0; i < 24 && !report; i++) {
       try {
         report = await httpGet<AgentDiagnosticReport>(page, '/api/doctor/diagnose');
       } catch {
         await page.waitForTimeout(5000);
       }
     }
-    expect(report, 'backend 未在 60s 内就绪').toBeTruthy();
+    expect(report, 'backend 未在 120s 内就绪').toBeTruthy();
 
     // claude / openclaw：硬断言（vendor 以 cli/<target> 布局随包，后端 Bundled 模式可直接物化）。
     // hermes：允许失败（warn 不硬断言）。原因：hermes 是 Python 包，vendor 只产出

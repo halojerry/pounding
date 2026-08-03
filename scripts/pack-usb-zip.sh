@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/pack-usb-zip.sh
 #
-# Inject PORTABLE + dealer-config.json into an existing platform zip.
+# Inject PORTABLE + (optional) dealer-config.json into an existing platform zip.
 # The platform zip is produced by electron-builder (zip target in electron-builder.yml).
 #
 # 经销商绑定仅支持 zip（U盘/便携分发）：
@@ -10,14 +10,19 @@
 #     （macOS 往 .app 里写文件会破坏签名直接打不开），需要经销商绑定请走
 #     官方定制渠道（workflow_dispatch 传 aff_code 预埋）。
 #
+# PORTABLE 标记对所有平台 zip 无条件注入（便携语义 + userData 隔离）：
+#   - configureChromium 检测到 PORTABLE → userData 落到 exe 同目录 data/，
+#     单实例锁自动按 exe 目录隔离，不再与安装版（%APPDATA%\POUNDING）互踢。
+#   - 没有 PORTABLE 的 zip 会把数据写进 %APPDATA% 并与安装版共享单实例锁，
+#     用户解压后双击"没反应"（进程静默退出）。
+# dealer-config.json 仅当 AFF_CODE 非空时注入（避免空 aff 污染）。
+#
 # Usage:
-#   bash scripts/pack-usb-zip.sh <PLATFORM_ZIP> <AFF_CODE>
+#   bash scripts/pack-usb-zip.sh <PLATFORM_ZIP> [AFF_CODE]
 #
 # Example:
 #   bash scripts/pack-usb-zip.sh out/POUNDING-2.1.5-win-x64.zip MY_AFF_CODE
-#
-# If AFF_CODE is empty, the script still writes {"aff": ""} — dealers can
-# replace the file in the zip manually (kept for backwards compat).
+#   bash scripts/pack-usb-zip.sh out/POUNDING-2.1.5-win-x64.zip  # PORTABLE only
 
 set -euo pipefail
 
@@ -35,17 +40,23 @@ ZIP_NAME="$(basename "$PLATFORM_ZIP")"
 TEMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TEMP_DIR"' EXIT
 
-# Create dealer files in temp dir
-echo '{"aff": "'"${AFF_CODE}"'"}' > "$TEMP_DIR/dealer-config.json"
+# PORTABLE marker: always injected (portable semantics + userData isolation).
 touch "$TEMP_DIR/PORTABLE"
+INJECT_FILES="PORTABLE"
 
-echo "==> Injecting PORTABLE + dealer-config.json (aff=${AFF_CODE}) into ${ZIP_NAME}"
+# dealer-config.json only when an affiliate code is provided.
+if [ -n "$AFF_CODE" ]; then
+  echo '{"aff": "'"${AFF_CODE}"'"}' > "$TEMP_DIR/dealer-config.json"
+  INJECT_FILES="$INJECT_FILES dealer-config.json"
+fi
+
+echo "==> Injecting ${INJECT_FILES} into ${ZIP_NAME}"
 
 # Add files to the existing zip (modifies in-place)
 if command -v 7z &>/dev/null; then
-  (cd "$TEMP_DIR" && 7z a "$PLATFORM_ZIP" PORTABLE dealer-config.json -tzip -mx=5 -bso0 -bsp0 > /dev/null)
+  (cd "$TEMP_DIR" && 7z a "$PLATFORM_ZIP" $INJECT_FILES -tzip -mx=5 -bso0 -bsp0 > /dev/null)
 else
-  (cd "$TEMP_DIR" && zip -qr "$PLATFORM_ZIP" PORTABLE dealer-config.json)
+  (cd "$TEMP_DIR" && zip -qr "$PLATFORM_ZIP" $INJECT_FILES)
 fi
 
 echo "==> Done: ${ZIP_NAME}"

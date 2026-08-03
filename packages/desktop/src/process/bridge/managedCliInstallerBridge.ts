@@ -102,6 +102,10 @@ function getManagedOpencodeXdgHome(): string {
 
 const BUN_BIN_DIR = path.join(BUN_HOME_DIR, 'bin');
 const BUN_GLOBAL_NODE_MODULES_DIR = path.join(BUN_HOME_DIR, 'install', 'global', 'node_modules');
+// Self-contained npm global prefix for POUNDING-managed CLIs (claude /
+// openclaw). `npm install -g` / `npm uninstall -g` are pinned here so they
+// never write into — or delete — the user's system npm prefix (/usr/local).
+const MANAGED_NPM_GLOBAL_PREFIX = path.join(BUN_HOME_DIR, 'install', 'global');
 const BUN_BIN_PATH = path.join(BUN_BIN_DIR, process.platform === 'win32' ? 'bun.exe' : 'bun');
 const BUN_SHIM_PATH = path.join(BUN_BIN_DIR, process.platform === 'win32' ? 'bun.cmd' : 'bun');
 
@@ -192,6 +196,9 @@ function getNpmEnv(registry: string): NodeJS.ProcessEnv {
   return {
     npm_config_registry: registry,
     NPM_CONFIG_REGISTRY: registry,
+    // Global installs stay inside the POUNDING-managed dir (same location
+    // materializeFromBundled uses), not the user's system npm prefix.
+    npm_config_prefix: MANAGED_NPM_GLOBAL_PREFIX,
   };
 }
 
@@ -493,7 +500,9 @@ async function installNpmPackage(
 
 async function uninstallNpmPackage(packageName: string): Promise<void> {
   try {
-    await runCommand(getNpmCommand(), ['uninstall', '-g', packageName]);
+    await runCommand(await getGlobalJsCommand(), ['uninstall', '-g', packageName], {
+      env: getNpmEnv(NPM_DEFAULT_REGISTRY),
+    });
   } catch {
     /* best effort */
   }
@@ -501,6 +510,37 @@ async function uninstallNpmPackage(packageName: string): Promise<void> {
 
 async function uninstallGlobalPackage(packageName: string): Promise<void> {
   await Promise.allSettled([uninstallNpmPackage(packageName), uninstallNpmPackage(packageName)]);
+}
+
+/**
+ * Write a POUNDING-managed launcher for a npm-installed CLI at its detect
+ * path (~/.local/bin/<name>). The shim invokes the bundled node with the
+ * entrypoint installed under the managed npm prefix, so the CLI works even
+ * when the managed prefix is not on the user's PATH.
+ */
+function writeNpmGlobalShim(target: ManagedCliInstallTarget): void {
+  const descriptor = DESCRIPTORS[target];
+  const shimPath = descriptor?.detectPaths?.[0];
+  if (!shimPath) return;
+  const isWin = process.platform === 'win32';
+  const binName = isWin ? `${target}.cmd` : target;
+  const entrypoint = path.join(MANAGED_NPM_GLOBAL_PREFIX, 'bin', binName);
+  if (!fs.existsSync(entrypoint)) return;
+  const nodeForShim = resolveNodeForShim();
+  ensureDir(path.dirname(shimPath));
+  if (isWin) {
+    fs.writeFileSync(shimPath, `@echo off\r\n"${nodeForShim}" "${entrypoint}" %*\r\n`, { encoding: 'utf8' });
+    return;
+  }
+  fs.writeFileSync(shimPath, `#!/usr/bin/env bash\nexec "${nodeForShim}" "${entrypoint}" "$@"\n`, {
+    encoding: 'utf8',
+    mode: 0o755,
+  });
+}
+
+function removeCliShim(target: ManagedCliInstallTarget): void {
+  const shimPath = DESCRIPTORS[target]?.detectPaths?.[0];
+  if (shimPath) safeRm(shimPath);
 }
 
 function writeHermesShim(): void {
@@ -718,9 +758,11 @@ const DESCRIPTORS: Record<ManagedCliInstallTarget, ManagedCliDescriptor> = {
       // Pin to the bundled version (vendor-versions.env) so network install
       // and bundle never drift.
       await installNpmPackage('@anthropic-ai/claude-code', { version: CLAUDE_CLI_VERSION });
+      writeNpmGlobalShim('claude');
     },
     uninstall: async () => {
       await uninstallGlobalPackage('@anthropic-ai/claude-code');
+      removeCliShim('claude');
     },
   },
   hermes: {
@@ -740,9 +782,11 @@ const DESCRIPTORS: Record<ManagedCliInstallTarget, ManagedCliDescriptor> = {
     install: async () => {
       // Pin to the extended-stable version (vendor-versions.env).
       await installNpmPackage('openclaw', { version: OPENCLAW_VERSION });
+      writeNpmGlobalShim('openclaw');
     },
     uninstall: async () => {
       await uninstallGlobalPackage('openclaw');
+      removeCliShim('openclaw');
     },
   },
   opencode: {

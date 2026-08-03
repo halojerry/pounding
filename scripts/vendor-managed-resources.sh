@@ -18,13 +18,6 @@ if [ -f "${SCRIPT_DIR}/vendor-versions.env" ]; then
 fi
 
 NODE_VERSION="${NODE_VERSION:-24.11.0}"
-HERMES_VERSION="${HERMES_VERSION:-0.19.0}"
-OPENCLAW_VERSION="${OPENCLAW_VERSION:-2026.6.33}"
-# NOTE: 20250324 does NOT exist on indygreg/python-build-standalone (404);
-# 20260728 has cpython 3.12.13 on all six platforms incl. win32-arm64.
-PYTHON_BUILD_STANDALONE_RELEASE="${PYTHON_BUILD_STANDALONE_RELEASE:-20260728}"
-PYTHON_VERSION="${PYTHON_VERSION:-3.12.13}"
-UV_VERSION="${UV_VERSION:-0.7.16}"
 CHROME_DEVTOOLS_MCP_VERSION="${CHROME_DEVTOOLS_MCP_VERSION:-1.4.0}"
 
 # Default: all targets. Use --target to limit to one.
@@ -75,19 +68,6 @@ node_platform_key() {
   esac
 }
 
-# Map our target IDs to python-build-standalone target triples.
-python_target_triple() {
-  case "$1" in
-    darwin-arm64)  echo 'aarch64-apple-darwin' ;;
-    darwin-x64)    echo 'x86_64-apple-darwin' ;;
-    linux-x64)     echo 'x86_64-unknown-linux-gnu' ;;
-    linux-arm64)   echo 'aarch64-unknown-linux-gnu' ;;
-    win32-x64)     echo 'x86_64-pc-windows-msvc' ;;
-    win32-arm64)   echo 'aarch64-pc-windows-msvc' ;;
-    *) echo "ERROR: unsupported target $1" >&2; exit 1 ;;
-  esac
-}
-
 # ---------------------------------------------------------------------------
 # 1. Node.js runtime
 # ---------------------------------------------------------------------------
@@ -129,108 +109,7 @@ vendor_node() {
 }
 
 # ---------------------------------------------------------------------------
-# 2. Python (portable build from python-build-standalone)
-# ---------------------------------------------------------------------------
-vendor_python() {
-  echo "==> Python v${PYTHON_VERSION} (python-build-standalone)"
-  local release_tag="${PYTHON_BUILD_STANDALONE_RELEASE}"
-  IFS=',' read -r -a targets <<<"${TARGETS}"
-
-  for target in "${targets[@]}"; do
-    local triple
-    triple="$(python_target_triple "${target}")"
-
-    local dir_name="python"
-    local dest="${VENDOR_DIR}/runtimes/python"
-    if [[ -f "${dest}/.version" ]]; then
-      local existing
-      existing="$(cat "${dest}/.version" 2>/dev/null || true)"
-      if [[ "${existing}" == "${PYTHON_VERSION}" ]]; then
-        echo "  ${target}: already vendored (v${PYTHON_VERSION})"
-        continue
-      fi
-    fi
-
-    local archive_name="cpython-${PYTHON_VERSION}+${release_tag}-${triple}-install_only.tar.gz"
-    local url="https://github.com/indygreg/python-build-standalone/releases/download/${release_tag}/${archive_name}"
-    local tmp="/tmp/${archive_name}"
-
-    echo "  ${target}: downloading ${archive_name}"
-    download "${url}" "${tmp}" || continue
-
-    echo "  ${target}: extracting"
-    rm -rf "${dest}"
-    mkdir -p "${dest}"
-    tar -xzf "${tmp}" -C "${dest}" --strip-components=1
-    rm -f "${tmp}"
-
-    # Write version marker
-    echo "${PYTHON_VERSION}" > "${dest}/.version"
-    echo "  ${target}: done (${dest})"
-    break # python-build-standalone archive is multi-platform? No — one per target.
-          # For now we just vendor for the first matching target (host).
-          # Cross-platform Python vendoring would need separate dirs per target.
-  done
-}
-
-# ---------------------------------------------------------------------------
-# 3. uv (standalone binary)
-# ---------------------------------------------------------------------------
-vendor_uv() {
-  echo "==> uv v${UV_VERSION}"
-  IFS=',' read -r -a targets <<<"${TARGETS}"
-
-  for target in "${targets[@]}"; do
-    local triple uv_name
-    triple="$(python_target_triple "${target}")"
-
-    local dest_dir="${VENDOR_DIR}/runtimes/uv"
-    local dest="${dest_dir}/uv"
-    [[ "${target}" == win32-* ]] && dest="${dest_dir}/uv.exe"
-
-    if [[ -f "${dest}" ]] && [[ -f "${dest_dir}/.version" ]]; then
-      local existing
-      existing="$(cat "${dest_dir}/.version" 2>/dev/null || true)"
-      if [[ "${existing}" == "${UV_VERSION}" ]]; then
-        echo "  ${target}: already vendored (v${UV_VERSION})"
-        continue
-      fi
-    fi
-
-    case "${target}" in
-      win32-*) uv_name="uv-${triple}.zip" ;;
-      *)       uv_name="uv-${triple}.tar.gz" ;;
-    esac
-
-    local url="https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/${uv_name}"
-    local tmp="/tmp/${uv_name}"
-
-    echo "  ${target}: downloading ${uv_name}"
-    download "${url}" "${tmp}" || continue
-
-    echo "  ${target}: extracting"
-    rm -rf "${dest_dir}"
-    mkdir -p "${dest_dir}"
-    if [[ "${target}" == win32-* ]]; then
-      unzip -qo "${tmp}" -d "${dest_dir}/"
-      # uv zip extracts to uv.exe in a subdir; find and move it
-      find "${dest_dir}" -name 'uv.exe' -type f -exec mv {} "${dest}" \;
-    else
-      tar -xzf "${tmp}" -C "${dest_dir}/"
-      # uv tar extracts to uv-<triple>/uv; move it up
-      find "${dest_dir}" -name 'uv' -type f -exec mv {} "${dest}" \;
-    fi
-    rm -f "${tmp}"
-    chmod +x "${dest}" 2>/dev/null || true
-
-    echo "${UV_VERSION}" > "${dest_dir}/.version"
-    echo "  ${target}: done (${dest})"
-    break # One binary per run (host platform); cross-platform would need multi-dir
-  done
-}
-
-# ---------------------------------------------------------------------------
-# 4. chrome-devtools-mcp (npm package, installed into node runtime)
+# 2. chrome-devtools-mcp (npm package, installed into node runtime)
 # ---------------------------------------------------------------------------
 vendor_chrome_devtools_mcp() {
 (
@@ -311,7 +190,7 @@ MANIFEST
 }
 
 # ---------------------------------------------------------------------------
-# 5. ACP tools (Claude, Codex) — same install logic as prepare-managed-acp-tools.sh
+# 3. ACP tools (Claude, Codex) — same install logic as prepare-managed-acp-tools.sh
 # ---------------------------------------------------------------------------
 vendor_acp_one() {
 (
@@ -411,197 +290,23 @@ vendor_acp() {
 }
 
 # ---------------------------------------------------------------------------
-# 3. CLI binaries (OpenCode, OpenClaw) — structure: cli/<name>/<platform>/
-# ---------------------------------------------------------------------------
-vendor_cli_one() {
-(
-  local cli_name="$1" package_name="$2" version="$3"
-  echo "==> CLI: ${cli_name} (${package_name}@${version})"
-  IFS=',' read -r -a targets <<<"${TARGETS}"
-
-  for target in "${targets[@]}"; do
-    local meta plat arch platdir
-    meta="$(target_meta "${target}")"
-    IFS='|' read -r plat arch platdir <<<"${meta}"
-
-    local dest="${VENDOR_DIR}/cli/${cli_name}/${version}/${platdir}"
-    if [[ -d "${dest}" ]] && [[ -f "${dest}/manifest.json" ]]; then
-      echo "  ${target}: already vendored"
-      continue
-    fi
-
-    local work="/tmp/vendor-cli-${cli_name}-${target}"
-    rm -rf "${work}"
-    mkdir -p "${work}/project" "${work}/npm-cache"
-
-    cat > "${work}/project/package.json" <<PKGJSON
-{
-  "name": "vendor-${cli_name}",
-  "private": true,
-  "dependencies": {
-    "${package_name}": "${version}"
-  }
-}
-PKGJSON
-
-    echo "  ${target}: npm install"
-    cd "${work}/project"
-    npm install \
-      --cpu "${arch}" \
-      --os "${plat}" \
-      --cache "${work}/npm-cache" \
-      --no-audit --no-fund --silent \
-      2>&1 | tail -3 || {
-        echo "  ${target}: npm install FAILED, skipping"
-        continue
-      }
-
-    rm -rf "${dest}"
-    mkdir -p "${dest}"
-
-    # Copy everything (binary + deps)
-    cp -R "${work}/project/node_modules" "${dest}/node_modules"
-
-    # Resolve bin entry
-    local bin_rel
-    bin_rel="$(node - "${package_name}" "${work}/project" <<'NODESCRIPT'
-const fs = require('node:fs');
-const path = require('node:path');
-const [, , pkgName, projectDir] = process.argv;
-const segs = pkgName.split('/');
-const pkgDir = path.join(projectDir, 'node_modules', ...segs);
-const pj = JSON.parse(fs.readFileSync(path.join(pkgDir, 'package.json'), 'utf8'));
-function resolveBin(bin, name) {
-  if (typeof bin === 'string' && bin.length > 0) return bin;
-  if (!bin || typeof bin !== 'object') return [name.startsWith('@') ? name.split('/')[1] : name, Object.values(bin)[0]];
-  const short = name.startsWith('@') ? name.split('/')[1] : name;
-  for (const k of [name, short]) if (typeof bin[k] === 'string' && bin[k].length > 0) return bin[k];
-  return Object.values(bin)[0];
-}
-const ep = resolveBin(pj.bin, pj.name);
-console.log(typeof ep === 'string' ? ep.replace(/\\/g, '/') : ep.replace(/\\/g, '/'));
-NODESCRIPT
-)"
-
-    cat > "${dest}/manifest.json" <<MANIFEST
-{
-  "entrypoint": "${bin_rel}",
-  "path_entries": ["node_modules/.bin"]
-}
-MANIFEST
-
-    rm -rf "${work}"
-    echo "  ${target}: done (${dest})"
-  done
-  )
-
-}
-
-vendor_hermes() {
-  echo "==> Hermes v${HERMES_VERSION}"
-  IFS=',' read -r -a targets <<<"${TARGETS}"
-
-  for target in "${targets[@]}"; do
-    local meta plat arch platdir
-    meta="$(target_meta "${target}")"
-    IFS='|' read -r plat arch platdir <<<"${meta}"
-
-    # Runtime expects wheels in runtimes/hermes (same layout as prepare-vendor.sh);
-    # cli/hermes/<ver>/ is a legacy layout the runtime never reads.
-    local dest="${VENDOR_DIR}/runtimes/hermes"
-    if [ -f "${dest}/.version" ] && [ "$(cat "${dest}/.version")" = "${HERMES_VERSION}" ]; then
-      echo "  ${target}: already vendored (v${HERMES_VERSION})"
-      continue
-    fi
-
-    # Hermes is a Python package — download wheels (cross-platform not supported
-    # by pip for other OS/arch; same policy as prepare-vendor.sh).
-    local host_target
-    case "$(uname -s)" in
-      Darwin) host_target="darwin-$(uname -m | sed 's/x86_64/x64/;s/arm64/arm64/')" ;;
-      Linux)  host_target="linux-$(uname -m | sed 's/x86_64/x64/;s/aarch64/arm64/')" ;;
-      *)      echo "  ${target}: skipping (unsupported host)" && continue ;;
-    esac
-    if [[ "${target}" != "${host_target}" ]]; then
-      echo "  ${target}: skipping (cross-platform, vendored only for ${host_target})"
-      continue
-    fi
-
-    echo "  ${target}: pip download"
-    rm -rf "${dest}"
-    mkdir -p "${dest}"
-    local plat_tag=""
-    case "${target}" in
-      darwin-arm64) plat_tag="macosx_11_0_arm64" ;;
-      # pyyaml==6.0.3 only ships macosx_10_13_x86_64 wheels (see
-      # build-missing-hermes-wheels.sh).
-      darwin-x64)   plat_tag="macosx_10_13_x86_64" ;;
-      linux-x64)    plat_tag="manylinux2014_x86_64" ;;
-      linux-arm64)  plat_tag="manylinux2014_aarch64" ;;
-      win32-x64)    plat_tag="win_amd64" ;;
-      win32-arm64)  plat_tag="win_arm64" ;;
-    esac
-    if ! pip3 download \
-      --dest "${dest}" \
-      --python-version 3.12 \
-      --platform "${plat_tag}" \
-      --only-binary :all: \
-      "hermes-agent[acp]==${HERMES_VERSION}" 2>&1 | tail -3; then
-      echo "  ${target}: pip download incomplete — trying source build fallback"
-      if bash "${SCRIPT_DIR}/build-missing-hermes-wheels.sh" "${target}" "${dest}" "pip3" "${HERMES_VERSION}"; then
-        echo "${HERMES_VERSION}" > "${dest}/.version"
-        echo "  ${target}: done via pip + local wheel build ($(ls "${dest}"/*.whl | wc -l | tr -d ' ') wheels)"
-        continue
-      fi
-      echo "  ${target}: pip download FAILED, skipping (no .version marker — runtime network fallback)"
-      rm -rf "${dest}"
-      continue
-    fi
-
-    if ls "${dest}"/*.whl >/dev/null 2>&1; then
-      echo "${HERMES_VERSION}" > "${dest}/.version"
-      echo "  ${target}: done (${dest}, $(ls "${dest}"/*.whl | wc -l | tr -d ' ') wheels)"
-    else
-      echo "  ${target}: no wheels downloaded, skipping"
-      rm -rf "${dest}"
-    fi
-  done
-}
-
-vendor_clis() {
-  vendor_cli_one "openclaw" "openclaw" "${OPENCLAW_VERSION}"
-  vendor_hermes
-}
-
-# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 main() {
   echo "==> Vendoring managed resources to ${VENDOR_DIR}"
   echo "    Targets:              ${TARGETS}"
   echo "    Node.js:              v${NODE_VERSION}"
-  echo "    Python:               v${PYTHON_VERSION}"
-  echo "    uv:                   v${UV_VERSION}"
   echo "    chrome-devtools-mcp:  v${CHROME_DEVTOOLS_MCP_VERSION}"
   echo "    Claude ACP:           v${CLAUDE_ACP_VERSION}"
-  echo "    Hermes:               v${HERMES_VERSION}"
-  echo "    OpenCode:             v${OPENCODE_VERSION}"
-  echo "    OpenClaw:             v${OPENCLAW_VERSION}"
   echo ""
 
   mkdir -p "${VENDOR_DIR}"
 
   vendor_node
   echo ""
-  vendor_python
-  echo ""
-  vendor_uv
-  echo ""
   vendor_chrome_devtools_mcp
   echo ""
   vendor_acp
-  echo ""
-  vendor_clis
   echo ""
 
   echo "==> Done: ${VENDOR_DIR}"

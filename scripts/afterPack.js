@@ -83,63 +83,12 @@ function verifyManagedResources(resourcesDir, runtimeKey, electronPlatformName) 
     }
   }
 
-  // Verify Claude CLI using manifest contract (required by NSIS verification; E1030 without it)
-  const clis = Array.isArray(manifest.clis) ? manifest.clis : [];
-  const claudeEntry = clis.find((c) => c && c.name === 'claude');
-
-  if (!claudeEntry) {
-    missing.push('managed-resources: claude entry missing from manifest.clis');
-  } else {
-    // root already includes version + platform subdirectory (e.g. cli/claude/2.1.215/win32-x64)
-    const claudeExePath = path.join(baseDir, claudeEntry.root, claudeEntry.executable);
-    if (!fs.existsSync(claudeExePath)) {
-      missing.push(`managed-resources/${claudeEntry.root}/${claudeEntry.executable}`);
-    }
-  }
-
-  // Verify vendored offline components (python / hermes wheels / openclaw).
-  // These are produced by scripts/prepare-vendor.sh in CI; a silently failed
-  // vendor step previously shipped broken bundles (offline first-launch
-  // installs would fail at runtime). POUNDING_SKIP_VENDOR_CHECK=1 bypasses
-  // this for local bundle debugging (CI never sets it).
+  // Verify the vendored builtin MCP server (chrome-devtools-mcp). CLI runtimes
+  // (claude/hermes/openclaw) are no longer bundled — they are self-served from
+  // the Settings → Agent "运行环境" panel, so their absence is not a build
+  // failure. POUNDING_SKIP_VENDOR_CHECK=1 bypasses this for local bundle
+  // debugging (CI never sets it).
   if (process.env.POUNDING_SKIP_VENDOR_CHECK !== '1') {
-    // python-build-standalone layout: runtimes/python/bin/python3 (unix) or
-    // runtimes/python/python.exe (win32) — single-level, no nested python/.
-    const pythonOk =
-      fs.existsSync(path.join(baseDir, 'runtimes', 'python', 'bin', 'python3')) ||
-      fs.existsSync(path.join(baseDir, 'runtimes', 'python', 'python.exe'));
-    if (!pythonOk) {
-      missing.push('managed-resources/runtimes/python (vendor step likely failed — no bundled python)');
-    }
-
-    const hermesWheelDir = path.join(baseDir, 'runtimes', 'hermes');
-    const hermesOk =
-      fs.existsSync(hermesWheelDir) &&
-      fs.readdirSync(hermesWheelDir, { withFileTypes: true }).some((e) => e.isFile() && e.name.endsWith('.whl'));
-    if (!hermesOk) {
-      // Warning only: hermes-agent 0.19.0 pins pyyaml==6.0.3 which lacks wheels
-      // on some platforms (darwin-x64) — offline hermes install is impossible
-      // there, it falls back to network install at first launch.
-      console.warn(
-        `   ⚠ managed-resources/runtimes/hermes has no wheels (hermes will need network install on this platform)`
-      );
-    }
-
-    const openclawOk = fs.existsSync(path.join(baseDir, 'cli', 'openclaw'));
-    if (!openclawOk) {
-      missing.push('managed-resources/cli/openclaw (vendor step likely failed — offline openclaw install will fail)');
-    }
-
-    // uv (offline hermes wheel install runs through it) and the vendored
-    // chrome-devtools-mcp (the default builtin MCP server runs offline from
-    // it). Missing either → that component's offline OOBE silently fails.
-    const uvOk =
-      fs.existsSync(path.join(baseDir, 'runtimes', 'uv', 'uv')) ||
-      fs.existsSync(path.join(baseDir, 'runtimes', 'uv', 'uv.exe'));
-    if (!uvOk) {
-      missing.push('managed-resources/runtimes/uv (offline hermes wheel install needs it)');
-    }
-
     const cdtMcpOk = fs.existsSync(path.join(baseDir, 'mcp', 'chrome-devtools-mcp'));
     if (!cdtMcpOk) {
       missing.push('managed-resources/mcp/chrome-devtools-mcp (builtin MCP server would fall back to network npx)');
@@ -169,11 +118,9 @@ function verifyBundledResources(resourcesDir, electronPlatformName, targetArch) 
     throw new Error(`Packaged app is missing required resource(s): ${missing.join(', ')}`);
   }
 
-  // Deep-verify managed-resources contents.
-  // The NSIS installer verification script (verify-bundled-aioncore-install.ps1)
-  // requires at minimum a valid Node.js runtime and Claude ACP contract.
-  // Catching incomplete resources here fails the build early instead of
-  // letting users hit E1030 at install time.
+  // Deep-verify managed-resources contents: the bundled Node.js runtime +
+  // builtin MCP server must be present. Catching incomplete resources here
+  // fails the build early instead of letting users hit E1030 at install time.
   verifyManagedResources(resourcesDir, runtimeKey, electronPlatformName);
 
   console.log(`   ✓ Bundled resources verified for ${runtimeKey}`);

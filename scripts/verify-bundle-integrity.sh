@@ -174,29 +174,13 @@ fi
 echo "--- 1. Directory structure ---"
 
 # Use parallel arrays for compatibility with bash 3.2 (macOS default)
-# NOTE: `acp/` is intentionally NOT expected here — prepare-poundingcore.js only
-# copies {cli, runtimes, mcp} into the app bundle (acp stays in vendor only).
-# In --vendor-only mode, claude and node are excluded (they come from the
-# poundingcore release asset, not from prepare-vendor.sh).
-EXPECTED_DIR_PATHS=(
-  "cli/claude"
-  "cli/openclaw"
-  "runtimes/uv"
-  "runtimes/python"
-  "runtimes/hermes"
-  "node"
-)
-EXPECTED_DIR_LABELS=(
-  "CLI: claude"
-  "CLI: openclaw"
-  "Runtime: uv"
-  "Runtime: python"
-  "Runtime: hermes"
-  "Node runtime"
-)
+# CLI runtimes (claude/hermes/openclaw) are no longer vendored; only the node
+# runtime (full bundle) and prepare-vendor.sh outputs (mcp/acp) are expected.
+EXPECTED_DIR_PATHS=("node")
+EXPECTED_DIR_LABELS=("Node runtime")
 if [[ "${VENDOR_ONLY}" == true ]]; then
-  EXPECTED_DIR_PATHS=("cli/openclaw" "runtimes/uv" "runtimes/python" "runtimes/hermes")
-  EXPECTED_DIR_LABELS=("CLI: openclaw" "Runtime: uv" "Runtime: python" "Runtime: hermes")
+  EXPECTED_DIR_PATHS=("mcp/chrome-devtools-mcp" "acp")
+  EXPECTED_DIR_LABELS=("MCP: chrome-devtools-mcp" "ACP bridges")
 fi
 
 for idx in "${!EXPECTED_DIR_PATHS[@]}"; do
@@ -212,190 +196,13 @@ done
 echo ""
 
 # ---------------------------------------------------------------------------
-# 2. CLI bundle integrity — manifest validation
-# ---------------------------------------------------------------------------
-echo "--- 2. CLI bundle integrity ---"
-
-CLI_NAMES=(claude openclaw)
-if [[ "${VENDOR_ONLY}" == true ]]; then
-  CLI_NAMES=(openclaw)
-fi
-VALID_PLATFORMS="darwin-arm64 darwin-x64 linux-x64 linux-arm64 win32-x64 win32-arm64"
-
-for cli in "${CLI_NAMES[@]}"; do
-  cli_dir="${MANAGED_RESOURCES}/cli/${cli}"
-
-  if [[ ! -d "${cli_dir}" ]]; then
-    fail "CLI directory missing: cli/${cli} — skipping manifest checks"
-    continue
-  fi
-
-  # Find all manifest.json files under this CLI directory
-  manifest_count=0
-  while IFS= read -r manifest_path; do
-    manifest_count=$((manifest_count + 1))
-    manifest_dir="$(dirname "${manifest_path}")"
-    rel_manifest="${manifest_path#${MANAGED_RESOURCES}/}"
-
-    # -- entrypoint --
-    entrypoint="$(json_query "${manifest_path}" '.entrypoint' | tr -d '[:space:]')"
-    if [[ -z "${entrypoint}" ]]; then
-      fail "Manifest ${rel_manifest}: missing 'entrypoint' field"
-    elif [[ -f "${manifest_dir}/${entrypoint}" ]]; then
-      pass "Manifest ${rel_manifest}: entrypoint exists (${entrypoint})"
-    else
-      fail "Manifest ${rel_manifest}: entrypoint file missing (${entrypoint})"
-    fi
-
-    # -- kind: native manifests (written by poundingcore prepare-managed-resources
-    # for claude) carry only entrypoint+kind — version/platform are optional for
-    # those, while vendor_cli_one JS manifests (openclaw) keep version/platform.
-    kind="$(json_query "${manifest_path}" '.kind' | tr -d '[:space:]')"
-    is_native=false
-    if [[ "${kind}" == "native" ]]; then
-      is_native=true
-    fi
-
-    # -- version --
-    version="$(json_query "${manifest_path}" '.version' | tr -d '[:space:]')"
-    if [[ -z "${version}" ]]; then
-      if [[ "${is_native}" == true ]]; then
-        pass "Manifest ${rel_manifest}: version omitted (native manifest — OK)"
-      else
-        fail "Manifest ${rel_manifest}: missing 'version' field"
-      fi
-    elif [[ "${version}" == "0.0.0" ]]; then
-      fail "Manifest ${rel_manifest}: version is '0.0.0' (indicates failed version detection)"
-    else
-      pass "Manifest ${rel_manifest}: version is '${version}'"
-    fi
-
-    # -- platform --
-    platform="$(json_query "${manifest_path}" '.platform' | tr -d '[:space:]')"
-    if [[ -n "${platform}" ]]; then
-      is_valid_platform=false
-      for vp in ${VALID_PLATFORMS}; do
-        if [[ "${platform}" == "${vp}" ]]; then
-          is_valid_platform=true
-          break
-        fi
-      done
-      if [[ "${is_valid_platform}" == true ]]; then
-        pass "Manifest ${rel_manifest}: platform is '${platform}' (valid)"
-        if [[ -n "${EXPECTED_PLATFORM}" && "${platform}" != "${EXPECTED_PLATFORM}" ]]; then
-          fail "Manifest ${rel_manifest}: platform '${platform}' does not match expected '${EXPECTED_PLATFORM}'"
-        fi
-      else
-        fail "Manifest ${rel_manifest}: platform '${platform}' is not a recognized key"
-      fi
-    elif [[ "${is_native}" == true ]]; then
-      pass "Manifest ${rel_manifest}: platform omitted (native manifest — OK)"
-    else
-      fail "Manifest ${rel_manifest}: missing 'platform' field"
-    fi
-
-    # -- path_entries --
-    path_entries_raw="$(json_query "${manifest_path}" '.path_entries')"
-    if [[ -n "${path_entries_raw}" ]]; then
-      entry_missing=false
-      while IFS= read -r entry; do
-        entry="$(echo "${entry}" | tr -d '[:space:]')"
-        [[ -z "${entry}" ]] && continue
-        if [[ -d "${manifest_dir}/${entry}" ]]; then
-          pass "Manifest ${rel_manifest}: path_entry '${entry}' exists"
-        else
-          fail "Manifest ${rel_manifest}: path_entry '${entry}' missing"
-          entry_missing=true
-        fi
-      done <<< "${path_entries_raw}"
-
-      # For JS CLIs, check node_modules/.bin specifically
-      if [[ -d "${manifest_dir}/node_modules" ]]; then
-        if [[ -d "${manifest_dir}/node_modules/.bin" ]]; then
-          pass "Manifest ${rel_manifest}: node_modules/.bin/ directory exists"
-        else
-          fail "Manifest ${rel_manifest}: node_modules/.bin/ directory missing (JS CLI without bin links)"
-        fi
-      fi
-    fi
-
-  done < <(find "${cli_dir}" -name 'manifest.json' -type f 2>/dev/null)
-
-  if [[ ${manifest_count} -eq 0 ]]; then
-    fail "CLI ${cli}: no manifest.json files found"
-  fi
-done
-
-echo ""
-
-# ---------------------------------------------------------------------------
-# 3. Runtime integrity checks
-# ---------------------------------------------------------------------------
-echo "--- 3. Runtime integrity ---"
-
-# uv
-uv_dir="${MANAGED_RESOURCES}/runtimes/uv"
-if [[ -d "${uv_dir}" ]]; then
-  if [[ -f "${uv_dir}/uv" && -x "${uv_dir}/uv" ]]; then
-    pass "Runtime uv: binary 'uv' exists and is executable"
-  elif [[ -f "${uv_dir}/uv.exe" ]]; then
-    pass "Runtime uv: binary 'uv.exe' exists"
-  else
-    fail "Runtime uv: no uv or uv.exe binary found in ${uv_dir}"
-  fi
-else
-  fail "Runtime directory missing: runtimes/uv"
-fi
-
-# python
-python_dir="${MANAGED_RESOURCES}/runtimes/python"
-if [[ -d "${python_dir}" ]]; then
-  found_python=false
-  for bin in python3 python python3.exe python.exe; do
-    if [[ -f "${python_dir}/${bin}" ]]; then
-      found_python=true
-      pass "Runtime python: binary '${bin}' found"
-      break
-    fi
-  done
-  # Also check nested paths (e.g. bin/python3 or install/python3)
-  if [[ "${found_python}" == false ]]; then
-    nested_python="$(find "${python_dir}" -name 'python3' -o -name 'python' -o -name 'python3.exe' -o -name 'python.exe' 2>/dev/null | head -1)"
-    if [[ -n "${nested_python}" ]]; then
-      found_python=true
-      pass "Runtime python: binary found at ${nested_python#${MANAGED_RESOURCES}/}"
-    fi
-  fi
-  if [[ "${found_python}" == false ]]; then
-    fail "Runtime python: no python binary found in ${python_dir}"
-  fi
-else
-  fail "Runtime directory missing: runtimes/python"
-fi
-
-# hermes
-hermes_dir="${MANAGED_RESOURCES}/runtimes/hermes"
-if [[ -d "${hermes_dir}" ]]; then
-  whl_file="$(find "${hermes_dir}" -name '*.whl' -type f 2>/dev/null | head -1)"
-  if [[ -n "${whl_file}" ]]; then
-    pass "Runtime hermes: wheel file found (${whl_file#${MANAGED_RESOURCES}/})"
-  else
-    fail "Runtime hermes: no .whl file found in ${hermes_dir}"
-  fi
-else
-  fail "Runtime directory missing: runtimes/hermes"
-fi
-
-echo ""
-
-# ---------------------------------------------------------------------------
-# 4. Node runtime check (skipped in --vendor-only mode: node ships in the
+# 2. Node runtime check (skipped in --vendor-only mode: node ships in the
 #    poundingcore release asset, not in the prepare-vendor.sh output)
 # ---------------------------------------------------------------------------
 if [[ "${VENDOR_ONLY}" == true ]]; then
-  echo "--- 4. Node runtime (skipped: --vendor-only) ---"
+  echo "--- 2. Node runtime (skipped: --vendor-only) ---"
 else
-  echo "--- 4. Node runtime ---"
+  echo "--- 2. Node runtime ---"
 fi
 
 if [[ "${VENDOR_ONLY}" == false ]]; then

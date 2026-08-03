@@ -159,7 +159,7 @@ describe('updateBridge CDN URL rewriting', () => {
       const macAsset = assets.find((a: { name: string }) => a.name === 'POUNDING-1.9.22-mac-arm64.dmg');
       expect(macAsset).toBeDefined();
       expect(macAsset?.url).toBe(
-        'https://github.com/halojerry/pounding/releases/download/releases/1.9.22/POUNDING-1.9.22-mac-arm64.dmg'
+        'https://yss-1256275613.cos.ap-guangzhou.myqcloud.com/pounding/releases/latest/POUNDING-1.9.22-mac-arm64.dmg'
       );
       expect(macAsset?.fallbackUrl).toBe(
         'https://github.com/halojerry/pounding/releases/download/v1.9.22/POUNDING-1.9.22-mac-arm64.dmg'
@@ -167,7 +167,7 @@ describe('updateBridge CDN URL rewriting', () => {
 
       const linuxAsset = assets.find((a: { name: string }) => a.name === 'POUNDING-1.9.22-linux-amd64.deb');
       expect(linuxAsset?.url).toBe(
-        'https://github.com/halojerry/pounding/releases/download/releases/1.9.22/POUNDING-1.9.22-linux-amd64.deb'
+        'https://yss-1256275613.cos.ap-guangzhou.myqcloud.com/pounding/releases/latest/POUNDING-1.9.22-linux-amd64.deb'
       );
     } finally {
       vi.unstubAllGlobals();
@@ -186,7 +186,7 @@ describe('updateBridge CDN URL rewriting', () => {
       const result = await handler({ repo: 'halojerry/pounding' });
       const asset = result.data?.latest?.assets?.[0];
       expect(asset?.url).toMatch(
-        /^https:\/\/github\.com\/halojerry\/pounding\/releases\/download\/releases\/1\.9\.22\//
+        /^https:\/\/yss-1256275613\.cos\.ap-guangzhou\.myqcloud\.com\/pounding\/releases\/latest\//
       );
       expect(asset?.url).not.toMatch(/\/v1\.9\.22\//);
     } finally {

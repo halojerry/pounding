@@ -39,19 +39,19 @@ AIONUI_GITHUB_REPO=halojerry/POUNDING-2.0.2-dev-a3881e2
 覆盖“手动下载更新包”的基础下载地址：
 
 ```bash
-AIONUI_UPDATE_BASE_URL=https://download.example.com/releases/download
+AIONUI_UPDATE_BASE_URL=https://download.example.com/releases/latest
 ```
 
 代码会把更新包 URL 组装成：
 
 ```text
-${AIONUI_UPDATE_BASE_URL}/${version}/${assetName}
+${AIONUI_UPDATE_BASE_URL}/${assetName}
 ```
 
 例如：
 
 ```text
-https://download.example.com/releases/download/2.0.3/POUNDING-2.0.3-win-x64.exe
+https://download.example.com/releases/latest/POUNDING-2.0.3-win-x64.exe
 ```
 
 适合：
@@ -100,7 +100,7 @@ AIONUI_AUTO_UPDATE_URL=https://download.example.com/releases/latest
 
 推荐域名示例：
 
-- `https://download.api.mxou.cn/releases/download/<version>/...`
+- `https://download.api.mxou.cn/releases/latest/...`
 - `https://download.api.mxou.cn/releases/latest/latest.yml`
 
 建议做法：
@@ -110,7 +110,7 @@ AIONUI_AUTO_UPDATE_URL=https://download.example.com/releases/latest
 3. 桌面客户端在生产环境设置：
 
 ```bash
-AIONUI_UPDATE_BASE_URL=https://download.api.mxou.cn/releases/download
+AIONUI_UPDATE_BASE_URL=https://download.api.mxou.cn/releases/latest
 AIONUI_AUTO_UPDATE_URL=https://download.api.mxou.cn/releases/latest
 ```
 
@@ -131,11 +131,11 @@ Release 中已上传：
 - web-cli tarball 与校验文件
 - `install-web.sh`
 
-### `release-distribute.yml`
+### `cos-mirror.yml`
 
 负责：
 
-- 在 Release 发布后，把资产镜像到外部分发存储
+- 在 Release 发布后，把资产镜像到外部分发存储（收敛后的唯一入口，替代原 `release-distribute.yml`）
 
 当前要求同步的文件类型包括：
 
@@ -156,15 +156,8 @@ Release 中已上传：
 
 建议外部分发目标同时保留两套目录：
 
-### 1. 版本目录
-
-```text
-releases/2.0.3/POUNDING-2.0.3-win-x64.exe
-releases/2.0.3/POUNDING-2.0.3-mac-arm64.dmg
-...
-```
-
-### 2. latest 目录
+外部分发目标只保留一套 `latest/` 目录（官网下载页、桌面自动更新、便携 zip 更新
+共用；历史版本归档由 GitHub Releases 承担）：
 
 ```text
 releases/latest/latest.yml
@@ -173,12 +166,10 @@ releases/latest/latest-arm64-mac.yml
 releases/latest/latest-linux.yml
 releases/latest/latest-linux-arm64.yml
 releases/latest/latest-win-arm64.yml
+releases/latest/POUNDING-2.0.3-win-x64.exe
+releases/latest/POUNDING-2.0.3-mac-arm64.dmg
+...
 ```
-
-其中：
-
-- **手动下载** 更适合使用版本目录
-- **自动更新** 更适合使用 latest 目录
 
 ## 国内发布建议
 
@@ -191,7 +182,7 @@ releases/latest/latest-win-arm64.yml
 优先级建议：
 
 1. 先保证 GitHub Release 可完整发布
-2. 再保证 `release-distribute.yml` 能完整镜像
+2. 再保证 `cos-mirror.yml` 能完整镜像 latest/
 3. 最后在正式构建环境注入：
    - `AIONUI_UPDATE_BASE_URL`
    - `AIONUI_AUTO_UPDATE_URL`
@@ -205,7 +196,7 @@ releases/latest/latest-win-arm64.yml
 - 元数据里的安装包文件名与实际文件一致
 - Windows / macOS / Linux 的目标安装包均已镜像
 - `AIONUI_AUTO_UPDATE_URL` 指向的目录可公网访问
-- `AIONUI_UPDATE_BASE_URL` 指向的版本目录可公网访问
+- `AIONUI_UPDATE_BASE_URL` 指向的 latest 目录可公网访问
 
 ## 备注
 
@@ -233,7 +224,7 @@ releases/latest/latest-win-arm64.yml
 建议最终对外地址：
 
 ```text
-https://download.api.mxou.cn/releases/download/<version>/...
+https://download.api.mxou.cn/releases/latest/POUNDING-<version>-win-x64.exe
 https://download.api.mxou.cn/releases/latest/latest.yml
 ```
 
@@ -262,16 +253,14 @@ https://api.mxou.cn/download
 COS 不需要你手工创建目录。以下路径会在 CI 上传时自动形成：
 
 ```text
-releases/download/<version>/
 releases/latest/
 ```
 
 ### 当前仓库的 COS 分发约定
 
-`release-distribute.yml` 当前已按腾讯云 COS 的 S3 兼容接口写入：
+`cos-mirror.yml` 当前已按腾讯云 COS 的 S3 兼容接口写入（唯一分发入口）：
 
-- `releases/download/<version>/`
-- `releases/latest/`
+- `releases/latest/`（平铺：latest\*.yml + 各平台安装包 + blockmap）
 
 需要的 GitHub 仓库配置为：
 

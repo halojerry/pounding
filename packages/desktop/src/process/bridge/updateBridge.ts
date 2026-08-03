@@ -62,8 +62,10 @@ interface AutoUpdateCheckParams {
 const DEFAULT_REPO = 'halojerry/pounding';
 const DEFAULT_USER_AGENT = 'POUNDING';
 const ALLOWED_ASSET_EXTS = new Set(['.exe', '.msi', '.dmg', '.zip', '.deb', '.rpm']);
-const CDN_HOST = 'github.com/halojerry/pounding/releases/download';
-const CDN_BASE_URL = `https://${CDN_HOST}/releases`;
+// 国内 CDN 下载源：POUNDING 只维护 releases/latest/ 平铺目录（官网 + 自动更新 +
+// 手动更新共用）。手动更新弹窗优先走 COS latest/ 直链，失败时降级到 GitHub fallbackUrl。
+const CDN_HOST = 'yss-1256275613.cos.ap-guangzhou.myqcloud.com';
+const CDN_BASE_URL = `https://${CDN_HOST}/pounding/releases/latest`;
 // NOTE: entries must be hostnames (compared against URL.hostname). The POUNDING
 // release CDN lives under github.com/halojerry/pounding, which is covered by
 // the github.com entry; static.aionui.com stays allowed for upstream CDN URLs.
@@ -73,6 +75,7 @@ const ALLOWED_DOWNLOAD_HOSTS = new Set<string>([
   'objects.githubusercontent.com',
   'github-releases.githubusercontent.com',
   'release-assets.githubusercontent.com',
+  'yss-1256275613.cos.ap-guangzhou.myqcloud.com',
 ]);
 const MAX_REDIRECTS = 8;
 
@@ -90,17 +93,17 @@ const normalizeTagToSemver = (tag: string): string | null => {
 };
 
 /**
- * Rewrite a GitHub release asset URL to the CDN URL for faster download.
- * The CDN path follows the fixed convention `{base}/{version}/{original-filename}`,
- * matching electron-builder's artifactName output, so no name conversion is needed.
+ * Rewrite a GitHub release asset URL to the COS CDN URL for faster download.
+ * latest/ 是平铺目录，资产名自带版本号（如 POUNDING-1.9.22-mac-arm64.dmg），
+ * 不需要再做名称转换。
  */
-const rewriteAssetUrlToCDN = (assetName: string, version: string): string => {
-  return `${CDN_BASE_URL}/${version}/${assetName}`;
+const rewriteAssetUrlToCDN = (assetName: string): string => {
+  return `${CDN_BASE_URL}/${assetName}`;
 };
 
-const mapAsset = (asset: GitHubReleaseApiAsset, version: string): GitHubReleaseAsset => ({
+const mapAsset = (asset: GitHubReleaseApiAsset, _version: string): GitHubReleaseAsset => ({
   name: asset.name,
-  url: rewriteAssetUrlToCDN(asset.name, version),
+  url: rewriteAssetUrlToCDN(asset.name),
   fallbackUrl: asset.browser_download_url,
   size: asset.size,
   contentType: asset.content_type,

@@ -120,7 +120,7 @@ function buildBuiltinImageGenerationServer(
   const scriptPath = getBuiltinMcpScriptPath('builtin-mcp-image-gen');
   const env = resolution.ok ? resolution.env : {};
   const serverConfig = {
-    command: 'node',
+    command: resolveManagedNodeCommand(),
     args: [scriptPath],
     env,
   };
@@ -132,7 +132,7 @@ function buildBuiltinImageGenerationServer(
     builtin: true,
     transport: {
       type: 'stdio',
-      command: 'node',
+      command: resolveManagedNodeCommand(),
       args: [scriptPath],
       env,
     },
@@ -180,9 +180,30 @@ function copyDirectorySync(src: string, dest: string): void {
   }
 }
 
+function resolveBundledNodeRoot(): string {
+  // Packaged app: managed node runtime is shipped under
+  // resources/bundled-poundingcore/<platform>-<arch>/managed-resources/node/
+  // (exported by poundingcore `prepare-managed-resources`). The old dev
+  // layout (~/.pounding/runtime/node) does not exist in a packaged app, so
+  // without this the seed commands fell back to bare `node`, which is not on
+  // PATH on Windows → chrome-devtools / image-gen MCP could never start.
+  if (!process.resourcesPath) return '';
+  const platformKey = `${process.platform}-${process.arch}`;
+  const base = path.join(process.resourcesPath, 'bundled-poundingcore', platformKey, 'managed-resources', 'node');
+  if (!fs.existsSync(base)) return '';
+  const versions = fs.readdirSync(base).filter((d) => d.startsWith('node-v'));
+  if (versions.length === 0) return '';
+  const root = path.join(base, versions[0]);
+  const bin = process.platform === 'win32' ? 'node.exe' : path.join('bin', 'node');
+  return fs.existsSync(path.join(root, bin)) ? root : '';
+}
+
 function resolveManagedNodeRoot(): string {
-  // Uses the same managed node runtime as AionCore — probed via 'node' binary
-  // in the managed runtime directory. Falls back to system node.
+  // 1. Bundled managed node runtime (packaged app) — same layout the backend
+  //    exports into resources/bundled-poundingcore/.
+  const bundledRoot = resolveBundledNodeRoot();
+  if (bundledRoot) return bundledRoot;
+  // 2. Legacy dev layout: ~/.pounding/runtime/node (dev / unpackaged runs).
   const homedir = require('os').homedir();
   const dataDirName = getEnvAwareName('.pounding');
   const managedRoot = path.join(homedir, dataDirName, 'runtime', 'node');
@@ -336,7 +357,9 @@ function buildDefaultMcpServers(): McpImportServer[] {
   };
 
   const imageGenConfig = {
-    command: 'node',
+    // Managed node binary (bundled) — bare `node` is not on PATH on Windows
+    // in a packaged install.
+    command: resolveManagedNodeCommand(),
     args: [getBuiltinMcpScriptPath('builtin-mcp-image-gen')],
   };
 
@@ -438,6 +461,14 @@ function buildOriginalJsonFromTransport(server: Pick<IMcpServer, 'name' | 'descr
 }
 
 async function ensureBootstrapMcpServersInDb(configFile: ConfigFile): Promise<void> {
+  // Pre-install chrome-devtools-mcp into the managed Node runtime so the
+  // default MCP server runs offline (no `npx` download at runtime) and
+  // materialize the builtin image-gen script next to the data dir. Both were
+  // dead code (never invoked) — without them the builtin MCP commands point
+  // at modules/scripts that may not exist on disk.
+  preinstallChromeDevtoolsMcp();
+  materializeBuiltinMcpScript('builtin-mcp-image-gen', 'builtin-mcp-image-gen.js');
+
   const [backendPrefs, fileImageConfig, providers] = await Promise.all([
     fetchBackendClientPreferences(),
     configFile.get('tools.imageGenerationModel').catch((): undefined => undefined),

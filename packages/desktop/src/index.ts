@@ -487,11 +487,21 @@ function markBackendReady(backendPort: number, source: string): void {
   // Auto-install managed CLI tools from bundled resources (offline-first).
   // Uses the managed Node.js runtime (already bundled in the installer) so
   // no network download is needed — claude and openclaw install via npm,
-  // hermes installs via the bundled Python runtime.
+  // hermes installs via the bundled Python runtime. Offline-bundle install
+  // is instant; network npm/pip only runs when a bundle ships without a
+  // component. Log per-target outcomes so a silent OOBE failure is
+  // diagnosable (idempotent: retried every launch until success).
   void import('./process/bridge/managedCliInstallerBridge')
     .then(({ installManagedCliBatch }) => installManagedCliBatch(['hermes', 'openclaw', 'claude']))
-    .then(() => {
-      console.log('[POUNDING] Managed CLI tools ready');
+    .then((results) => {
+      const failed = results.filter((r) => !r.success);
+      if (failed.length === 0) {
+        console.log('[POUNDING] Managed CLI tools ready');
+        return;
+      }
+      for (const result of failed) {
+        console.warn(`[POUNDING] CLI auto-install incomplete: ${result.status} (${result.message || 'no detail'})`);
+      }
     })
     .catch((err) => {
       console.warn('[POUNDING] CLI auto-install incomplete:', err.message || err);

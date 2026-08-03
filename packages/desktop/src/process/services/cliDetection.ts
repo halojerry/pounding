@@ -39,7 +39,12 @@ function defaultManagedDirs(home: string): string[] {
 export function classifySource(binaryPath: string, home: string, managedDirs: string[]): CliSource {
   // Normalize separators so classification is platform-independent: a path
   // written with forward slashes (tests, configs) matches on Windows too.
-  const normalize = (p: string) => path.resolve(p).replace(/\\/g, '/');
+  // A Windows drive prefix ("D:") is stripped so prefix checks are stable.
+  const normalize = (p: string) =>
+    path
+      .resolve(p)
+      .replace(/\\/g, '/')
+      .replace(/^[A-Za-z]:/, '');
   const resolved = normalize(binaryPath);
   const normalizedManagedDirs = managedDirs.map(normalize);
   if (normalizedManagedDirs.some((dir) => resolved === dir || resolved.startsWith(`${dir}/`))) {

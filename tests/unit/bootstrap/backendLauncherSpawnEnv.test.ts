@@ -21,8 +21,8 @@ describe('buildSpawnEnv managed CLI PATH injection', () => {
     const parts = (env.PATH ?? '').split(path.delimiter);
 
     // ~/.local/bin first (hermes/claude/openclaw shims), then ~/.bun/bin
-    expect(parts[0]).toBe(path.join('/fake-pounding-home', '.local', 'bin'));
-    expect(parts[1]).toBe(path.join('/fake-pounding-home', '.bun', 'bin'));
+    expect(parts[0]).toBe(path.resolve(path.join('/fake-pounding-home', '.local', 'bin')));
+    expect(parts[1]).toBe(path.resolve(path.join('/fake-pounding-home', '.bun', 'bin')));
     // Original PATH is retained verbatim after the injected entries
     expect(env.PATH).toContain('/usr/bin:/bin');
     // AIONUI_* dirs are still forwarded
@@ -36,7 +36,7 @@ describe('buildSpawnEnv managed CLI PATH injection', () => {
     try {
       const env = buildSpawnEnv({ cacheDir: '/c', workDir: '/w', logDir: '/l' });
       const parts = (env.PATH ?? '').split(path.delimiter);
-      expect(parts[1]).toBe(path.join('/custom-bun', 'bin'));
+      expect(parts[1]).toBe(path.resolve(path.join('/custom-bun', 'bin')));
       expect(env.PATH).toContain('/usr/bin:/bin');
     } finally {
       delete process.env.BUN_INSTALL;
@@ -49,16 +49,16 @@ describe('resolveManagedPathEntries', () => {
     const entries = resolveManagedPathEntries('/home/u', '/home/u/.bun/bin', {
       claude: '/opt/claude/bin/claude',
     });
-    expect(entries[0]).toBe('/opt/claude/bin');
-    expect(entries).toContain('/home/u/.local/bin');
-    expect(entries).toContain('/home/u/.bun/bin');
+    expect(entries[0]).toBe(path.resolve('/opt/claude/bin'));
+    expect(entries).toContain(path.resolve('/home/u/.local/bin'));
+    expect(entries).toContain(path.resolve('/home/u/.bun/bin'));
   });
 
   it('treats .cmd/.exe values as file paths and uses their parent dir', () => {
     const entries = resolveManagedPathEntries('/home/u', '/home/u/.bun/bin', {
       hermes: path.join('/x', 'hermes', 'hermes.cmd'),
     });
-    expect(entries[0]).toBe(path.join('/x', 'hermes'));
+    expect(entries[0]).toBe(path.resolve(path.join('/x', 'hermes')));
   });
 
   it('treats plain dir values as-is and dedupes repeated dirs', () => {
@@ -66,13 +66,13 @@ describe('resolveManagedPathEntries', () => {
       openclaw: '/opt/oc',
       claude: '/opt/oc',
     });
-    expect(entries[0]).toBe('/opt/oc');
-    expect(entries.filter((entry) => entry === '/opt/oc')).toHaveLength(1);
+    expect(entries[0]).toBe(path.resolve('/opt/oc'));
+    expect(entries.filter((entry) => entry === path.resolve('/opt/oc'))).toHaveLength(1);
   });
 
   it('returns only managed defaults when no overrides are given', () => {
     const entries = resolveManagedPathEntries('/home/u', '/home/u/.bun/bin', {});
-    expect(entries).toEqual(['/home/u/.local/bin', '/home/u/.bun/bin']);
+    expect(entries).toEqual([path.resolve('/home/u/.local/bin'), path.resolve('/home/u/.bun/bin')]);
   });
 });
 

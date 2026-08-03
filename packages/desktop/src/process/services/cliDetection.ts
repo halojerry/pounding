@@ -48,6 +48,17 @@ export function classifySource(binaryPath: string, home: string, managedDirs: st
     return 'managed';
   }
 
+  // pip / venv installs (hermes lands in a venv; CLI shims under Scripts/ on
+  // Windows, bin/ on unix; site-packages identifies the interpreter layout).
+  const lower = resolved.toLowerCase();
+  if (
+    lower.includes('site-packages') ||
+    /[\\/]python(\.exe)?$/i.test(resolved) ||
+    (process.platform === 'win32' && /[\\/]scripts[\\/]/i.test(resolved))
+  ) {
+    return 'pip';
+  }
+
   if (resolved.includes(`${path.sep}.nvm${path.sep}`)) {
     return 'nvm';
   }
@@ -130,10 +141,14 @@ async function enumeratePathHits(target: CliTargetName, pathEntries: string[]): 
 
 function scanManagedDirs(target: CliTargetName, managedDirs: string[]): string[] {
   const hits: string[] = [];
+  const basenames =
+    process.platform === 'win32' ? [target, `${target}.exe`, `${target}.cmd`, `${target}.bat`] : [target];
   for (const dir of managedDirs) {
-    const candidate = path.join(dir, target);
-    if (existsSync(candidate)) {
-      hits.push(candidate);
+    for (const basename of basenames) {
+      const candidate = path.join(dir, basename);
+      if (existsSync(candidate)) {
+        hits.push(candidate);
+      }
     }
   }
   return hits;

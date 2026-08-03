@@ -77,8 +77,78 @@ describe('classifySource', () => {
     expect(classifySource('/mnt/tooling/bin/claude', '/Users/u', ['/mnt/tooling/bin'])).toBe('managed');
   });
 
+  it('classifies venv/pip installs as pip (unix python binary)', () => {
+    expect(classifySource('/Users/u/.hermes/hermes-agent/venv/bin/python', '/Users/u', [])).toBe('pip');
+  });
+
+  it('classifies site-packages installs as pip', () => {
+    expect(
+      classifySource(
+        '/Users/u/.hermes/hermes-agent/venv/lib/python3.12/site-packages/hermes/bin/hermes',
+        '/Users/u',
+        []
+      )
+    ).toBe('pip');
+  });
+
+  it('classifies Windows Scripts/ installs as pip', () => {
+    const originalPlatform = process.platform;
+    Object.defineProperty(process, 'platform', { value: 'win32' });
+    try {
+      expect(classifySource('C:\\Users\\u\\.hermes\\hermes-agent\\venv\\Scripts\\hermes.exe', 'C:\\Users\\u', [])).toBe(
+        'pip'
+      );
+    } finally {
+      Object.defineProperty(process, 'platform', { value: originalPlatform });
+    }
+  });
+
   it('classifies everything else as system', () => {
     expect(classifySource('/usr/local/bin/claude', '/Users/u', [])).toBe('system');
+  });
+});
+
+describe('win32 managed-dir scanning', () => {
+  it('finds .cmd/.exe shims in managed dirs on Windows', async () => {
+    const originalPlatform = process.platform;
+    const tmp = mkdtempSync(path.join(tmpdir(), 'pounding-win-managed-'));
+    Object.defineProperty(process, 'platform', { value: 'win32' });
+    try {
+      writeFileSync(path.join(tmp, 'hermes.cmd'), '@echo off\r\n');
+      writeFileSync(path.join(tmp, 'claude.exe'), '');
+      execFileMock.mockImplementation(
+        (
+          command: string,
+          args: string[],
+          _options: unknown,
+          cb: (err: Error | null, stdout?: string, stderr?: string) => void
+        ) => {
+          if (command === 'where') {
+            cb(null, '', '');
+            return;
+          }
+          if (args.includes('--version')) {
+            cb(null, '1.2.3\n', '');
+            return;
+          }
+          cb(new Error('ENOENT: not found'), '', '');
+        }
+      );
+
+      const [hermes, claude] = await detectCliInstallations(['hermes', 'claude'], {
+        pathEntries: [],
+        managedDirs: [tmp],
+      });
+
+      expect(hermes.installations).toHaveLength(1);
+      expect(hermes.installations[0].path).toBe(path.join(tmp, 'hermes.cmd'));
+      expect(hermes.installations[0].source).toBe('managed');
+      expect(claude.installations).toHaveLength(1);
+      expect(claude.installations[0].path).toBe(path.join(tmp, 'claude.exe'));
+    } finally {
+      Object.defineProperty(process, 'platform', { value: originalPlatform });
+      rmSync(tmp, { recursive: true, force: true });
+    }
   });
 });
 

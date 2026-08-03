@@ -167,6 +167,59 @@ describe('installManagedCli version pins', () => {
     }
   });
 
+  it('uses the bundled Python runtime for hermes instead of system python3', async () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'pounding-managed-py-'));
+    const platformKey = `${process.platform}-${process.arch}`;
+    const isWin = process.platform === 'win32';
+    // Fixture mirrors the managed-resources layout for the CURRENT platform:
+    //   runtimes/python/bin/python3 (unix) / runtimes/python/python.exe (win32)
+    const pythonRoot = path.join(root, 'bundled-poundingcore', platformKey, 'managed-resources', 'runtimes', 'python');
+    const pythonDir = isWin ? pythonRoot : path.join(pythonRoot, 'bin');
+    const pythonName = isWin ? 'python.exe' : 'python3';
+    mkdirSync(pythonDir, { recursive: true });
+    writeFileSync(path.join(pythonDir, pythonName), '');
+
+    const originalResourcesPath = (process as { resourcesPath?: string }).resourcesPath;
+    Object.defineProperty(process, 'resourcesPath', { value: root, configurable: true });
+    try {
+      let venvPython: string | null = null;
+      let installed = false;
+      execFileMock.mockImplementation((cmd: string, args: string[], _o: unknown, cb: (e?: Error) => void) => {
+        const argv = args as string[];
+        if (argv.includes('-m') && argv.includes('venv')) {
+          // create venv with the bundled python
+          venvPython = cmd;
+          cb();
+          return { unref: () => {} };
+        }
+        if (argv.includes('pip') && argv.includes('install')) {
+          installed = true;
+          cb();
+          return { unref: () => {} };
+        }
+        // probe (which hermes): only reports installed after pip succeeded
+        if (installed) {
+          cb();
+        } else {
+          cb(new Error('not found'));
+        }
+        return { unref: () => {} };
+      });
+
+      const [result] = await installManagedCliBatch(['hermes']);
+
+      expect(result.success).toBe(true);
+      expect(venvPython).toBe(path.join(pythonDir, pythonName));
+    } finally {
+      if (originalResourcesPath === undefined) {
+        delete (process as { resourcesPath?: string }).resourcesPath;
+      } else {
+        Object.defineProperty(process, 'resourcesPath', { value: originalResourcesPath, configurable: true });
+      }
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it('serializes concurrent installs of the same target (in-flight mutex)', async () => {
     vi.clearAllMocks();
     let releaseInstall: (() => void) | null = null;

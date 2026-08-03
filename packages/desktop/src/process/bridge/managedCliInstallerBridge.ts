@@ -324,6 +324,23 @@ export function resolveNodeForShim(): string {
   return 'node';
 }
 
+/**
+ * Resolve the bundled Python 3.12 runtime shipped in managed-resources.
+ * Layout: managed-resources/runtimes/python/bin/python3 (unix) /
+ *         managed-resources/runtimes/python/python.exe (win32)
+ * hermes-agent 0.19.0 requires Python >=3.11,<3.14 — the bundled runtime is
+ * the only reliable source (system python3 is often 3.9/3.10 or 3.14+).
+ */
+export function resolveBundledPythonBinary(): string | null {
+  const bundledResourcesDir = resolveBundledResourcesDir();
+  if (!bundledResourcesDir) return null;
+  const pythonRoot = path.join(bundledResourcesDir, 'runtimes', 'python');
+  if (!fs.existsSync(pythonRoot)) return null;
+  const candidate =
+    process.platform === 'win32' ? path.join(pythonRoot, 'python.exe') : path.join(pythonRoot, 'bin', 'python3');
+  return fs.existsSync(candidate) ? candidate : null;
+}
+
 function copyDirContents(src: string, dest: string): void {
   if (!fs.existsSync(src)) return;
   ensureDir(dest);
@@ -515,10 +532,11 @@ exec "${hermesExe}" "$@"
 }
 
 async function installHermes(): Promise<void> {
-  // Official install path uses the system Python 3. The bundled Python
-  // runtime is no longer shipped with the installer (de-bundling), so there
-  // is no offline-first runtime here — pip mirrors are the fallback.
-  const pythonBinary = process.env.PYTHON_BINARY || 'python3';
+  // Prefer the bundled Python 3.12 runtime (managed-resources/runtimes/python)
+  // so hermes-agent 0.19.0 (Requires-Python >=3.11,<3.14) installs offline and
+  // does not depend on the user's system python3 (often 3.9/3.10 or 3.14+).
+  // System python3 remains a fallback for environments without the bundle.
+  const pythonBinary = resolveBundledPythonBinary() ?? (process.env.PYTHON_BINARY || 'python3');
 
   // Pin to the same version the vendor bundle ships (vendor-versions.env)
   // so network install and bundled install never drift.

@@ -58,7 +58,9 @@ test.describe('OOB Gate — 开箱即用', () => {
   test.skip(!OOB_ENABLED, '仅 release 打包产物验证：需 E2E_OOB_GATE=1 + E2E_PACKAGED=1');
 
   test('claude / hermes / openclaw 状态可报告（可用性非阻断）', async ({ page }) => {
-    test.setTimeout(300_000);
+    // 非阻断快检：后端就绪 + 每个 CLI 状态可报告（可用/未装/原因），
+    // 不做安装、不轮询可用性、不因 CLI 缺失而失败。
+    test.setTimeout(180_000);
 
     // 等待后端就绪（__backendPort 由 preload 注入，httpGet 失败会抛错）。
     // 120s 而非 60s：Intel mac（macos-x64 runner）与慢机上打包应用后端
@@ -76,36 +78,30 @@ test.describe('OOB Gate — 开箱即用', () => {
     // CLI 不再捆绑进安装器（自助管理：设置→Agent 运行环境）。桌面侧仍把
     // 托管 CLI 目录（~/.local/bin 等）注入 poundingcore 的 PATH
     // （backend-launcher buildSpawnEnv），后端 doctor/repair 能找到已安装
-    // 的 CLI。缺失仅 warn，不阻断 release。
-    const TARGETS: Array<{ target: 'claude' | 'hermes' | 'openclaw'; hard: boolean }> = [
-      { target: 'claude', hard: false },
-      { target: 'hermes', hard: false },
-      { target: 'openclaw', hard: false },
-    ];
+    // 的 CLI。缺失仅 warn，不阻断 release——因此这里只要求"状态可报告"。
+    const TARGETS: Array<'claude' | 'hermes' | 'openclaw'> = ['claude', 'hermes', 'openclaw'];
+    const missing: string[] = [];
 
-    for (const { target, hard } of TARGETS) {
-      // 先 repair：re-probe + 触发官方/COS 安装（网络可用时安装成功）
+    for (const target of TARGETS) {
+      // repair 只是后端单行重探测（不安装），随后读取一次状态并如实报告。
       const repair = await httpPost<RepairResult>(page, '/api/doctor/repair', { target });
       console.log(`[OOB] repair ${target}: success=${repair?.success} source=${repair?.source} error=${repair?.error}`);
 
-      // 轮询 diagnose 直到可用（留 120s 余量，网络安装可能较慢）。
-      let available = false;
-      for (let i = 0; i < 24; i++) {
-        await page.waitForTimeout(5000);
-        const r = await httpGet<AgentDiagnosticReport>(page, '/api/doctor/diagnose');
-        const agent = findAgent(r, target);
-        if (agent?.available) {
-          available = true;
-          console.log(`[OOB] ${target}: ✅ available`);
-          break;
-        }
-        console.log(`[OOB] ${target}: polling ${i + 1}, reason=${agent?.reason ?? 'not found'}`);
-      }
-      if (hard) {
-        expect(available, `${target} 在打包产物启动后应可用（离线 bundle 安装），但 doctor 报告不可用`).toBe(true);
+      const r = await httpGet<AgentDiagnosticReport>(page, '/api/doctor/diagnose');
+      const agent = findAgent(r, target);
+      // 状态必须可报告（available 是布尔、reason 可空）；可用性本身不硬断言。
+      expect(agent, `doctor 报告缺少 ${target} 的状态条目（backend=${target} 未出现在 diagnose 中）`).toBeDefined();
+      if (agent!.available) {
+        console.log(`[OOB] ${target}: ✅ available`);
       } else {
-        console.warn(`[OOB] ${target}: ${available ? '✅' : '⚠️ 不可用（已知架构缺口，见发布说明）'}`);
+        console.warn(`[OOB] ${target}: ⚠️ 不可用（reason=${agent?.reason ?? 'not found'}）`);
+        missing.push(target);
       }
+    }
+
+    // 汇总非阻断提示（保留 OOB 日志可读性，不 fail）。
+    if (missing.length > 0) {
+      console.warn(`[OOB] CLI 未安装（非阻断）：${missing.join(', ')} — 用户可在 设置→Agent→运行环境 自助安装`);
     }
   });
 

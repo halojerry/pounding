@@ -21,9 +21,8 @@ describe('buildSpawnEnv managed CLI PATH injection', () => {
     // ~/.local/bin first (hermes/claude/openclaw shims), then ~/.bun/bin
     expect(parts[0]).toBe(path.join('/fake-pounding-home', '.local', 'bin'));
     expect(parts[1]).toBe(path.join('/fake-pounding-home', '.bun', 'bin'));
-    // Original PATH is retained after the injected entries
-    expect(parts.slice(2)).toContain('/usr/bin');
-    expect(parts.slice(2)).toContain('/bin');
+    // Original PATH is retained verbatim after the injected entries
+    expect(env.PATH).toContain('/usr/bin:/bin');
     // AIONUI_* dirs are still forwarded
     expect(env.AIONUI_CACHE_DIR).toBe('/c');
     expect(env.AIONUI_WORK_DIR).toBe('/w');
@@ -36,6 +35,7 @@ describe('buildSpawnEnv managed CLI PATH injection', () => {
       const env = buildSpawnEnv({ cacheDir: '/c', workDir: '/w', logDir: '/l' });
       const parts = (env.PATH ?? '').split(path.delimiter);
       expect(parts[1]).toBe(path.join('/custom-bun', 'bin'));
+      expect(env.PATH).toContain('/usr/bin:/bin');
     } finally {
       delete process.env.BUN_INSTALL;
     }

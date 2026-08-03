@@ -164,18 +164,28 @@ describe('installManagedCli version pins', () => {
 
   it('uses the bundled managed npm (offline bundle) instead of system npm', async () => {
     const root = mkdtempSync(path.join(tmpdir(), 'pounding-managed-npm-'));
-    const nodeDir = path.join(
-      root,
-      'bundled-poundingcore',
-      'darwin-arm64',
-      'managed-resources',
-      'node',
-      'node-v24.0.0-darwin-arm64',
-      'bin'
-    );
+    // Fixture mirrors the managed-resources layout for the CURRENT platform
+    // (resolveBundledResourcesDir builds the key as `${platform}-${arch}`):
+    //   unix:  node/<ver>/bin/{node,npm}
+    //   win32: node/<ver>/{node.exe,npm.cmd}
+    const platformKey = `${process.platform}-${process.arch}`;
+    const isWin = process.platform === 'win32';
+    const nodeDir = isWin
+      ? path.join(root, 'bundled-poundingcore', platformKey, 'managed-resources', 'node', `node-v24.0.0-${platformKey}`)
+      : path.join(
+          root,
+          'bundled-poundingcore',
+          platformKey,
+          'managed-resources',
+          'node',
+          `node-v24.0.0-${platformKey}`,
+          'bin'
+        );
+    const nodeName = isWin ? 'node.exe' : 'node';
+    const npmName = isWin ? 'npm.cmd' : 'npm';
     mkdirSync(nodeDir, { recursive: true });
-    writeFileSync(path.join(nodeDir, 'node'), '');
-    writeFileSync(path.join(nodeDir, 'npm'), '');
+    writeFileSync(path.join(nodeDir, nodeName), '');
+    writeFileSync(path.join(nodeDir, npmName), '');
 
     const originalResourcesPath = (process as { resourcesPath?: string }).resourcesPath;
     Object.defineProperty(process, 'resourcesPath', { value: root, configurable: true });
@@ -197,7 +207,7 @@ describe('installManagedCli version pins', () => {
 
       const result = await installManagedCli({ target: 'claude' });
       expect(result.success).toBe(true);
-      expect(managedNpmCommand).toBe(path.join(nodeDir, 'npm'));
+      expect(managedNpmCommand).toBe(path.join(nodeDir, npmName));
     } finally {
       if (originalResourcesPath === undefined) {
         delete (process as { resourcesPath?: string }).resourcesPath;

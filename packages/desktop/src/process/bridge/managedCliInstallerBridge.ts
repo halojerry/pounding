@@ -10,6 +10,8 @@ import type {
   ManagedCliInstallResult,
   ManagedCliInstallTarget,
 } from '@/common/types/agent/managedCliInstaller';
+import type { CliPathOverrides } from '@/common/types/agent/cliEnvironment';
+import { detectCliInstallations } from '../services/cliDetection';
 import { newApiDesktopAccountService } from './services/NewApiDesktopAccountService';
 import { execFile } from 'node:child_process';
 import fs from 'node:fs';
@@ -54,13 +56,20 @@ const NPM_DEFAULT_REGISTRY = 'https://registry.npmjs.org';
 const NPM_MIRROR_REGISTRY = 'https://registry.npmmirror.com';
 const PYPI_TUNA_INDEX_URL = 'https://pypi.tuna.tsinghua.edu.cn/simple';
 const PYPI_DEFAULT_INDEX_URL = 'https://pypi.org/simple';
-const HERMES_HOME_DIR = path.join(os.homedir(), '.hermes');
+// Resolve the user home from $HOME first (same pattern as backend-launcher's
+// buildSpawnEnv and resolveNodeForShim): tests and dev tooling override HOME
+// to isolate installs, and Node's os.homedir() caches on first call.
+function getCliUserHome(): string {
+  return process.env.HOME || os.homedir();
+}
+
+const HERMES_HOME_DIR = path.join(getCliUserHome(), '.hermes');
 const HERMES_VENV_DIR = path.join(HERMES_HOME_DIR, 'hermes-agent', 'venv');
-const HERMES_BIN_DIR = path.join(os.homedir(), '.local', 'bin');
+const HERMES_BIN_DIR = path.join(getCliUserHome(), '.local', 'bin');
 const HERMES_SHIM_PATH = path.join(HERMES_BIN_DIR, process.platform === 'win32' ? 'hermes.cmd' : 'hermes');
 const OPENCODE_CONFIG_ENV_NAME = 'OPENCODE_CONFIG';
 const XDG_CONFIG_HOME_ENV_NAME = 'XDG_CONFIG_HOME';
-const BUN_HOME_DIR = process.env.BUN_INSTALL?.trim() || path.join(os.homedir(), '.bun');
+const BUN_HOME_DIR = process.env.BUN_INSTALL?.trim() || path.join(getCliUserHome(), '.bun');
 
 function getPOUNDINGDevDir(): string {
   try {
@@ -71,7 +80,16 @@ function getPOUNDINGDevDir(): string {
   } catch {
     /* not in Electron context */
   }
-  return path.join(os.homedir(), getEnvAwareName('.pounding'));
+  return path.join(getCliUserHome(), getEnvAwareName('.pounding'));
+}
+
+function cliPathsFile(): string {
+  return path.join(getCliUserHome(), '.pounding', 'cli-paths.json');
+}
+
+function writeCliPaths(overrides: CliPathOverrides): void {
+  ensureDir(path.dirname(cliPathsFile()));
+  fs.writeFileSync(cliPathsFile(), JSON.stringify(overrides, null, 2), 'utf8');
 }
 
 function getManagedOpencodeConfigPath(): string {
@@ -87,9 +105,9 @@ const BUN_GLOBAL_NODE_MODULES_DIR = path.join(BUN_HOME_DIR, 'install', 'global',
 const BUN_BIN_PATH = path.join(BUN_BIN_DIR, process.platform === 'win32' ? 'bun.exe' : 'bun');
 const BUN_SHIM_PATH = path.join(BUN_BIN_DIR, process.platform === 'win32' ? 'bun.cmd' : 'bun');
 
-const LEGACY_OPENCODE_XDG_HOME = path.join(os.homedir(), getEnvAwareName('.pounding'), 'xdg-config');
+const LEGACY_OPENCODE_XDG_HOME = path.join(getCliUserHome(), getEnvAwareName('.pounding'), 'xdg-config');
 const LEGACY_OPENCODE_CONFIG_PATH = path.join(
-  os.homedir(),
+  getCliUserHome(),
   getEnvAwareName('.pounding'),
   'managed-opencode',
   'opencode.json'
@@ -306,49 +324,6 @@ export function resolveNodeForShim(): string {
   return 'node';
 }
 
-function resolveBundledCliDir(target: string): string | null {
-  const resourcesDir = resolveBundledResourcesDir();
-  if (!resourcesDir) return null;
-  const candidates = [path.join(resourcesDir, 'cli', target)];
-  if (process.platform === 'darwin' && (process.env.HOME || os.homedir())) {
-    // macOS-only cache path
-    const cacheBase = path.join(
-      process.env.HOME || os.homedir(),
-      'Library',
-      'Application Support',
-      'POUNDING',
-      'pounding',
-      'runtime',
-      'cli',
-      target
-    );
-    candidates.push(cacheBase);
-  } else if (process.platform === 'win32' && process.env.APPDATA) {
-    // Windows cache path
-    const cacheBase = path.join(process.env.APPDATA, 'POUNDING', 'pounding', 'runtime', 'cli', target);
-    candidates.push(cacheBase);
-  }
-  for (const candidate of candidates) {
-    if (!fs.existsSync(candidate)) continue;
-    // The bundle is versioned: cli/<target>/<version>/<platform>/
-    // Return the innermost directory that contains manifest.json.
-    const entries = fs.readdirSync(candidate, { withFileTypes: true });
-    for (const versionEntry of entries) {
-      if (!versionEntry.isDirectory()) continue;
-      const versionDir = path.join(candidate, versionEntry.name);
-      const platforms = fs.readdirSync(versionDir, { withFileTypes: true });
-      for (const platformEntry of platforms) {
-        if (!platformEntry.isDirectory()) continue;
-        const platformDir = path.join(versionDir, platformEntry.name);
-        if (fs.existsSync(path.join(platformDir, 'manifest.json'))) {
-          return platformDir;
-        }
-      }
-    }
-  }
-  return null;
-}
-
 function copyDirContents(src: string, dest: string): void {
   if (!fs.existsSync(src)) return;
   ensureDir(dest);
@@ -539,34 +514,11 @@ exec "${hermesExe}" "$@"
   }
 }
 
-/**
- * Resolve the bundled Python runtime inside managed-resources.
- *
- * Layout (python-build-standalone install_only, verified 2026-08-01):
- *   unix:  <base>/runtimes/python/bin/python3
- *   win32: <base>/runtimes/python/python.exe   (no python3.exe on Windows)
- * The tarball top-level is `python/` and vendor scripts extract with
- * --strip-components=1 — do NOT re-introduce a nested `python/python` path.
- */
-export function resolveBundledPythonBinary(baseDir: string | null): string | null {
-  if (!baseDir) return null;
-  const root = path.join(baseDir, 'runtimes', 'python');
-  const candidate = process.platform === 'win32' ? path.join(root, 'python.exe') : path.join(root, 'bin', 'python3');
-  return fs.existsSync(candidate) ? candidate : null;
-}
-
-function resolvePython3Binary(): string | null {
-  // Try bundled Python from managed-resources first (offline path)
-  const bundledPython = resolveBundledPythonBinary(resolveBundledResourcesDir());
-  if (bundledPython) return bundledPython;
-  // Fallback to system python3
-  return process.env.PYTHON_BINARY || 'python3';
-}
-
 async function installHermes(): Promise<void> {
-  const pythonBinary = resolvePython3Binary();
-  if (!pythonBinary)
-    throw new Error('Python3 not found. Bundled Python runtime is missing and no system python3 available.');
+  // Official install path uses the system Python 3. The bundled Python
+  // runtime is no longer shipped with the installer (de-bundling), so there
+  // is no offline-first runtime here — pip mirrors are the fallback.
+  const pythonBinary = process.env.PYTHON_BINARY || 'python3';
 
   // Pin to the same version the vendor bundle ships (vendor-versions.env)
   // so network install and bundled install never drift.
@@ -600,60 +552,6 @@ async function installHermes(): Promise<void> {
 async function uninstallHermes(): Promise<void> {
   safeRm(path.join(HERMES_HOME_DIR, 'hermes-agent'));
   safeRm(HERMES_SHIM_PATH);
-}
-
-export async function preinstallHermesFromBundle(bundledResourcesDir: string): Promise<boolean> {
-  const hermesDescriptor = DESCRIPTORS.hermes;
-  if (await isManagedCliInstalled(hermesDescriptor)) return true;
-
-  const uvBinary = path.join(bundledResourcesDir, 'runtimes', 'uv', process.platform === 'win32' ? 'uv.exe' : 'uv');
-  const hermesWheelDir = path.join(bundledResourcesDir, 'runtimes', 'hermes');
-
-  if (!fs.existsSync(hermesWheelDir)) return false;
-  const wheelFiles = fs.readdirSync(hermesWheelDir).filter((f) => f.endsWith('.whl'));
-  if (wheelFiles.length === 0) return false;
-
-  // Require vendored Python to create the venv.
-  const pythonBinary = resolveBundledPythonBinary(bundledResourcesDir);
-  if (!pythonBinary) return false;
-
-  try {
-    await runCommand(pythonBinary, ['-m', 'venv', '--clear', HERMES_VENV_DIR], { timeoutMs: VENV_TIMEOUT_MS });
-
-    const uvCmd = fs.existsSync(uvBinary) ? uvBinary : 'uv';
-    const venvPython = path.join(
-      HERMES_VENV_DIR,
-      process.platform === 'win32' ? 'Scripts' : 'bin',
-      process.platform === 'win32' ? 'python.exe' : 'python'
-    );
-
-    if (wheelFiles.length === 1) {
-      // Legacy: single wheel (old vendor format). Install it, then
-      // explicitly add agent-client-protocol for the [acp] extra.
-      const wheelPath = path.join(hermesWheelDir, wheelFiles[0]);
-      await runCommand(uvCmd, ['pip', 'install', '--python', venvPython, wheelPath], {
-        timeoutMs: PIP_INSTALL_TIMEOUT_MS,
-      });
-      await runCommand(uvCmd, ['pip', 'install', '--python', venvPython, 'agent-client-protocol==0.9.0'], {
-        timeoutMs: PIP_INSTALL_TIMEOUT_MS,
-      });
-    } else {
-      // Multi-wheel vendor bundle (pip download). Install everything from
-      // the local directory — no network at all.
-      await runCommand(
-        uvCmd,
-        ['pip', 'install', '--python', venvPython, '--no-index', '--find-links', hermesWheelDir, 'hermes-agent[acp]'],
-        { timeoutMs: PIP_INSTALL_TIMEOUT_MS }
-      );
-    }
-
-    writeHermesShim();
-    console.log('[POUNDING] Hermes installed from bundled resources');
-    return true;
-  } catch (err) {
-    console.error('[POUNDING] Failed to install Hermes from bundle:', err);
-    return false;
-  }
 }
 
 async function installOpenCode(): Promise<void> {
@@ -692,6 +590,100 @@ async function commandExists(command: string): Promise<boolean> {
     await runCommand(locator, [command], { timeoutMs: PROBE_TIMEOUT_MS });
     return true;
   } catch {
+    return false;
+  }
+}
+
+// ── COS on-demand fallback ────────────────────────────────────────────
+// When the official install (npm/pip) fails — e.g. blocked network — the
+// desktop downloads a pre-built bundle from POUNDING COS instead of failing.
+// The published artifact at `<target>/<version>/<platform>/bundle.tar.gz`
+// contains the same layout the old installer-embedded bundle used:
+// `manifest.json` (+ `entrypoint`, optional `node_modules/`), so the existing
+// `materializeFromBundled` path writes the managed shim unchanged.
+const COS_CLI_BASE_URL = 'https://yss-1256275613.cos.ap-guangzhou.myqcloud.com/pounding/cli';
+const COS_DOWNLOAD_TIMEOUT_MS = 300_000;
+const COS_EXTRACT_TIMEOUT_MS = 120_000;
+
+export type CosBundleDownloader = (target: ManagedCliInstallTarget, version: string, destDir: string) => Promise<void>;
+
+function getCliVersion(target: ManagedCliInstallTarget): string {
+  switch (target) {
+    case 'claude':
+      return CLAUDE_CLI_VERSION;
+    case 'hermes':
+      return HERMES_VERSION;
+    case 'openclaw':
+      return OPENCLAW_VERSION;
+    default:
+      return 'latest';
+  }
+}
+
+export function buildCosCliBundleUrl(target: ManagedCliInstallTarget): string {
+  const version = getCliVersion(target);
+  const platformKey = `${process.platform}-${process.arch}`;
+  return `${COS_CLI_BASE_URL}/${target}/${version}/${platformKey}/bundle.tar.gz`;
+}
+
+function resolveCliFallbackCacheDir(target: ManagedCliInstallTarget, version: string): string {
+  const platformKey = `${process.platform}-${process.arch}`;
+  return path.join(getPOUNDINGDevDir(), 'runtime', 'cli', target, version, platformKey);
+}
+
+async function downloadToFile(url: string, destFile: string, timeoutMs: number): Promise<void> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  timer.unref?.();
+  try {
+    const response = await fetch(url, { redirect: 'follow', signal: controller.signal });
+    if (!response.ok || !response.body) {
+      throw new Error(`Download failed: HTTP ${response.status} for ${url}`);
+    }
+    const data = Buffer.from(await response.arrayBuffer());
+    ensureDir(path.dirname(destFile));
+    fs.writeFileSync(destFile, data);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function defaultCosBundleDownloader(
+  target: ManagedCliInstallTarget,
+  version: string,
+  destDir: string
+): Promise<void> {
+  const url = buildCosCliBundleUrl(target);
+  const tarball = path.join(os.tmpdir(), `pounding-cli-${target}-${version}-${process.pid}.tar.gz`);
+  try {
+    await downloadToFile(url, tarball, COS_DOWNLOAD_TIMEOUT_MS);
+    ensureDir(destDir);
+    await runCommand('tar', ['-xzf', tarball, '-C', destDir], { timeoutMs: COS_EXTRACT_TIMEOUT_MS });
+  } finally {
+    safeRm(tarball);
+  }
+}
+
+export async function installFromCosFallback(
+  target: ManagedCliInstallTarget,
+  downloader: CosBundleDownloader = defaultCosBundleDownloader
+): Promise<boolean> {
+  const descriptor = DESCRIPTORS[target];
+  if (!descriptor) return false;
+  try {
+    const version = getCliVersion(target);
+    const destDir = resolveCliFallbackCacheDir(target, version);
+    safeRm(destDir);
+    await downloader(target, version, destDir);
+    if (!fs.existsSync(path.join(destDir, 'manifest.json'))) {
+      console.warn(`[POUNDING] COS fallback bundle missing manifest.json for ${target}`);
+      return false;
+    }
+    materializeFromBundled(descriptor, destDir);
+    console.log(`[POUNDING] ${target} installed from COS fallback bundle`);
+    return true;
+  } catch (err) {
+    console.warn(`[POUNDING] COS fallback install failed for ${target}:`, err);
     return false;
   }
 }
@@ -767,7 +759,10 @@ async function syncAfterUninstall(target: ManagedCliInstallTarget): Promise<void
 
 const inFlightInstalls = new Map<ManagedCliInstallTarget, Promise<ManagedCliInstallResult>>();
 
-async function installManagedCliInternal(descriptor: ManagedCliDescriptor): Promise<ManagedCliInstallResult> {
+async function installManagedCliInternal(
+  descriptor: ManagedCliDescriptor,
+  cosDownloader?: CosBundleDownloader
+): Promise<ManagedCliInstallResult> {
   try {
     const alreadyInstalled = await isManagedCliInstalled(descriptor);
     if (alreadyInstalled) {
@@ -775,60 +770,30 @@ async function installManagedCliInternal(descriptor: ManagedCliDescriptor): Prom
       return { success: true, status: 'installed' };
     }
 
-    // Offline-first: install from the bundled resources shipped with the
-    // installer (zero network, near-instant). Network npm/pip is only a
-    // fallback for bundles that shipped without the component. This is what
-    // makes the first-launch OOBE instant on slow/blocked networks instead of
-    // stalling for the npm (300s) / pip (600s) timeouts.
-    // The whole block is guarded so a missing/malformed bundle degrades to the
-    // network fallback instead of failing the install (unit-test/dev envs have
-    // no process.resourcesPath → resolveBundledCliDir is a no-op).
+    // Official-first: run the CLI's native package manager (npm/pip) with the
+    // pinned version and mirror fallbacks. The bundled-first materialization
+    // was removed with the installer de-bundling.
     try {
-      const bundledDir = resolveBundledCliDir(descriptor.target);
-      if (bundledDir) {
-        console.log(`[POUNDING] Installing ${descriptor.target} from bundled resources...`);
-        try {
-          materializeFromBundled(descriptor, bundledDir);
-          await syncAfterInstall(descriptor.target);
-          const installed = await isManagedCliInstalled(descriptor);
-          if (installed) {
-            return { success: true, status: 'installed' };
-          }
-        } catch (err) {
-          console.warn(`[POUNDING] Bundled install failed for ${descriptor.target}, trying network fallback:`, err);
-        }
-      }
-
-      // Hermes uses a different bundle layout (Python wheels in runtimes/).
-      if (descriptor.target === 'hermes') {
-        const bundledResourcesDir = resolveBundledResourcesDir();
-        if (bundledResourcesDir) {
-          console.log(`[POUNDING] Installing hermes from bundled Python wheels...`);
-          const ok = await preinstallHermesFromBundle(bundledResourcesDir);
-          if (ok) {
-            writeHermesShim();
-            await syncAfterInstall(descriptor.target);
-            const installed = await isManagedCliInstalled(descriptor);
-            if (installed) return { success: true, status: 'installed' };
-          }
-        }
-      }
-    } catch (err) {
-      console.warn(`[POUNDING] Bundled install path failed for ${descriptor.target}, trying network fallback:`, err);
-    }
-
-    // Network fallback: install via npm/pip (registers on PATH, survives app
-    // updates). Only reached when the bundle lacks the component.
-    try {
-      console.log(`[POUNDING] Installing ${descriptor.target} via native package manager...`);
+      console.log(`[POUNDING] Installing ${descriptor.target} via official package manager...`);
       await descriptor.install();
       await syncAfterInstall(descriptor.target);
       const installed = await isManagedCliInstalled(descriptor);
       if (installed) {
         return { success: true, status: 'installed' };
       }
+      console.warn(`[POUNDING] Official install finished but ${descriptor.target} is not detectable, trying COS...`);
     } catch (err) {
-      console.warn(`[POUNDING] Native install failed for ${descriptor.target}:`, err);
+      console.warn(`[POUNDING] Official install failed for ${descriptor.target}, trying COS fallback:`, err);
+    }
+
+    // COS fallback: download the pre-built bundle and materialize the shim.
+    const cosOk = await installFromCosFallback(descriptor.target, cosDownloader);
+    if (cosOk) {
+      await syncAfterInstall(descriptor.target);
+      const installed = await isManagedCliInstalled(descriptor);
+      if (installed) {
+        return { success: true, status: 'installed' };
+      }
     }
 
     return {
@@ -845,7 +810,10 @@ async function installManagedCliInternal(descriptor: ManagedCliDescriptor): Prom
   }
 }
 
-export async function installManagedCli(input: ManagedCliInstallOptions): Promise<ManagedCliInstallResult> {
+export async function installManagedCli(
+  input: ManagedCliInstallOptions,
+  cosDownloader?: CosBundleDownloader
+): Promise<ManagedCliInstallResult> {
   const descriptor = DESCRIPTORS[input.target];
   if (!descriptor) {
     return {
@@ -855,13 +823,13 @@ export async function installManagedCli(input: ManagedCliInstallOptions): Promis
     };
   }
 
-  // Serialize concurrent installs of the same target. markBackendReady's
-  // background batch and the OOBE CliPrep page can both install the same CLI
-  // at startup; running two `npm install -g` / `python -m venv --clear` on the
-  // same dirs concurrently corrupts them and looks like a hung install.
+  // Serialize concurrent installs of the same target. The settings page and
+  // the CLI prep flow can both request the same CLI; running two
+  // `npm install -g` / `python -m venv --clear` on the same dirs concurrently
+  // corrupts them and looks like a hung install.
   const existing = inFlightInstalls.get(input.target);
   if (existing) return existing;
-  const run = installManagedCliInternal(descriptor);
+  const run = installManagedCliInternal(descriptor, cosDownloader);
   inFlightInstalls.set(input.target, run);
   try {
     return await run;
@@ -950,5 +918,13 @@ export function initManagedCliInstallerBridge(): void {
     const descriptor = DESCRIPTORS[target];
     if (!descriptor) return false;
     return isManagedCliInstalled(descriptor);
+  });
+  ipcBridge.managedCliInstaller.detectAll.provider(async () =>
+    detectCliInstallations(['claude', 'hermes', 'openclaw'], {
+      managedDirs: [HERMES_BIN_DIR, BUN_BIN_DIR],
+    })
+  );
+  ipcBridge.managedCliInstaller.setCliPath.provider(async (overrides: CliPathOverrides) => {
+    writeCliPaths(overrides ?? {});
   });
 }

@@ -157,11 +157,5 @@
     "second_short": "秒"
   },
   "selectedCount": "選択済み {{count}}",
-  "selectedSkills": "選択済みスキル",
-  "cli": {
-    "prepOffice": "POUNDINGがオフィスを準備しています",
-    "prepWorkspace": "ワークスペースを準備しています…",
-    "prepAgents": "AIエージェントを設定しています…",
-    "prepRuntimes": "ランタイムを準備しています…"
-  }
+  "selectedSkills": "選択済みスキル"
 }

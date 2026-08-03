@@ -7,6 +7,8 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import path from 'path';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'node:url';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -16,10 +18,13 @@ const reconcileMock = vi.hoisted(() => vi.fn());
 
 // Isolate home dir so detectPaths (~/.local/bin, ~/.bun/bin) never hit a
 // real locally-installed CLI before the module-level constants are evaluated.
-// Force-overwrite (no `||` fallback) — the test runner's HOME is real.
+// The home must be writable (materializeFromBundled copies the CLI shim there),
+// so it lives under the OS tmp dir instead of a non-existent root path.
 vi.hoisted(() => {
-  process.env.HOME = '/nonexistent-pounding-test-home';
-  process.env.BUN_INSTALL = '/nonexistent-pounding-test-bun';
+  const { tmpdir } = require('node:os');
+  const path = require('node:path');
+  process.env.HOME = path.join(tmpdir(), 'pounding-cli-test-home');
+  process.env.BUN_INSTALL = path.join(tmpdir(), 'pounding-cli-test-bun');
 });
 
 vi.mock('child_process', () => ({
@@ -50,67 +55,11 @@ vi.mock('./services/NewApiDesktopAccountService', () => ({
 }));
 
 import {
+  buildCosCliBundleUrl,
+  type CosBundleDownloader,
   installManagedCli,
   installManagedCliBatch,
-  resolveBundledPythonBinary,
 } from '@/process/bridge/managedCliInstallerBridge';
-
-function makeBundledPythonFixture(): string {
-  const root = mkdtempSync(path.join(tmpdir(), 'pounding-bridge-test-'));
-  // Single-level python-build-standalone layout (as vendored by prepare-vendor.sh)
-  const unixBin = path.join(root, 'runtimes', 'python', 'bin');
-  const winBin = path.join(root, 'runtimes', 'python');
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  require('fs').mkdirSync(unixBin, { recursive: true });
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  require('fs').writeFileSync(path.join(unixBin, 'python3'), '');
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  require('fs').writeFileSync(path.join(winBin, 'python.exe'), '');
-  // Legacy nested layout must NOT be hit (regression guard)
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  require('fs').mkdirSync(path.join(root, 'runtimes', 'python', 'python', 'bin'), { recursive: true });
-  return root;
-}
-
-describe('resolveBundledPythonBinary', () => {
-  const fixtures: string[] = [];
-
-  beforeEach(() => {
-    fixtures.push(makeBundledPythonFixture());
-  });
-
-  afterEach(() => {
-    for (const dir of fixtures) rmSync(dir, { recursive: true, force: true });
-    fixtures.length = 0;
-  });
-
-  it('resolves the single-level unix layout (runtimes/python/bin/python3)', () => {
-    const base = fixtures[0]!;
-    const originalPlatform = process.platform;
-    Object.defineProperty(process, 'platform', { value: 'darwin' });
-    try {
-      expect(resolveBundledPythonBinary(base)).toBe(path.join(base, 'runtimes', 'python', 'bin', 'python3'));
-    } finally {
-      Object.defineProperty(process, 'platform', { value: originalPlatform });
-    }
-  });
-
-  it('resolves python.exe on win32 (no python3.exe in python-build-standalone)', () => {
-    const base = fixtures[0]!;
-    const originalPlatform = process.platform;
-    Object.defineProperty(process, 'platform', { value: 'win32' });
-    try {
-      expect(resolveBundledPythonBinary(base)).toBe(path.join(base, 'runtimes', 'python', 'python.exe'));
-    } finally {
-      Object.defineProperty(process, 'platform', { value: originalPlatform });
-    }
-  });
-
-  it('returns null for missing runtime and for the legacy nested layout', () => {
-    expect(resolveBundledPythonBinary(null)).toBeNull();
-    expect(resolveBundledPythonBinary('/nonexistent/dir')).toBeNull();
-  });
-});
 
 describe('installManagedCli version pins', () => {
   beforeEach(() => {
@@ -262,5 +211,111 @@ describe('installManagedCli version pins', () => {
     expect(a.success).toBe(true);
     expect(b.success).toBe(true);
     expect(installCalls.length).toBe(1);
+  });
+});
+
+describe('installManagedCli official-first + COS fallback', () => {
+  const testHome = path.join(tmpdir(), 'pounding-cli-test-home');
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Drop any persistent implementation a previous test left behind (e.g.
+    // the mutex test's mockImplementation), and any unconsumed once-impls.
+    execFileMock.mockReset();
+    reconcileMock.mockResolvedValue(undefined);
+    // Isolate per-test state: clean up shims/bundles the previous test wrote.
+    for (const dir of ['.local', '.bun', '.pounding', '.hermes']) {
+      rmSync(path.join(testHome, dir), { recursive: true, force: true });
+    }
+  });
+
+  it('builds the pinned COS bundle URL for a target/version/platform', () => {
+    const url = buildCosCliBundleUrl('claude');
+    expect(url).toContain('/pounding/cli/claude/2.1.215/');
+    expect(url).toContain(`/${process.platform}-${process.arch}/bundle.tar.gz`);
+  });
+
+  it('uses the official installer when it succeeds and never touches the COS fallback', async () => {
+    execFileMock.mockImplementationOnce((_c: string, _a: string[], _o: unknown, cb: (e?: Error) => void) => {
+      cb(new Error('not found'));
+      return { unref: () => {} };
+    });
+    execFileMock.mockImplementationOnce((_c: string, _a: string[], _o: unknown, cb: (e?: Error) => void) => {
+      cb();
+      return { unref: () => {} };
+    });
+    execFileMock.mockImplementationOnce((_c: string, _a: string[], _o: unknown, cb: (e?: Error) => void) => {
+      cb();
+      return { unref: () => {} };
+    });
+
+    const downloader = vi.fn(async () => {
+      throw new Error('COS fallback must not run when the official install succeeds');
+    });
+
+    const result = await installManagedCli({ target: 'claude' }, downloader);
+
+    expect(result.success).toBe(true);
+    expect(downloader).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the COS bundle when the official install fails, then writes the managed shim', async () => {
+    // probe: not installed → official npm install: fails
+    execFileMock.mockImplementationOnce((_c: string, _a: string[], _o: unknown, cb: (e?: Error) => void) => {
+      cb(new Error('not found'));
+      return { unref: () => {} };
+    });
+    execFileMock.mockImplementationOnce((_c: string, _a: string[], _o: unknown, cb: (e?: Error) => void) => {
+      cb(new Error('npm EAI_AGAIN'));
+      return { unref: () => {} };
+    });
+
+    const downloader: CosBundleDownloader = async (_target, _version, destDir) => {
+      mkdirSync(destDir, { recursive: true });
+      writeFileSync(
+        path.join(destDir, 'manifest.json'),
+        JSON.stringify({ entrypoint: 'claude', kind: 'native' }),
+        'utf8'
+      );
+      writeFileSync(path.join(destDir, 'claude'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+    };
+
+    const result = await installManagedCli({ target: 'claude' }, downloader);
+
+    expect(result.success).toBe(true);
+    expect(result.status).toBe('installed');
+    // The managed shim under ~/.local/bin was materialized from the COS bundle
+    const shimName = process.platform === 'win32' ? 'claude.cmd' : 'claude';
+    const shimPath = path.join(testHome, '.local', 'bin', shimName);
+    expect(require('fs').existsSync(shimPath)).toBe(true);
+  });
+
+  it('reports failure when the official install and the COS fallback both fail', async () => {
+    execFileMock.mockImplementationOnce((_c: string, _a: string[], _o: unknown, cb: (e?: Error) => void) => {
+      cb(new Error('not found'));
+      return { unref: () => {} };
+    });
+    execFileMock.mockImplementationOnce((_c: string, _a: string[], _o: unknown, cb: (e?: Error) => void) => {
+      cb(new Error('npm EAI_AGAIN'));
+      return { unref: () => {} };
+    });
+
+    const downloader: CosBundleDownloader = async () => {
+      throw new Error('COS unreachable');
+    };
+
+    const result = await installManagedCli({ target: 'claude' }, downloader);
+
+    expect(result.success).toBe(false);
+    expect(result.status).toBe('failed');
+  });
+});
+
+describe('startup no longer auto-installs managed CLIs', () => {
+  it('index.ts markBackendReady no longer references installManagedCliBatch', () => {
+    const indexPath = fileURLToPath(new URL('../../../packages/desktop/src/index.ts', import.meta.url));
+    const source = readFileSync(indexPath, 'utf8');
+    expect(source).not.toContain('installManagedCliBatch');
+    expect(source).not.toContain('Managed CLI tools ready');
   });
 });

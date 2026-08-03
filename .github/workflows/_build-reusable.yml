@@ -32,7 +32,7 @@ on:
         type: string
         default: ''
       strict_vendor:
-        description: 'Fail the build when critical vendor components (openclaw/python/uv/chrome-devtools-mcp) fail to download. Release builds set this; PR/manual builds keep warning-level to avoid flaky US-runner network reds.'
+        description: 'Fail the build when critical vendor components (chrome-devtools-mcp / ACP bridges) fail to download. Release builds set this; PR/manual builds keep warning-level to avoid flaky US-runner network reds.'
         type: boolean
         default: false
 
@@ -167,17 +167,6 @@ jobs:
           shell: pwsh
           command: |
             choco install visualstudio2022buildtools --yes --params "'--add Microsoft.VisualStudio.Component.VC.Tools.ARM64 --add Microsoft.VisualStudio.Component.Windows11SDK.22000 --includeRecommended --includeOptional'"
-
-      # cryptography==46.0.7 (hermes dep) has no cp312 win_arm64 wheel — the
-      # vendor fallback builds it from source, which needs the Rust toolchain
-      # targeting aarch64-pc-windows-msvc (present on the windows-11-arm image).
-      - name: Setup Rust (Windows ARM64 only)
-        if: matrix.platform == 'windows-arm64'
-        shell: pwsh
-        run: |
-          rustup default stable 2>$null
-          rustup target add aarch64-pc-windows-msvc
-          rustc --version
 
       - name: Setup Windows build environment (for Windows only)
         if: startsWith(matrix.platform, 'windows')
@@ -381,11 +370,11 @@ jobs:
           MSVS_VERSION: 2022
           GYP_MSVS_VERSION: 2022
 
-      - name: Vendor managed runtimes (Python, uv, MCP, ACP, CLI tools)
+      - name: Vendor managed runtimes (MCP, ACP)
         id: vendor-runtimes
         shell: bash
-        # release 构建（strict_vendor=true）硬失败：不 shipping 装不上 CLI 的残缺
-        # bundle。pr-checks/手动构建保持 warning（US runner 网络抖动不红 PR）。
+        # release 构建（strict_vendor=true）硬失败：内置 MCP / ACP bridges 缺失
+        # 不 shipping。pr-checks/手动构建保持 warning（US runner 网络抖动不红 PR）。
         continue-on-error: ${{ !inputs.strict_vendor }}
         run: |
           # Output to vendor/managed-resources/ — preparePoundingcore.js
@@ -393,7 +382,7 @@ jobs:
           mkdir -p vendor/managed-resources
           TARGET_KEY="${{ matrix.platform == 'macos-arm64' && 'darwin-arm64' || matrix.platform == 'macos-x64' && 'darwin-x64' || matrix.platform == 'windows-x64' && 'win32-x64' || matrix.platform == 'windows-arm64' && 'win32-arm64' }}"
           if [ "${{ inputs.strict_vendor }}" == "true" ]; then
-            # prepare-vendor.sh 内部已聚合关键组件退出码（hermes wheels 例外，维持 warning）
+          # prepare-vendor.sh 内部已聚合关键组件退出码
             bash scripts/prepare-vendor.sh vendor/managed-resources "$TARGET_KEY"
             echo "vendor-ok=true" >> "$GITHUB_OUTPUT"
           else
@@ -401,7 +390,7 @@ jobs:
               echo "vendor-ok=true" >> "$GITHUB_OUTPUT"
             else
               echo "vendor-ok=false" >> "$GITHUB_OUTPUT"
-              echo "::warning title=Vendor Incomplete::Managed runtimes vendor step failed — some CLIs may need network install on first launch"
+              echo "::warning title=Vendor Incomplete::Managed runtimes vendor step failed — builtin MCP / ACP bridges may be missing"
             fi
           fi
 
@@ -410,8 +399,8 @@ jobs:
         shell: bash
         run: |
           # Fast structure/manifest validation of the vendor output. The hard
-          # gate lives in afterPack.js (fails the build on missing python /
-          # hermes wheels / openclaw) — this step just surfaces problems early.
+          # gate lives in afterPack.js (fails the build on missing builtin MCP /
+          # ACP) — this step just surfaces problems early.
           if bash scripts/verify-bundle-integrity.sh --vendor-only --platform "${{ matrix.platform == 'macos-arm64' && 'darwin-arm64' || matrix.platform == 'macos-x64' && 'darwin-x64' || matrix.platform == 'windows-x64' && 'win32-x64' || matrix.platform == 'windows-arm64' && 'win32-arm64' }}" vendor/managed-resources; then
             echo "verify-vendor-ok=true" >> "$GITHUB_OUTPUT"
           else
@@ -797,10 +786,11 @@ jobs:
           ls -lh out/ || true
 
       # OOB Gate：release 构建时真实启动本 job 打包产物，验证开箱即用
-      # （CLI 离线安装 + 内置 MCP 默认启用）。失败 → release job 失败，
-      # 宁可不发也不发装不上 CLI / MCP 不默认开的包。
+      # （应用启动 + 后端就绪 + 内置 MCP 默认启用）。CLI（claude/hermes/
+      # openclaw）不在安装器内捆绑，缺失为非阻断 warn（助手页自助安装）。
+      # 失败 → release job 失败，宁可不发也不发 MCP 不默认开的包。
       # 仅 Windows/macOS 主平台（Linux 不是主要客户群，跳过省时间）。
-      - name: Verify OOB CLI install + builtin MCP
+      - name: Verify OOB app startup + builtin MCP
         if: >-
           success() &&
           inputs.strict_vendor &&
@@ -815,7 +805,7 @@ jobs:
           BUN_INSTALL_REGISTRY: 'https://registry.npmjs.org/'
         run: |
           set -euo pipefail
-          echo "OOB Gate: launching packaged app from out/ to verify CLI + builtin MCP"
+          echo "OOB Gate: launching packaged app from out/ to verify startup + builtin MCP"
           bunx playwright test --config playwright.config.ts \
             tests/e2e/specs/oob-cli-install.e2e.ts \
             tests/e2e/specs/pounding-portable-mode.e2e.ts \

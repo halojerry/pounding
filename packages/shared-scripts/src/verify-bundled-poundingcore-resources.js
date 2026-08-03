@@ -1,7 +1,10 @@
 const fs = require('fs');
 const path = require('path');
 
-const REQUIRED_CLI_NAMES = ['claude'];
+// CLI runtimes (claude/hermes/openclaw) are no longer bundled — they are
+// self-served from the desktop "运行环境" panel. Their on-disk presence is
+// warning-only; the app must still boot without them.
+const REQUIRED_CLI_NAMES = [];
 
 function backendBinaryName(platform) {
   return platform === 'win32' ? 'poundingcore.exe' : 'poundingcore';
@@ -293,112 +296,55 @@ function verifyManagedCliFromContract(baseDir, runtimeKey, cli, checked, missing
     return;
   }
 
-  requireContractFile(baseDir, runtimeKey, cli, cli.root, cli.executable, checked, missing, failures);
+  warnIfMissingContractPath(baseDir, runtimeKey, cli, cli.root, cli.executable, checked);
   for (const requiredFile of requiredFiles) {
-    requireContractFile(baseDir, runtimeKey, cli, cli.root, requiredFile, checked, missing, failures);
+    warnIfMissingContractPath(baseDir, runtimeKey, cli, cli.root, requiredFile, checked);
   }
   for (const requiredDirectory of requiredDirectories) {
-    requireContractDirectory(baseDir, runtimeKey, cli, cli.root, requiredDirectory, checked, missing, failures);
-  }
-}
-
-function requireContractFile(baseDir, runtimeKey, cli, root, relativePath, checked, missing, failures) {
-  const bundledRelative = contractBundledPath(runtimeKey, root, relativePath);
-  checked.push(bundledRelative);
-  if (!isFile(joinContractPath(joinContractPath(baseDir, root), relativePath))) {
-    missing.push(bundledRelative);
-    failures.push({
-      component: cli.name,
-      reason: 'missing_file',
-      version: cli.version,
-      runtimeKey,
-      path: bundledRelative,
-    });
-  }
-}
-
-function requireContractDirectory(baseDir, runtimeKey, cli, root, relativePath, checked, missing, failures) {
-  const bundledRelative = contractBundledPath(runtimeKey, root, relativePath);
-  checked.push(bundledRelative);
-  if (!isDirectory(joinContractPath(joinContractPath(baseDir, root), relativePath))) {
-    missing.push(bundledRelative);
-    failures.push({
-      component: cli.name,
-      reason: 'missing_directory',
-      version: cli.version,
-      runtimeKey,
-      path: bundledRelative,
-    });
+    warnIfMissingContractPath(baseDir, runtimeKey, cli, cli.root, requiredDirectory, checked, true);
   }
 }
 
 /**
- * Verify vendored offline-install components produced by scripts/prepare-vendor.sh:
- * bundled python, hermes wheels, openclaw CLI. A silently-failed vendor step used
- * to ship broken bundles (offline first-launch installs failed at runtime).
- * Skippable with POUNDING_SKIP_VENDOR_CHECK=1 (shared with afterPack.js) so local
- * bundle debugging via AIONUI_BACKEND_LOCAL_BUNDLE_DIR is not killed.
+ * Warn (non-blocking) when a CLI declared in the managed-resources contract
+ * is missing on disk. The CLI self-service model means the app ships without
+ * bundled CLIs; missing files must never fail the build.
+ */
+function warnIfMissingContractPath(baseDir, runtimeKey, cli, root, relativePath, checked, isDirectory = false) {
+  const fullPath = joinContractPath(joinContractPath(baseDir, root), relativePath);
+  const exists = isDirectory ? isDirectory(fullPath) : isFile(fullPath);
+  const bundledRelative = contractBundledPath(runtimeKey, root, relativePath);
+  checked.push(bundledRelative);
+  if (!exists) {
+    console.warn(
+      `[verify] warning: CLI '${cli.name}' missing ${isDirectory ? 'directory' : 'file'} ${bundledRelative} (CLI is not bundled — install via Settings → Agent 运行环境)`
+    );
+  }
+}
+
+/**
+ * Verify vendored components produced by scripts/prepare-vendor.sh: the
+ * chrome-devtools-mcp builtin MCP server. CLI runtimes (python/hermes/openclaw)
+ * are no longer vendored. Skippable with POUNDING_SKIP_VENDOR_CHECK=1 (shared
+ * with afterPack.js) so local bundle debugging via
+ * AIONUI_BACKEND_LOCAL_BUNDLE_DIR is not killed.
  */
 function verifyVendorComponents(baseDir, runtimeKey, checked, missing, failures) {
   const managedRoot = path.join(baseDir, 'managed-resources');
   // contractBundledPath already prefixes bundled-poundingcore/<key>/managed-resources
   const mcp = (rel) => contractBundledPath(runtimeKey, rel);
 
-  // python-build-standalone layout: runtimes/python/bin/python3 (unix) or
-  // runtimes/python/python.exe (win32) — single level, no nested python/.
-  const pythonDir = path.join(managedRoot, 'runtimes', 'python');
-  const pythonOk = isFile(path.join(pythonDir, 'bin', 'python3')) || isFile(path.join(pythonDir, 'python.exe'));
-  if (!pythonOk) {
-    addFailure(failures, missing, [mcp('runtimes/python')], {
+  // chrome-devtools-mcp: the default builtin MCP server runs offline from it.
+  const cdtMcpDir = path.join(managedRoot, 'mcp', 'chrome-devtools-mcp');
+  if (!isDirectory(cdtMcpDir)) {
+    addFailure(failures, missing, [mcp('mcp/chrome-devtools-mcp')], {
       component: 'managed-resources',
-      reason: 'missing_vendor_python',
-      path: mcp('runtimes/python'),
+      reason: 'missing_vendor_mcp',
+      path: mcp('mcp/chrome-devtools-mcp'),
     });
   } else {
-    checked.push(mcp('runtimes/python'));
+    checked.push(mcp('mcp/chrome-devtools-mcp'));
   }
-
-  // hermes: runtimes/hermes must contain at least one wheel.
-  // WARNING level only: hermes-agent 0.19.0 pins pyyaml==6.0.3 which has no
-  // wheel for some platforms (e.g. darwin-x64), so offline hermes install is
-  // impossible there regardless — those platforms fall back to network install.
-  const hermesDir = path.join(managedRoot, 'runtimes', 'hermes');
-  const hermesOk =
-    isDirectory(hermesDir) &&
-    fs.readdirSync(hermesDir, { withFileTypes: true }).some((e) => e.isFile() && e.name.endsWith('.whl'));
-  if (!hermesOk) {
-    console.warn(
-      `[verify] warning: managed-resources/runtimes/hermes has no wheels (hermes will need network install on this platform)`
-    );
-  } else {
-    checked.push(mcp('runtimes/hermes'));
-  }
-
-  // openclaw: cli/openclaw/<version>/<platdir>/manifest.json (vendor_cli_one layout).
-  const openclawManifest = findVendoredCliManifest(path.join(managedRoot, 'cli', 'openclaw'));
-  if (!openclawManifest) {
-    addFailure(failures, missing, [mcp('cli/openclaw')], {
-      component: 'managed-resources',
-      reason: 'missing_vendor_openclaw',
-      path: mcp('cli/openclaw'),
-    });
-  } else {
-    checked.push(mcp('cli/openclaw'));
-  }
-}
-
-/** Find the first cli/<name>/<version>/<platdir>/manifest.json under cliRoot. */
-function findVendoredCliManifest(cliRoot) {
-  if (!isDirectory(cliRoot)) return null;
-  for (const versionEntry of fs.readdirSync(cliRoot, { withFileTypes: true })) {
-    if (!versionEntry.isDirectory()) continue;
-    for (const platEntry of fs.readdirSync(path.join(cliRoot, versionEntry.name), { withFileTypes: true })) {
-      if (!platEntry.isDirectory()) continue;
-      const manifestPath = path.join(cliRoot, versionEntry.name, platEntry.name, 'manifest.json');
-      if (isFile(manifestPath)) return manifestPath;
-    }
-  }
-  return null;
 }
 
 function verifyBundledPoundingcoreResources({ resourcesDir, electronPlatformName, targetArch }) {

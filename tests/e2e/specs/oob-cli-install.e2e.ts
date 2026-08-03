@@ -5,12 +5,13 @@
  * 由 _build-reusable.yml 的 "Verify OOB CLI install + builtin MCP" 步骤设置）。
  * 普通 PR/本地 e2e（E2E_DEV 模式，无内置资源）跳过。
  *
- * 验证三件事（对应三个开箱即用问题）：
- * 1. claude / hermes / openclaw 在打包产物启动后可用（离线 bundle 安装生效）
+ * 验证三件事：
+ * 1. 打包应用能启动、后端就绪，claude / hermes / openclaw 状态可报告
+ *    （CLI 不再捆绑：可用性为非阻断 warn，助手页"运行环境"自助安装）
  * 2. chrome-devtools 内置 MCP 默认启用
  * 3. pounding-image-generation 内置 MCP 默认启用
  *
- * 任一项失败 → release job 失败（宁可不发也不发装不上 CLI / MCP 不默认开的包）。
+ * MCP 任一失败 → release job 失败（宁可不发也不发 MCP 不默认开的包）。
  */
 import { test, expect } from '../fixtures';
 import { httpGet, httpPost } from '../helpers';
@@ -56,7 +57,7 @@ function findAgent(
 test.describe('OOB Gate — 开箱即用', () => {
   test.skip(!OOB_ENABLED, '仅 release 打包产物验证：需 E2E_OOB_GATE=1 + E2E_PACKAGED=1');
 
-  test('claude / hermes / openclaw 离线安装后 doctor 可用', async ({ page }) => {
+  test('claude / hermes / openclaw 状态可报告（可用性非阻断）', async ({ page }) => {
     test.setTimeout(300_000);
 
     // 等待后端就绪（__backendPort 由 preload 注入，httpGet 失败会抛错）。
@@ -72,23 +73,22 @@ test.describe('OOB Gate — 开箱即用', () => {
     }
     expect(report, 'backend 未在 120s 内就绪').toBeTruthy();
 
-    // claude / openclaw / hermes 全部硬断言。桌面侧把托管 CLI 目录
-    // （~/.local/bin 等）注入 poundingcore 的 PATH（backend-launcher
-    // buildSpawnEnv），后端 doctor/repair 因此能找到 hermes.cmd/hermes；
-    // vendor 侧为全部 4 个平台产出 runtimes/hermes/*.whl，离线安装闭环。
+    // CLI 不再捆绑进安装器（自助管理：设置→Agent 运行环境）。桌面侧仍把
+    // 托管 CLI 目录（~/.local/bin 等）注入 poundingcore 的 PATH
+    // （backend-launcher buildSpawnEnv），后端 doctor/repair 能找到已安装
+    // 的 CLI。缺失仅 warn，不阻断 release。
     const TARGETS: Array<{ target: 'claude' | 'hermes' | 'openclaw'; hard: boolean }> = [
-      { target: 'claude', hard: true },
-      { target: 'hermes', hard: true },
-      { target: 'openclaw', hard: true },
+      { target: 'claude', hard: false },
+      { target: 'hermes', hard: false },
+      { target: 'openclaw', hard: false },
     ];
 
     for (const { target, hard } of TARGETS) {
-      // 先 repair：re-probe + 触发离线安装（bundle 内 CLI 秒装）
+      // 先 repair：re-probe + 触发官方/COS 安装（网络可用时安装成功）
       const repair = await httpPost<RepairResult>(page, '/api/doctor/repair', { target });
       console.log(`[OOB] repair ${target}: success=${repair?.success} source=${repair?.source} error=${repair?.error}`);
 
-      // 轮询 diagnose 直到可用（离线安装很快；首次 repair 可能恰逢后台
-      // installManagedCliBatch 仍在物化 bundle，留 120s 余量）。
+      // 轮询 diagnose 直到可用（留 120s 余量，网络安装可能较慢）。
       let available = false;
       for (let i = 0; i < 24; i++) {
         await page.waitForTimeout(5000);

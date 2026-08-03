@@ -9,7 +9,7 @@
  */
 
 import { type ChildProcess, spawn } from 'node:child_process';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import { connect, createServer, type Socket } from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
@@ -222,7 +222,9 @@ export function buildSpawnEnv(dirs: BackendDirConfig): NodeJS.ProcessEnv {
   const bunBin = path.join(process.env.BUN_INSTALL?.trim() || path.join(home, '.bun'), 'bin');
   const basePath = process.env.PATH || '';
   const existing = basePath ? basePath.split(path.delimiter) : [];
-  const managedEntries = [localBin, bunBin].filter((entry) => !existing.includes(entry));
+  const managedEntries = resolveManagedPathEntries(home, bunBin, readCliPaths(home)).filter(
+    (entry) => !existing.includes(entry)
+  );
   const pathValue = managedEntries.length > 0 ? [...managedEntries, ...existing].join(path.delimiter) : basePath;
 
   return {
@@ -232,6 +234,70 @@ export function buildSpawnEnv(dirs: BackendDirConfig): NodeJS.ProcessEnv {
     AIONUI_WORK_DIR: dirs.workDir,
     AIONUI_LOG_DIR: dirs.logDir,
   };
+}
+
+const CLI_ORDER = ['claude', 'hermes', 'openclaw'] as const;
+
+const CLI_EXECUTABLE_BASENAMES = new Set([
+  'claude',
+  'hermes',
+  'openclaw',
+  'claude.exe',
+  'hermes.exe',
+  'openclaw.exe',
+  'claude.cmd',
+  'hermes.cmd',
+  'openclaw.cmd',
+]);
+
+/**
+ * Resolves the directory entries to prepend to the backend PATH, in priority
+ * order: user-configured CLI locations (from `cli-paths.json`) first, then the
+ * POUNDING-managed CLI bin dirs (`~/.local/bin`, bun bin). Values that point
+ * at a known executable file are reduced to their parent directory; plain
+ * directories are used as-is. Duplicates are removed, first occurrence wins.
+ */
+export function resolveManagedPathEntries(home: string, bunHome: string, overrides: Record<string, string>): string[] {
+  const entries: string[] = [];
+  const seen = new Set<string>();
+  const addEntry = (raw: string) => {
+    const resolved = path.resolve(raw);
+    if (seen.has(resolved)) return;
+    seen.add(resolved);
+    entries.push(resolved);
+  };
+
+  for (const target of CLI_ORDER) {
+    const value = overrides[target];
+    if (typeof value !== 'string' || value.trim() === '') continue;
+    const basename = path.basename(value.trim()).toLowerCase();
+    addEntry(CLI_EXECUTABLE_BASENAMES.has(basename) ? path.dirname(value.trim()) : value.trim());
+  }
+
+  addEntry(path.join(home, '.local', 'bin'));
+  addEntry(bunHome);
+  return entries;
+}
+
+/**
+ * Reads the user's CLI path overrides from `~/.pounding/cli-paths.json`.
+ * Missing or malformed files are treated as "no overrides" so a broken config
+ * never prevents the backend from starting.
+ */
+function readCliPaths(home: string): Record<string, string> {
+  try {
+    const raw = readFileSync(path.join(home, '.pounding', 'cli-paths.json'), 'utf8');
+    const parsed = JSON.parse(raw) as unknown;
+    if (typeof parsed !== 'object' || parsed === null) return {};
+    const overrides: Record<string, string> = {};
+    for (const target of CLI_ORDER) {
+      const value = (parsed as Record<string, unknown>)[target];
+      if (typeof value === 'string' && value.trim() !== '') overrides[target] = value.trim();
+    }
+    return overrides;
+  } catch {
+    return {};
+  }
 }
 
 const FETCH_FORBIDDEN_PORTS = new Set([

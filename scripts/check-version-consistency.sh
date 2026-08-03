@@ -44,25 +44,7 @@ check_grep() {
 
 echo "==> Version consistency check (vendor-versions.env as source of truth)"
 
-# 1. prepare-vendor.sh defaults
-check_grep "prepare-vendor.sh PYTHON_RELEASE" "${SCRIPT_DIR}/prepare-vendor.sh" \
-  "PYTHON_RELEASE=.*${PYTHON_RELEASE}" "${PYTHON_RELEASE}"
-check_grep "prepare-vendor.sh HERMES_VERSION" "${SCRIPT_DIR}/prepare-vendor.sh" \
-  "HERMES_VERSION=.*${HERMES_VERSION}" "${HERMES_VERSION}"
-check_grep "prepare-vendor.sh OPENCLAW_VERSION" "${SCRIPT_DIR}/prepare-vendor.sh" \
-  "OPENCLAW_VERSION=.*${OPENCLAW_VERSION}" "${OPENCLAW_VERSION}"
-check_grep "prepare-vendor.sh hermes == pin" "${SCRIPT_DIR}/prepare-vendor.sh" \
-  'hermes-agent\[acp\]==\$\{HERMES_VERSION\}' "${HERMES_VERSION}"
-
-# 2. vendor-managed-resources.sh defaults
-check_grep "vendor-managed-resources.sh HERMES_VERSION" "${SCRIPT_DIR}/vendor-managed-resources.sh" \
-  "HERMES_VERSION=.*${HERMES_VERSION}" "${HERMES_VERSION}"
-check_grep "vendor-managed-resources.sh OPENCLAW_VERSION" "${SCRIPT_DIR}/vendor-managed-resources.sh" \
-  "OPENCLAW_VERSION=.*${OPENCLAW_VERSION}" "${OPENCLAW_VERSION}"
-check_grep "vendor-managed-resources.sh PYTHON_RELEASE" "${SCRIPT_DIR}/vendor-managed-resources.sh" \
-  "PYTHON_BUILD_STANDALONE_RELEASE=.*${PYTHON_RELEASE}" "${PYTHON_RELEASE}"
-
-# 3. TS bridge constants
+# 1. TS bridge constants (official-install pins used by managedCliInstallerBridge)
 BRIDGE="${PROJECT_DIR}/packages/desktop/src/process/bridge/managedCliInstallerBridge.ts"
 check_grep "bridge CLAUDE_CLI_VERSION" "${BRIDGE}" \
   "CLAUDE_CLI_VERSION = '${CLAUDE_CLI_VERSION}'" "${CLAUDE_CLI_VERSION}"
@@ -71,7 +53,7 @@ check_grep "bridge OPENCLAW_VERSION" "${BRIDGE}" \
 check_grep "bridge HERMES_VERSION" "${BRIDGE}" \
   "HERMES_VERSION = '${HERMES_VERSION}'" "${HERMES_VERSION}"
 
-# 4. poundingcore Rust consts (optional — only when the repo is present)
+# 2. poundingcore Rust consts (optional — only when the repo is present)
 if [ -d "${POUNDINGCORE_DIR}/crates" ]; then
   TYPES="${POUNDINGCORE_DIR}/crates/aionui-runtime/src/native_cli_runtime/types.rs"
   if [ -f "${TYPES}" ]; then

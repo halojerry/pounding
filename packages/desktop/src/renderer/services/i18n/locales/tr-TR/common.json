@@ -157,11 +157,5 @@
     "second_short": "sn"
   },
   "selectedCount": "{{count}} seçili",
-  "selectedSkills": "Seçili beceriler",
-  "cli": {
-    "prepOffice": "POUNDING ofisinizi hazırlıyor",
-    "prepWorkspace": "Çalışma alanınız hazırlanıyor…",
-    "prepAgents": "Yapay zekâ ajanlarınız ayarlanıyor…",
-    "prepRuntimes": "Çalışma zamanları hazırlanıyor…"
-  }
+  "selectedSkills": "Seçili beceriler"
 }

@@ -157,11 +157,5 @@
     "second_short": "秒"
   },
   "selectedCount": "已選 {{count}}",
-  "selectedSkills": "已選技能",
-  "cli": {
-    "prepOffice": "POUNDING 正在為您準備辦公室",
-    "prepWorkspace": "正在為您準備工作空間…",
-    "prepAgents": "正在設定您的 AI 助手…",
-    "prepRuntimes": "正在準備執行環境…"
-  }
+  "selectedSkills": "已選技能"
 }

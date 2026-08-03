@@ -1295,5 +1295,39 @@
   "newApiLogout": "退出登录",
   "newApiRegister": "注册 POUNDING",
   "newApiLoginSuccess": "登录成功",
-  "display": "显示"
+  "display": "显示",
+  "runtimeEnvironment": {
+    "title": "运行环境",
+    "description": "管理智能体使用的 CLI 工具（Claude、Hermes、OpenClaw）：安装、升级、卸载，或指定已有安装路径。",
+    "detectError": "扫描 CLI 安装失败",
+    "installFailed": "安装失败",
+    "uninstallFailed": "卸载失败",
+    "uninstallConfirmTitle": "卸载 CLI",
+    "uninstallConfirmContent": "确定卸载 {{name}} 吗？其配置将被重置。",
+    "selectPathSuccess": "CLI 路径已保存，新启动的后端进程将使用该路径",
+    "notInstalled": "未安装",
+    "status": {
+      "available": "可用",
+      "notInstalled": "未安装",
+      "broken": "损坏",
+      "conflict": "冲突",
+      "unknown": "未知"
+    },
+    "source": {
+      "nvm": "nvm",
+      "homebrew": "Homebrew",
+      "bun": "Bun",
+      "pip": "pip",
+      "system": "系统",
+      "managed": "托管",
+      "unknown": "未知"
+    },
+    "action": {
+      "install": "安装",
+      "upgrade": "升级",
+      "uninstall": "卸载",
+      "diagnose": "诊断",
+      "selectPath": "选择路径"
+    }
+  }
 }

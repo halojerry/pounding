@@ -1294,5 +1294,39 @@
   "newApiLogout": "Cerrar sesión",
   "newApiRegister": "Registrar POUNDING",
   "newApiLoginSuccess": "Inicio de sesión exitoso",
-  "display": "Pantalla"
+  "display": "Pantalla",
+  "runtimeEnvironment": {
+    "title": "Runtime Environment",
+    "description": "Manage the CLI tools (Claude, Hermes, OpenClaw) your agents run on. Install, upgrade, uninstall or point POUNDING at an existing installation.",
+    "detectError": "Failed to scan CLI installations",
+    "installFailed": "Install failed",
+    "uninstallFailed": "Uninstall failed",
+    "uninstallConfirmTitle": "Uninstall CLI",
+    "uninstallConfirmContent": "Uninstall {{name}}? Its configuration will be reset.",
+    "selectPathSuccess": "CLI path saved — it takes effect for new backend processes",
+    "notInstalled": "Not installed",
+    "status": {
+      "available": "Available",
+      "notInstalled": "Not installed",
+      "broken": "Broken",
+      "conflict": "Conflict",
+      "unknown": "Unknown"
+    },
+    "source": {
+      "nvm": "nvm",
+      "homebrew": "Homebrew",
+      "bun": "Bun",
+      "pip": "pip",
+      "system": "System",
+      "managed": "Managed",
+      "unknown": "Unknown"
+    },
+    "action": {
+      "install": "Install",
+      "upgrade": "Upgrade",
+      "uninstall": "Uninstall",
+      "diagnose": "Diagnose",
+      "selectPath": "Select path"
+    }
+  }
 }

@@ -10,6 +10,8 @@ import type {
   ManagedCliInstallResult,
   ManagedCliInstallTarget,
 } from '@/common/types/agent/managedCliInstaller';
+import type { CliPathOverrides } from '@/common/types/agent/cliEnvironment';
+import { detectCliInstallations } from '../services/cliDetection';
 import { newApiDesktopAccountService } from './services/NewApiDesktopAccountService';
 import { execFile } from 'node:child_process';
 import fs from 'node:fs';
@@ -79,6 +81,15 @@ function getPOUNDINGDevDir(): string {
     /* not in Electron context */
   }
   return path.join(getCliUserHome(), getEnvAwareName('.pounding'));
+}
+
+function cliPathsFile(): string {
+  return path.join(getCliUserHome(), '.pounding', 'cli-paths.json');
+}
+
+function writeCliPaths(overrides: CliPathOverrides): void {
+  ensureDir(path.dirname(cliPathsFile()));
+  fs.writeFileSync(cliPathsFile(), JSON.stringify(overrides, null, 2), 'utf8');
 }
 
 function getManagedOpencodeConfigPath(): string {
@@ -911,5 +922,13 @@ export function initManagedCliInstallerBridge(): void {
     const descriptor = DESCRIPTORS[target];
     if (!descriptor) return false;
     return isManagedCliInstalled(descriptor);
+  });
+  ipcBridge.managedCliInstaller.detectAll.provider(async () =>
+    detectCliInstallations(['claude', 'hermes', 'openclaw'], {
+      managedDirs: [HERMES_BIN_DIR, BUN_BIN_DIR],
+    })
+  );
+  ipcBridge.managedCliInstaller.setCliPath.provider(async (overrides: CliPathOverrides) => {
+    writeCliPaths(overrides ?? {});
   });
 }

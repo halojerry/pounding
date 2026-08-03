@@ -52,6 +52,7 @@ import type {
   ManagedCliInstallResult,
   ManagedCliInstallTarget,
 } from '../types/agent/managedCliInstaller';
+import type { CliPathOverrides, CliTargetStatus } from '../types/agent/cliEnvironment';
 import type {
   CreateProviderRequest,
   FetchModelsAnonymousRequest,
@@ -1390,6 +1391,8 @@ export const managedCliInstaller = {
   install: bridge.buildProvider<ManagedCliInstallResult, ManagedCliInstallOptions>('managed-cli-installer.install'),
   uninstall: bridge.buildProvider<ManagedCliInstallResult, ManagedCliInstallTarget>('managed-cli-installer.uninstall'),
   isInstalled: bridge.buildProvider<boolean, { target: ManagedCliInstallTarget }>('managed-cli-installer.isInstalled'),
+  detectAll: bridge.buildProvider<CliTargetStatus[], void>('managed-cli-installer.detectAll'),
+  setCliPath: bridge.buildProvider<void, CliPathOverrides>('managed-cli-installer.setCliPath'),
 };
 
 // ---------------------------------------------------------------------------

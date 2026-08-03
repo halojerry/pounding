@@ -1303,5 +1303,39 @@
   },
   "providerIdConflict": "Provider ID は既に存在します。もう一度お試しください。",
   "autoInjectedSkillsHint": "すべての会話に自動的に読み込まれます。有効化は不要で、エージェントが使用するタイミングを判断します。",
-  "display": "表示"
+  "display": "表示",
+  "runtimeEnvironment": {
+    "title": "Runtime Environment",
+    "description": "Manage the CLI tools (Claude, Hermes, OpenClaw) your agents run on. Install, upgrade, uninstall or point POUNDING at an existing installation.",
+    "detectError": "Failed to scan CLI installations",
+    "installFailed": "Install failed",
+    "uninstallFailed": "Uninstall failed",
+    "uninstallConfirmTitle": "Uninstall CLI",
+    "uninstallConfirmContent": "Uninstall {{name}}? Its configuration will be reset.",
+    "selectPathSuccess": "CLI path saved — it takes effect for new backend processes",
+    "notInstalled": "Not installed",
+    "status": {
+      "available": "Available",
+      "notInstalled": "Not installed",
+      "broken": "Broken",
+      "conflict": "Conflict",
+      "unknown": "Unknown"
+    },
+    "source": {
+      "nvm": "nvm",
+      "homebrew": "Homebrew",
+      "bun": "Bun",
+      "pip": "pip",
+      "system": "System",
+      "managed": "Managed",
+      "unknown": "Unknown"
+    },
+    "action": {
+      "install": "Install",
+      "upgrade": "Upgrade",
+      "uninstall": "Uninstall",
+      "diagnose": "Diagnose",
+      "selectPath": "Select path"
+    }
+  }
 }

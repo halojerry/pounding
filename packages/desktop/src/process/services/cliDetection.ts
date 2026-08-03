@@ -8,31 +8,10 @@ import { execFile } from 'child_process';
 import { existsSync } from 'fs';
 import os from 'os';
 import path from 'path';
+import type { CliEnvironmentTarget, CliInstallation, CliSource, CliTargetStatus } from '@/common/types/agent/cliEnvironment';
 
-export type CliTargetName = 'claude' | 'hermes' | 'openclaw';
-export type CliSource = 'nvm' | 'homebrew' | 'bun' | 'pip' | 'system' | 'managed';
-
-export type CliInstallation = {
-  binary: CliTargetName;
-  /** Absolute path to the executable. */
-  path: string;
-  /** First line of `--version` output, or null when not runnable. */
-  version: string | null;
-  /** `--version` exited 0 with non-empty output. */
-  runnable: boolean;
-  source: CliSource;
-  /** True only for the first PATH hit (PATH takes precedence). */
-  isDefault: boolean;
-};
-
-export type CliTargetStatus = {
-  target: CliTargetName;
-  installations: CliInstallation[];
-  /** First PATH hit, or null when the CLI is only present in managed dirs. */
-  defaultPath: string | null;
-  /** Multiple installs with divergent sources/versions, or multiple PATH hits. */
-  conflict: boolean;
-};
+export type CliTargetName = CliEnvironmentTarget;
+export type { CliInstallation, CliSource, CliTargetStatus } from '@/common/types/agent/cliEnvironment';
 
 export interface DetectCliOptions {
   /** Extra directories to scan for managed installs (e.g. `~/.local/bin`). */

@@ -6,6 +6,7 @@
 
 import React from 'react';
 import LocalAgents from '@/renderer/pages/settings/AgentSettings/LocalAgents';
+import RuntimeEnvironmentPanel from '@/renderer/components/settings/RuntimeEnvironmentPanel';
 import AionScrollArea from '@/renderer/components/base/AionScrollArea';
 import { useSettingsViewMode } from '../settingsViewContext';
 
@@ -17,6 +18,7 @@ const AgentModalContent: React.FC = () => {
     <div className='flex flex-col h-full w-full'>
       <AionScrollArea className='flex-1 min-h-0 pb-16px scrollbar-hide' disableOverflow={isPageMode}>
         <LocalAgents />
+        <RuntimeEnvironmentPanel compact />
       </AionScrollArea>
     </div>
   );

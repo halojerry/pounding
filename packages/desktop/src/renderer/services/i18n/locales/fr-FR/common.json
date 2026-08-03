@@ -156,11 +156,5 @@
   "unit": {
     "minute_short": "m",
     "second_short": "s"
-  },
-  "cli": {
-    "prepOffice": "POUNDING prépare votre bureau",
-    "prepWorkspace": "Préparation de votre espace de travail…",
-    "prepAgents": "Configuration de vos agents IA…",
-    "prepRuntimes": "Préparation des environnements d’exécution…"
   }
 }

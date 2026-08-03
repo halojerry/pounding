@@ -157,11 +157,5 @@
     "second_short": "s"
   },
   "selectedCount": "Selected {{count}}",
-  "selectedSkills": "Selected skills",
-  "cli": {
-    "prepOffice": "POUNDING is preparing your office",
-    "prepWorkspace": "Preparing your workspace…",
-    "prepAgents": "Setting up your AI agents…",
-    "prepRuntimes": "Preparing runtimes…"
-  }
+  "selectedSkills": "Selected skills"
 }

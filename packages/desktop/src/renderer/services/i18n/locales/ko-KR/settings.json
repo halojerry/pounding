@@ -1303,5 +1303,39 @@
   },
   "providerIdConflict": "Provider ID가 이미 있습니다. 다시 시도하세요.",
   "autoInjectedSkillsHint": "모든 대화에 자동으로 로드됩니다. 활성화할 필요가 없으며, 에이전트가 사용 시점을 결정합니다.",
-  "display": "디스플레이"
+  "display": "디스플레이",
+  "runtimeEnvironment": {
+    "title": "Runtime Environment",
+    "description": "Manage the CLI tools (Claude, Hermes, OpenClaw) your agents run on. Install, upgrade, uninstall or point POUNDING at an existing installation.",
+    "detectError": "Failed to scan CLI installations",
+    "installFailed": "Install failed",
+    "uninstallFailed": "Uninstall failed",
+    "uninstallConfirmTitle": "Uninstall CLI",
+    "uninstallConfirmContent": "Uninstall {{name}}? Its configuration will be reset.",
+    "selectPathSuccess": "CLI path saved — it takes effect for new backend processes",
+    "notInstalled": "Not installed",
+    "status": {
+      "available": "Available",
+      "notInstalled": "Not installed",
+      "broken": "Broken",
+      "conflict": "Conflict",
+      "unknown": "Unknown"
+    },
+    "source": {
+      "nvm": "nvm",
+      "homebrew": "Homebrew",
+      "bun": "Bun",
+      "pip": "pip",
+      "system": "System",
+      "managed": "Managed",
+      "unknown": "Unknown"
+    },
+    "action": {
+      "install": "Install",
+      "upgrade": "Upgrade",
+      "uninstall": "Uninstall",
+      "diagnose": "Diagnose",
+      "selectPath": "Select path"
+    }
+  }
 }

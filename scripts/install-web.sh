@@ -26,7 +26,7 @@ VERSION="${VERSION:-__VERSION__}"
 # "2.1.5-Pounding" are not mistaken for unreplaced placeholders.
 INSTALL_DIR="${INSTALL_DIR:-${HOME}/.local/share/pounding-web}"
 BIN_DIR="${BIN_DIR:-${HOME}/.local/bin}"
-MIRROR="${MIRROR:-https://yss-1256275613.cos.ap-guangzhou.myqcloud.com/pounding/releases/download}"
+MIRROR="${MIRROR:-https://yss-1256275613.cos.ap-guangzhou.myqcloud.com/pounding/releases/latest}"
 GITHUB_REPO="${GITHUB_REPO:-halojerry/pounding}"
 CREATE_SYMLINK="${CREATE_SYMLINK:-1}"
 UPDATE_PATH="${UPDATE_PATH:-1}"

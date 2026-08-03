@@ -30,11 +30,11 @@ describe('CDN update feed options', () => {
 });
 
 describe('CdnGenericProvider', () => {
-  it('resolves relative update files under the version directory', () => {
+  it('resolves relative update files flat under the latest directory', () => {
     const provider = new CdnGenericProvider(
       {
         provider: 'custom',
-        url: 'https://static.aionui.com/releases',
+        url: 'https://static.aionui.com/releases/latest',
       },
       {} as AppUpdater,
       makeRuntimeOptions()
@@ -53,6 +53,6 @@ describe('CdnGenericProvider', () => {
       releaseDate: '2026-06-08T00:00:00.000Z',
     } satisfies UpdateInfo);
 
-    expect(files[0]?.url.href).toBe('https://static.aionui.com/releases/2.1.14/POUNDING-2.1.14-mac-arm64.dmg');
+    expect(files[0]?.url.href).toBe('https://static.aionui.com/releases/latest/POUNDING-2.1.14-mac-arm64.dmg');
   });
 });

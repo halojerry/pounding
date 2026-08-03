@@ -51,7 +51,8 @@ export async function fetchPortableUpdate(): Promise<PortableUpdateInfo | null> 
 
     const version = versionMatch[1].trim();
     const zipFileName = pathMatch[1].trim();
-    const zipUrl = `${COS_BASE}/pounding/releases/download/v${version}/${zipFileName}`;
+    // latest/ 为平铺目录：zip 文件名自带版本号（如 POUNDING-2.1.42-win-x64.zip）。
+    const zipUrl = `${COS_BASE}/pounding/releases/latest/${zipFileName}`;
 
     if (version === app.getVersion()) return null;
 

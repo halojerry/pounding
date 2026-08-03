@@ -408,7 +408,7 @@ jobs:
               解压后双击可能"没反应"——请使用本版本。
             - **Windows SmartScreen**：安装包尚未配置 Authenticode 证书时，首次运行可能提示
               "Windows 已保护你的电脑"，选择"仍要运行"即可；证书配置后自动消除。
-            See [install-web.sh](https://yss-1256275613.cos.ap-guangzhou.myqcloud.com/pounding/releases/download/${{ steps.version.outputs.tag_name }}/install-web.sh) for Web UI deployment.
+            See [install-web.sh](https://yss-1256275613.cos.ap-guangzhou.myqcloud.com/pounding/releases/latest/install-web.sh) for Web UI deployment.
           draft: ${{ steps.version.outputs.is_dev == 'true' }}
           prerelease: ${{ steps.version.outputs.is_dev == 'true' || contains(steps.version.outputs.tag_name, 'beta') || contains(steps.version.outputs.tag_name, 'alpha') || contains(steps.version.outputs.tag_name, 'rc') }}
         env:
@@ -437,41 +437,9 @@ jobs:
           chmod 755 coscli
           ./coscli --version
 
-      - name: Mirror release assets to COS (versioned)
-        timeout-minutes: 120
-        continue-on-error: true
-        # 保险：COS 只允许 release 流程（tag / 手动发布 / release 分支触发
-        # create-tag 成功）上传。即使未来有人放宽本 job 的 if，普通 push 也
-        # 不会写入 COS —— 避免非发布构建烧 COS 流量/存储。
-        if: ${{ always() && (github.event_name == 'workflow_dispatch' || needs.create-tag.result == 'success' || (startsWith(github.ref, 'refs/tags/') && !contains(github.ref, '-dev-'))) }}
-        shell: bash
-        env:
-          COS_BUCKET: ${{ secrets.TENCENT_COS_BUCKET }}
-          COS_REGION: ${{ secrets.TENCENT_COS_REGION }}
-          COS_SECRET_ID: ${{ secrets.TENCENT_COS_SECRET_ID }}
-          COS_SECRET_KEY: ${{ secrets.TENCENT_COS_SECRET_KEY }}
-        run: |
-          set -euo pipefail
-
-          # Use the public global-acceleration endpoint (cross-border friendly
-          # from GitHub US runners). The *internal* acceleration domain
-          # (cos-internal.*.tencentcos.cn) is unreachable outside Tencent Cloud.
-          coscli_cmd() {
-            ./coscli "$@" \
-              -e "cos.accelerate.myqcloud.com" \
-              -i "$COS_SECRET_ID" \
-              -k "$COS_SECRET_KEY" \
-              --init-skip=true \
-              --disable-log=true
-          }
-
-          # --routines: parallel files, --thread-num: parallel parts per file.
-          coscli_cmd cp -r --routines 8 --thread-num 16 release-assets/ "cos://${COS_BUCKET}/pounding/releases/download/${{ steps.version.outputs.tag_name }}/"
-
       - name: Mirror release assets to COS (latest)
         timeout-minutes: 120
-        continue-on-error: true
-        # 保险：与 versioned 步骤一致，仅 release 流程上传。
+        # 保险：仅 release 流程上传（tag / 手动发布 / release 分支 create-tag 成功）。
         if: ${{ always() && (github.event_name == 'workflow_dispatch' || needs.create-tag.result == 'success' || (startsWith(github.ref, 'refs/tags/') && !contains(github.ref, '-dev-'))) }}
         shell: bash
         env:
@@ -507,3 +475,13 @@ jobs:
               "cos://${COS_BUCKET}/pounding/releases/latest/${name}" \
               --meta 'Cache-Control:no-cache,max-age=0'
           done
+
+          # 硬校验：官网 + 自动更新都依赖 latest/latest.yml，失败即 fail release，
+          # 避免 COS 同步静默失败后发布仍算成功。
+          LATEST_YML="https://${COS_BUCKET}.cos.${COS_REGION}.myqcloud.com/pounding/releases/latest/latest.yml"
+          HTTP_CODE="$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$LATEST_YML" || true)"
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::COS latest/latest.yml not reachable (HTTP ${HTTP_CODE}): ${LATEST_YML}"
+            exit 1
+          fi
+          echo "OK: COS latest/latest.yml reachable (HTTP ${HTTP_CODE})"

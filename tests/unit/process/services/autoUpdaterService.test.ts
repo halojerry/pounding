@@ -137,7 +137,7 @@ describe('AutoUpdaterService', () => {
 
     expect(autoUpdaterMock.setFeedURL).toHaveBeenCalledWith({
       provider: 'custom',
-      url: 'https://yss-1256275613.cos.ap-guangzhou.myqcloud.com/pounding/releases',
+      url: 'https://yss-1256275613.cos.ap-guangzhou.myqcloud.com/pounding/releases/latest',
       updateProvider: CdnGenericProvider,
     });
   });
@@ -302,7 +302,7 @@ describe('AutoUpdaterService', () => {
     };
     const fileInfo = {
       url: new URL(
-        'https://yss-1256275613.cos.ap-guangzhou.myqcloud.com/pounding/releases/2.1.14/POUNDING-2.1.14-mac.zip'
+        'https://yss-1256275613.cos.ap-guangzhou.myqcloud.com/pounding/releases/latest/POUNDING-2.1.14-mac.zip'
       ),
       info: { url: 'POUNDING-2.1.14-mac.zip', sha512: 'sha512-value' },
     };
@@ -348,7 +348,7 @@ describe('AutoUpdaterService', () => {
     };
     const fileInfo = {
       url: new URL(
-        'https://yss-1256275613.cos.ap-guangzhou.myqcloud.com/pounding/releases/2.1.14/POUNDING-2.1.14-mac.zip'
+        'https://yss-1256275613.cos.ap-guangzhou.myqcloud.com/pounding/releases/latest/POUNDING-2.1.14-mac.zip'
       ),
       info: { url: 'POUNDING-2.1.14-mac.zip', sha512: 'sha512-value' },
     };

@@ -52,12 +52,29 @@ fi
 
 echo "==> Injecting ${INJECT_FILES} into ${ZIP_NAME}"
 
-# Add files to the existing zip (modifies in-place)
-if command -v 7z &>/dev/null; then
-  (cd "$TEMP_DIR" && 7z a "$PLATFORM_ZIP" $INJECT_FILES -tzip -mx=5 -bso0 -bsp0 > /dev/null)
-else
-  (cd "$TEMP_DIR" && zip -qr "$PLATFORM_ZIP" $INJECT_FILES)
-fi
+# Append the markers with Python's zipfile (append mode). `zip -qr` / `7z a`
+# update mode SILENTLY no-ops on the large electron-builder/ditto platform zips
+# (verified on the 450-500MB mac/win zips: the step reported "Done" in <50ms
+# and the file mtime/size never changed — PORTABLE was never actually written).
+# zipfile append only touches the central directory, so existing entries
+# (including .app symlinks and unix permissions) are preserved byte-for-byte.
+# python3 is present on every build runner via the setup-python step.
+python3 - "$PLATFORM_ZIP" "$TEMP_DIR" $INJECT_FILES <<'PY'
+import os
+import sys
+import zipfile
+
+zip_path, temp_dir = sys.argv[1], sys.argv[2]
+inject_names = sys.argv[3:]
+
+with zipfile.ZipFile(zip_path, 'a', compression=zipfile.ZIP_DEFLATED) as zout:
+    for name in inject_names:
+        info = zipfile.ZipInfo(name)
+        info.compress_type = zipfile.ZIP_DEFLATED
+        info.external_attr = 0o100644 << 16
+        with open(os.path.join(temp_dir, name), 'rb') as f:
+            zout.writestr(info, f.read())
+PY
 
 echo "==> Done: ${ZIP_NAME}"
 ls -lh "$PLATFORM_ZIP"

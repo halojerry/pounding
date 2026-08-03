@@ -373,7 +373,13 @@ function Test-BundledResourcesOnce {
   return $failures
 }
 
-for ($attempt = 1; $attempt -le 5; $attempt++) {
+# Retry up to 6 times with 1s sleeps (~6s total) instead of 5x500ms.
+# On AV-slow machines the bundled payload (up to ~500MB across claude.exe /
+# poundingcore.exe / node.exe) may still be landing on disk when the installer
+# verifies — a longer, more patient retry avoids spurious E1030 failures while
+# the timeout stays bounded (windows unit test runs this script and expects it
+# to finish within its 10s default timeout, so keep worst case < 8s).
+for ($attempt = 1; $attempt -le 6; $attempt++) {
   $failures = @(Test-BundledResourcesOnce)
   if ($failures.Count -eq 0) {
     Write-VerifyLog "verify-bundled-poundingcore result=ok runtime=$RuntimeKey attempts=$attempt"
@@ -381,9 +387,9 @@ for ($attempt = 1; $attempt -le 5; $attempt++) {
   }
 
   $summary = ($failures | ConvertTo-Json -Compress -Depth 5)
-  if ($attempt -lt 5) {
+  if ($attempt -lt 6) {
 	    Write-VerifyLog "verify-bundled-poundingcore result=retry classification=resource_pending_landing runtime=$RuntimeKey attempt=$attempt failures=$summary"
-    Start-Sleep -Milliseconds 500
+    Start-Sleep -Milliseconds 1000
   } else {
 	    Write-VerifyLog "verify-bundled-poundingcore result=fail runtime=$RuntimeKey failures=$summary"
   }

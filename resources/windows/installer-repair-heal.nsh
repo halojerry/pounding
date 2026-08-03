@@ -87,7 +87,8 @@ Var /GLOBAL AionUiInnerFailureReadResult
       ${If} ${Errors}
         ${If} ${FileExists} "$POUNDINGBundledUninstaller"
           !insertmacro AIONUI_LOG_UNINSTALLER_REPAIR "copy-failed-using-bundled"
-          !insertmacro AIONUI_LOG_EVENT "event=uninstaller-repair phase=copy-failed-using-bundled"
+          ; 结构化日志已由上面的宏记录，此事件去重并降级为 DetailPrint
+          DetailPrint "POUNDING install: using bundled uninstaller (copy failed)"
         ${Else}
           !insertmacro AIONUI_FAIL_REPORTABLE_BILINGUAL ${AIONUI_E_UNINSTALLER_COPY_OR_REBUILD_FAILED} "uninstaller-repair copy-failed-retry-bundled-missing" "${AIONUI_MSG_UNINSTALLER_COPY_LOCKED_EN}" "${AIONUI_MSG_UNINSTALLER_COPY_LOCKED_ZH}" "${AIONUI_MSG_UNINSTALLER_REPAIR_ACTION_EN}" "${AIONUI_MSG_UNINSTALLER_REPAIR_ACTION_ZH}"
         ${EndIf}
@@ -109,7 +110,7 @@ Var /GLOBAL AionUiInnerFailureReadResult
     ${EndIf}
 
     !insertmacro AIONUI_LOG_UNINSTALLER_REPAIR "rebuilt"
-    !insertmacro AIONUI_LOG_EVENT "event=uninstaller-repair phase=rebuilt"
+    DetailPrint "POUNDING install: uninstaller rebuilt"
   ${EndIf}
 !macroend
 
@@ -124,16 +125,17 @@ Var /GLOBAL AionUiInnerFailureReadResult
   ReadRegStr $AionUiRegUninstallString SHCTX "${UNINSTALL_REGISTRY_KEY}" "UninstallString"
 
   ${If} $AionUiRegInstallLocation == ""
-    !insertmacro AIONUI_LOG_EVENT "event=registry-heal phase=missing-install-location uninstallString=$AionUiRegUninstallString"
+    ; 全新安装（registry 无记录）高频路径：DetailPrint 零进程，不冷启动 PowerShell。
+    DetailPrint "POUNDING install: no prior install registry entry"
     !insertmacro AIONUI_CLEAR_INSTALL_REGISTRY "missing-install-location"
   ${Else}
     StrCpy $AionUiRegInstallExe "$AionUiRegInstallLocation\${AIONUI_APP_EXECUTABLE_FILENAME}"
     ${If} ${FileExists} "$AionUiRegInstallExe"
       StrCpy $INSTDIR "$AionUiRegInstallLocation"
       StrCpy $AionUiRegistryInstallIsValid "1"
-      !insertmacro AIONUI_LOG_EVENT "event=registry-heal phase=valid-install-location instDir=$INSTDIR uninstallString=$AionUiRegUninstallString"
+      DetailPrint "POUNDING install: valid prior install location $INSTDIR"
     ${Else}
-      !insertmacro AIONUI_LOG_EVENT "event=registry-heal phase=stale-install-location installLocation=$AionUiRegInstallLocation uninstallString=$AionUiRegUninstallString"
+      DetailPrint "POUNDING install: stale prior install location $AionUiRegInstallLocation"
       !insertmacro AIONUI_CLEAR_INSTALL_REGISTRY "stale-install-location"
     ${EndIf}
   ${EndIf}
@@ -179,8 +181,43 @@ Var /GLOBAL AionUiInnerFailureReadResult
   ${EndIf}
 !macroend
 
+!macro AIONUI_ASSERT_DISK_SPACE
+  ; E1020 磁盘预检：$INSTDIR 所在卷可用空间须 >= 2GB（0x80000000 字节）。
+  ; 载荷 ~500MB+，固态 7z 解压需要数倍自身空间，加上杀软临时文件；
+  ; 空间不足时提前失败，避免解压到一半才出错。
+  ; 用 System::Call 而非 PowerShell：不额外冷启动进程（配合日志削减）。
+  ; 注意 *l 的 64 位槽位占两个 NSIS 变量：r1/r2=可用(低/高), r3/r4=总(低/高),
+  ; r5/r6=总可用(低/高)，返回码放 r7（避免覆盖 64 位槽位）。
+  System::Call "Kernel32::GetDiskFreeSpaceExW(w '$INSTDIR', *l .r1, *l .r2, *l .r3) i .r7"
+  ${If} $r7 == 0
+    ; API 失败：保守放行（不阻塞安装），记录日志便于诊断。
+    !insertmacro AIONUI_LOG_EVENT "event=disk-preflight result=error instDir=$INSTDIR"
+    Goto aionui_disk_done
+  ${EndIf}
+  ; 高 32 位 > 0 → 肯定够；== 0 时比较低 32 位是否 >= 0x80000000 (2GB)。
+  IntCmpU $r2 0 0 aionui_disk_enough aionui_disk_enough
+  IntCmpU $r1 0x80000000 aionui_disk_enough aionui_disk_enough aionui_disk_low
+  Goto aionui_disk_enough
+  aionui_disk_low:
+    !insertmacro AIONUI_FAIL_UX \
+      "${AIONUI_E_DISK_INSUFFICIENT}" \
+      "freeBytesLow=$r1 freeBytesHigh=$r2 minBytes=2147483648 instDir=$INSTDIR" \
+      "${AIONUI_MSG_DISK_INSUFFICIENT_ZH}" \
+      "${AIONUI_MSG_DISK_INSUFFICIENT_EN}" \
+      "${AIONUI_MSG_DISK_INSUFFICIENT_ACTION_ZH}" \
+      "${AIONUI_MSG_DISK_INSUFFICIENT_ACTION_EN}" \
+      "target=${AIONUI_TARGET_ARCH} instDir=$INSTDIR freeBytesLow=$r1 freeBytesHigh=$r2" \
+      "target=${AIONUI_TARGET_ARCH} instDir=$INSTDIR freeBytesLow=$r1 freeBytesHigh=$r2"
+  aionui_disk_enough:
+    !insertmacro AIONUI_LOG_EVENT "event=disk-preflight result=ok instDir=$INSTDIR"
+  aionui_disk_done:
+!macroend
+
 !macro customInit
   !insertmacro AIONUI_HEAL_INSTALL_REGISTRY
+  ; 磁盘预检放在 registry heal 之后（此时 $INSTDIR 已最终确定），
+  ; 解压（InstallFiles 阶段）之前。
+  !insertmacro AIONUI_ASSERT_DISK_SPACE
   ${If} $AionUiRegistryInstallIsValid == "1"
     !insertmacro AIONUI_REPAIR_INSTALLED_UNINSTALLER
   ${EndIf}

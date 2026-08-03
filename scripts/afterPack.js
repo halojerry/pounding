@@ -129,6 +129,21 @@ function verifyManagedResources(resourcesDir, runtimeKey, electronPlatformName) 
     if (!openclawOk) {
       missing.push('managed-resources/cli/openclaw (vendor step likely failed — offline openclaw install will fail)');
     }
+
+    // uv (offline hermes wheel install runs through it) and the vendored
+    // chrome-devtools-mcp (the default builtin MCP server runs offline from
+    // it). Missing either → that component's offline OOBE silently fails.
+    const uvOk =
+      fs.existsSync(path.join(baseDir, 'runtimes', 'uv', 'uv')) ||
+      fs.existsSync(path.join(baseDir, 'runtimes', 'uv', 'uv.exe'));
+    if (!uvOk) {
+      missing.push('managed-resources/runtimes/uv (offline hermes wheel install needs it)');
+    }
+
+    const cdtMcpOk = fs.existsSync(path.join(baseDir, 'mcp', 'chrome-devtools-mcp'));
+    if (!cdtMcpOk) {
+      missing.push('managed-resources/mcp/chrome-devtools-mcp (builtin MCP server would fall back to network npx)');
+    }
   }
 
   if (missing.length > 0) {

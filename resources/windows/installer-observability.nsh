@@ -117,7 +117,10 @@ Var /GLOBAL AionUiSessionLogPath
       "extract result=fail method=${_METHOD} missing=POUNDING.exe instDir=$INSTDIR" \
       "extract result=fail method=${_METHOD} missing=POUNDING.exe instDir=$INSTDIR"
   ${Else}
-    !insertmacro AIONUI_SLOG "event=extract result=ok method=${_METHOD} detail=customFiles_${AIONUI_TARGET_ARCH}"
+    ; 成功路径用 DetailPrint（零进程）而非 AIONUI_SLOG（每次冷启动一个
+    ; PowerShell 进程）——慢机上省几十秒。Sentry 诊断依赖的失败事件
+    ; （上面 FAIL_UX）与 session-begin/session-end 仍走完整 JSON 日志。
+    DetailPrint "POUNDING install: payload extraction OK (method=${_METHOD})"
   ${EndIf}
 !macroend
 

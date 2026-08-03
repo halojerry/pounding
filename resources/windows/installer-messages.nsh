@@ -40,6 +40,11 @@
 !define AIONUI_MSG_ARCH_MISMATCH_ACTION_EN "Download the POUNDING installer that matches this Windows architecture, then run it again."
 !define AIONUI_MSG_ARCH_MISMATCH_ACTION_ZH "请下载与当前 Windows 架构匹配的 POUNDING 安装器，然后再次运行。"
 
+!define AIONUI_MSG_DISK_INSUFFICIENT_EN "Not enough free disk space to install POUNDING."
+!define AIONUI_MSG_DISK_INSUFFICIENT_ZH "磁盘空间不足，无法安装 POUNDING。"
+!define AIONUI_MSG_DISK_INSUFFICIENT_ACTION_EN "Free at least 2 GB on the target drive, then run this installer again."
+!define AIONUI_MSG_DISK_INSUFFICIENT_ACTION_ZH "请在目标磁盘释放至少 2 GB 空间后，重新运行安装器。"
+
 !define AIONUI_MSG_UNINSTALLER_COPY_LOCKED_EN "POUNDING could not overwrite the installed uninstaller because it is locked."
 !define AIONUI_MSG_UNINSTALLER_COPY_LOCKED_ZH "POUNDING 无法覆盖已安装的卸载器，因为该文件被占用。"
 !define AIONUI_MSG_UNINSTALLER_REBUILD_FAILED_EN "POUNDING could not rebuild the missing installed uninstaller."

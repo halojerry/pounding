@@ -89,7 +89,7 @@ describe('buildSpawnEnv cli-paths.json overrides', () => {
       );
       const env = buildSpawnEnv({ cacheDir: '/c', workDir: '/w', logDir: '/l' });
       const parts = (env.PATH ?? '').split(path.delimiter);
-      expect(parts[0]).toBe('/opt/claude/bin');
+      expect(parts[0]).toBe(path.resolve('/opt/claude/bin'));
       expect(parts).toContain(path.join(home, '.local', 'bin'));
       expect(env.PATH).toContain('/usr/bin:/bin');
     } finally {

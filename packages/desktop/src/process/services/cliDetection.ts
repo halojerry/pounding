@@ -37,14 +37,17 @@ function defaultManagedDirs(home: string): string[] {
  * substring heuristics; `~/.local/bin` is always treated as managed.
  */
 export function classifySource(binaryPath: string, home: string, managedDirs: string[]): CliSource {
-  const resolved = path.resolve(binaryPath);
-  const normalizedManagedDirs = managedDirs.map((dir) => path.resolve(dir));
-  if (normalizedManagedDirs.some((dir) => resolved === dir || resolved.startsWith(`${dir}${path.sep}`))) {
+  // Normalize separators so classification is platform-independent: a path
+  // written with forward slashes (tests, configs) matches on Windows too.
+  const normalize = (p: string) => path.resolve(p).replace(/\\/g, '/');
+  const resolved = normalize(binaryPath);
+  const normalizedManagedDirs = managedDirs.map(normalize);
+  if (normalizedManagedDirs.some((dir) => resolved === dir || resolved.startsWith(`${dir}/`))) {
     return 'managed';
   }
 
-  const localBin = path.join(home, '.local', 'bin');
-  if (resolved === localBin || resolved.startsWith(`${localBin}${path.sep}`)) {
+  const localBin = normalize(path.join(home, '.local', 'bin'));
+  if (resolved === localBin || resolved.startsWith(`${localBin}/`)) {
     return 'managed';
   }
 
@@ -53,21 +56,21 @@ export function classifySource(binaryPath: string, home: string, managedDirs: st
   const lower = resolved.toLowerCase();
   if (
     lower.includes('site-packages') ||
-    /[\\/]python(\.exe)?$/i.test(resolved) ||
-    (process.platform === 'win32' && /[\\/]scripts[\\/]/i.test(resolved))
+    /\/python(\.exe)?$/.test(lower) ||
+    (process.platform === 'win32' && /\/scripts\//.test(lower))
   ) {
     return 'pip';
   }
 
-  if (resolved.includes(`${path.sep}.nvm${path.sep}`)) {
+  if (resolved.includes('/.nvm/')) {
     return 'nvm';
   }
 
-  if (resolved.startsWith('/opt/homebrew/') || resolved.includes(`${path.sep}.linuxbrew${path.sep}`)) {
+  if (resolved.startsWith('/opt/homebrew/') || resolved.includes('/.linuxbrew/')) {
     return 'homebrew';
   }
 
-  if (resolved.includes(`${path.sep}.bun${path.sep}`)) {
+  if (resolved.includes('/.bun/')) {
     return 'bun';
   }
 

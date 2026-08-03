@@ -285,7 +285,8 @@ describe('installManagedCli official-first + COS fallback', () => {
     expect(result.success).toBe(true);
     expect(result.status).toBe('installed');
     // The managed shim under ~/.local/bin was materialized from the COS bundle
-    const shimPath = path.join(testHome, '.local', 'bin', 'claude');
+    const shimName = process.platform === 'win32' ? 'claude.cmd' : 'claude';
+    const shimPath = path.join(testHome, '.local', 'bin', shimName);
     expect(require('fs').existsSync(shimPath)).toBe(true);
   });
 

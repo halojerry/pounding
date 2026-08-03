@@ -38,6 +38,8 @@ type EnabledAssistantsListProps = {
   onOpenDetail: (assistant: AssistantListItem) => void;
   onToggleEnabled: (assistant: AssistantListItem, checked: boolean) => void;
   onReorder: (activeId: string, overId: string) => void | Promise<void>;
+  /** Jump to the runtime environment tab ("去安装" CTA). */
+  onGoInstall?: () => void;
 };
 
 type EnabledAssistantRowProps = {
@@ -46,6 +48,7 @@ type EnabledAssistantRowProps = {
   draggable: boolean;
   onOpenDetail: (assistant: AssistantListItem) => void;
   onToggleEnabled: (assistant: AssistantListItem, checked: boolean) => void;
+  onGoInstall?: () => void;
 };
 
 const EnabledAssistantRow: React.FC<EnabledAssistantRowProps> = ({
@@ -54,6 +57,7 @@ const EnabledAssistantRow: React.FC<EnabledAssistantRowProps> = ({
   draggable,
   onOpenDetail,
   onToggleEnabled,
+  onGoInstall,
 }) => {
   const { t } = useTranslation();
   const { attributes, listeners, setActivatorNodeRef, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -114,6 +118,17 @@ const EnabledAssistantRow: React.FC<EnabledAssistantRowProps> = ({
         </div>
       </div>
       <div className='ml-10px flex flex-shrink-0 items-center gap-8px sm:gap-14px' onClick={(e) => e.stopPropagation()}>
+        {(assistant.agent_status === 'missing' || assistant.agent_status === 'offline') && (
+          <Button
+            size='mini'
+            type='text'
+            data-testid={`btn-go-install-${assistant.id}`}
+            className='!inline-flex !h-24px !items-center !px-8px !text-12px !text-warning-6'
+            onClick={() => onGoInstall?.()}
+          >
+            {t('settings.runtimeEnvironment.goInstall', { defaultValue: 'Go install' })}
+          </Button>
+        )}
         <span className='hidden min-w-0 shrink-0 sm:inline-flex'>
           <RuntimeBadge assistant={assistant} />
         </span>
@@ -136,6 +151,7 @@ const EnabledAssistantsList: React.FC<EnabledAssistantsListProps> = ({
   onOpenDetail,
   onToggleEnabled,
   onReorder,
+  onGoInstall,
 }) => {
   const { t } = useTranslation();
   const sensors = useSensors(
@@ -194,6 +210,7 @@ const EnabledAssistantsList: React.FC<EnabledAssistantsListProps> = ({
                   draggable={sortingEnabled}
                   onOpenDetail={onOpenDetail}
                   onToggleEnabled={onToggleEnabled}
+                  onGoInstall={onGoInstall}
                 />
               ))}
             </div>

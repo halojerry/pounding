@@ -12,6 +12,7 @@ import { useLayoutContext } from '@/renderer/hooks/context/LayoutContext';
 import TalkToButlerButton from '@/renderer/components/base/TalkToButlerButton';
 import { AionSearchInput } from '@/renderer/components/base';
 import SettingsPageHeader from '../../components/SettingsPageHeader';
+import RuntimeEnvironmentPanel from '@/renderer/components/settings/RuntimeEnvironmentPanel';
 import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -28,12 +29,14 @@ type AssistantHomeTabsProps = {
   onReorderEnabled: (activeId: string, overId: string) => void | Promise<void>;
   onStartChat: (assistant: AssistantListItem) => void;
   /** Tab to show on mount (e.g. return to Official after editing a builtin). */
-  initialTab?: 'enabled' | 'mine' | 'official';
+  initialTab?: HomeTab;
   /** Notified whenever the active tab changes, so the parent can remember it. */
-  onTabChange?: (tab: 'enabled' | 'mine' | 'official') => void;
+  onTabChange?: (tab: HomeTab) => void;
+  /** Jump to the runtime environment tab (e.g. "去安装" from an assistant row). */
+  onGoInstall?: () => void;
 };
 
-type HomeTab = 'enabled' | 'mine' | 'official';
+export type HomeTab = 'enabled' | 'mine' | 'official' | 'runtime';
 
 const AssistantHomeTabs: React.FC<AssistantHomeTabsProps> = ({
   assistants,
@@ -49,6 +52,7 @@ const AssistantHomeTabs: React.FC<AssistantHomeTabsProps> = ({
   onStartChat,
   initialTab = 'enabled',
   onTabChange,
+  onGoInstall,
 }) => {
   const { t, i18n } = useTranslation();
   const layout = useLayoutContext();
@@ -147,6 +151,10 @@ const AssistantHomeTabs: React.FC<AssistantHomeTabsProps> = ({
                 label: t('settings.assistantTabOfficial', { defaultValue: 'Official' }),
                 count: counts.official,
               },
+              {
+                key: 'runtime',
+                label: t('settings.runtimeEnvironment.title', { defaultValue: 'Runtime Environment' }),
+              },
             ]}
             activeTab={tab}
             onTabChange={(key) => selectTab(key as HomeTab)}
@@ -168,6 +176,7 @@ const AssistantHomeTabs: React.FC<AssistantHomeTabsProps> = ({
               onOpenDetail={onOpenDetail}
               onToggleEnabled={onToggleEnabled}
               onReorder={onReorderEnabled}
+              onGoInstall={onGoInstall}
             />
           ) : tab === 'mine' ? (
             <MyAssistantsList
@@ -179,8 +188,9 @@ const AssistantHomeTabs: React.FC<AssistantHomeTabsProps> = ({
               onStartChat={onStartChat}
               onGoOfficial={() => selectTab('official')}
               searchActive={Boolean(normalizedSearchQuery)}
+              onGoInstall={onGoInstall}
             />
-          ) : (
+          ) : tab === 'official' ? (
             <OfficialAssistantsGrid
               assistants={filteredAssistants}
               localeKey={localeKey}
@@ -190,6 +200,8 @@ const AssistantHomeTabs: React.FC<AssistantHomeTabsProps> = ({
               onStartChat={onStartChat}
               searchActive={Boolean(normalizedSearchQuery)}
             />
+          ) : (
+            <RuntimeEnvironmentPanel />
           )}
         </div>
       </div>

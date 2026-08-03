@@ -1300,6 +1300,7 @@
     "title": "运行环境",
     "description": "管理智能体使用的 CLI 工具（Claude、Hermes、OpenClaw）：安装、升级、卸载，或指定已有安装路径。",
     "detectError": "扫描 CLI 安装失败",
+    "goInstall": "去安装",
     "installFailed": "安装失败",
     "uninstallFailed": "卸载失败",
     "uninstallConfirmTitle": "卸载 CLI",

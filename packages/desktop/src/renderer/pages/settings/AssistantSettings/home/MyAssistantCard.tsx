@@ -19,6 +19,8 @@ type MyAssistantCardProps = {
   onDelete: (assistant: AssistantListItem) => void;
   onToggleEnabled: (assistant: AssistantListItem, checked: boolean) => void;
   onStartChat: (assistant: AssistantListItem) => void;
+  /** Jump to the runtime environment tab ("去安装" CTA). */
+  onGoInstall?: () => void;
 };
 
 /**
@@ -34,6 +36,7 @@ const MyAssistantCard: React.FC<MyAssistantCardProps> = ({
   onDelete,
   onToggleEnabled,
   onStartChat,
+  onGoInstall,
 }) => {
   const { t } = useTranslation();
   const enabled = assistant.enabled !== false;
@@ -84,26 +87,42 @@ const MyAssistantCard: React.FC<MyAssistantCardProps> = ({
           {assistant.name_i18n?.[localeKey] || assistant.name}
         </span>
         {assistant.agent_status !== 'online' && (
-          <Tooltip
-            content={
-              assistant.agent_status === 'missing'
-                ? t('settings.assistantAgentMissing', { defaultValue: 'The required agent is not installed.' })
-                : assistant.agent_status === 'unchecked'
-                  ? t('settings.assistantAgentUnchecked', {
-                      defaultValue: 'The required agent has not been checked yet.',
-                    })
-                  : t('settings.assistantAgentUnavailable', {
-                      defaultValue: 'The required agent is currently unavailable.',
-                    })
-            }
-          >
-            <span
-              className='flex flex-shrink-0 items-center text-warning-6'
-              data-testid={`assistant-agent-unavailable-${assistant.id}`}
+          <>
+            <Tooltip
+              content={
+                assistant.agent_status === 'missing'
+                  ? t('settings.assistantAgentMissing', { defaultValue: 'The required agent is not installed.' })
+                  : assistant.agent_status === 'unchecked'
+                    ? t('settings.assistantAgentUnchecked', {
+                        defaultValue: 'The required agent has not been checked yet.',
+                      })
+                    : t('settings.assistantAgentUnavailable', {
+                        defaultValue: 'The required agent is currently unavailable.',
+                      })
+              }
             >
-              <Attention size={15} fill='currentColor' />
-            </span>
-          </Tooltip>
+              <span
+                className='flex flex-shrink-0 items-center text-warning-6'
+                data-testid={`assistant-agent-unavailable-${assistant.id}`}
+              >
+                <Attention size={15} fill='currentColor' />
+              </span>
+            </Tooltip>
+            {(assistant.agent_status === 'missing' || assistant.agent_status === 'offline') && (
+              <Button
+                size='mini'
+                type='text'
+                data-testid={`btn-go-install-${assistant.id}`}
+                className='!inline-flex !h-24px !items-center !px-8px !text-12px !text-warning-6'
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onGoInstall?.();
+                }}
+              >
+                {t('settings.runtimeEnvironment.goInstall', { defaultValue: 'Go install' })}
+              </Button>
+            )}
+          </>
         )}
       </div>
       <div className={`mt-6px line-clamp-2 text-12px leading-[1.5] text-t-secondary ${enabled ? '' : 'opacity-55'}`}>

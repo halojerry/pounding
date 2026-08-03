@@ -1926,6 +1926,7 @@ export type I18nKey =
   | 'settings.runtimeEnvironment.action.upgrade'
   | 'settings.runtimeEnvironment.description'
   | 'settings.runtimeEnvironment.detectError'
+  | 'settings.runtimeEnvironment.goInstall'
   | 'settings.runtimeEnvironment.installFailed'
   | 'settings.runtimeEnvironment.notInstalled'
   | 'settings.runtimeEnvironment.selectPathSuccess'

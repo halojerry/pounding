@@ -1307,6 +1307,7 @@
     "title": "Runtime Environment",
     "description": "Manage the CLI tools (Claude, Hermes, OpenClaw) your agents run on. Install, upgrade, uninstall or point POUNDING at an existing installation.",
     "detectError": "Failed to scan CLI installations",
+    "goInstall": "Встановити",
     "installFailed": "Install failed",
     "uninstallFailed": "Uninstall failed",
     "uninstallConfirmTitle": "Uninstall CLI",

@@ -22,6 +22,8 @@ type MyAssistantsListProps = {
   onStartChat: (assistant: AssistantListItem) => void;
   /** Switch to the Official tab (to duplicate an official assistant). */
   onGoOfficial: () => void;
+  /** Jump to the runtime environment tab ("去安装" CTA). */
+  onGoInstall?: () => void;
   searchActive?: boolean;
 };
 
@@ -45,6 +47,7 @@ const MyAssistantsList: React.FC<MyAssistantsListProps> = ({
   onToggleEnabled,
   onStartChat,
   onGoOfficial,
+  onGoInstall,
   searchActive = false,
 }) => {
   const { t } = useTranslation();
@@ -89,6 +92,7 @@ const MyAssistantsList: React.FC<MyAssistantsListProps> = ({
           onDelete={onDelete}
           onToggleEnabled={onToggleEnabled}
           onStartChat={onStartChat}
+          onGoInstall={onGoInstall}
         />
       ))}
     </div>

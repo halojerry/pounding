@@ -72,14 +72,13 @@ test.describe('OOB Gate — 开箱即用', () => {
     }
     expect(report, 'backend 未在 120s 内就绪').toBeTruthy();
 
-    // claude / openclaw：硬断言（vendor 以 cli/<target> 布局随包，后端 Bundled 模式可直接物化）。
-    // hermes：允许失败（warn 不硬断言）。原因：hermes 是 Python 包，vendor 只产出
-    // runtimes/hermes/*.whl 供 Electron 侧建 venv，后端 Bundled 模式期望的
-    // cli/hermes/<ver>/<plat>/ 布局尚未产出——Windows 上后端硬找不到。
-    // 这是已确认的架构缺口（见发布说明），单独排期修复，不阻塞 release。
+    // claude / openclaw / hermes 全部硬断言。桌面侧把托管 CLI 目录
+    // （~/.local/bin 等）注入 poundingcore 的 PATH（backend-launcher
+    // buildSpawnEnv），后端 doctor/repair 因此能找到 hermes.cmd/hermes；
+    // vendor 侧为全部 4 个平台产出 runtimes/hermes/*.whl，离线安装闭环。
     const TARGETS: Array<{ target: 'claude' | 'hermes' | 'openclaw'; hard: boolean }> = [
       { target: 'claude', hard: true },
-      { target: 'hermes', hard: false },
+      { target: 'hermes', hard: true },
       { target: 'openclaw', hard: true },
     ];
 
@@ -88,9 +87,10 @@ test.describe('OOB Gate — 开箱即用', () => {
       const repair = await httpPost<RepairResult>(page, '/api/doctor/repair', { target });
       console.log(`[OOB] repair ${target}: success=${repair?.success} source=${repair?.source} error=${repair?.error}`);
 
-      // 轮询 diagnose 直到可用（离线安装很快；留 60s 余量）
+      // 轮询 diagnose 直到可用（离线安装很快；首次 repair 可能恰逢后台
+      // installManagedCliBatch 仍在物化 bundle，留 120s 余量）。
       let available = false;
-      for (let i = 0; i < 12; i++) {
+      for (let i = 0; i < 24; i++) {
         await page.waitForTimeout(5000);
         const r = await httpGet<AgentDiagnosticReport>(page, '/api/doctor/diagnose');
         const agent = findAgent(r, target);

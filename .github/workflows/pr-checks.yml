@@ -86,6 +86,17 @@ jobs:
       - name: Run prek checks
         run: prek run --from-ref origin/${{ env.PR_BASE_REF }} --to-ref HEAD
 
+      - name: Check for re-introduced " 2" files
+        run: |
+          set -euo pipefail
+          DUPS=$(git ls-files | grep ' 2' || true)
+          if [ -n "$DUPS" ]; then
+            echo "::error::Detected $(echo "$DUPS" | wc -l) tracked files with ' 2' suffix (regression, see AGENTS.md):"
+            echo "$DUPS" | head -30
+            exit 1
+          fi
+          echo "No ' 2' files"
+
       - name: Check pinned CLI/runtime versions match vendor-versions.env
         run: bash scripts/check-version-consistency.sh ../poundingcore
 

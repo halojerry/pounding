@@ -54,9 +54,9 @@ jobs:
           CASK_CONTENT=$(curl -fsSL "https://raw.githubusercontent.com/Homebrew/homebrew-cask/HEAD/Casks/a/pounding.rb" 2>/dev/null || echo "")
 
           if [ -z "$CASK_CONTENT" ]; then
-            echo "::error::Failed to fetch cask file from Homebrew repo"
+            echo "::warning::Failed to fetch cask file from Homebrew repo (external dependency) — skipping verification"
             echo "status=fetch_failed" >> $GITHUB_OUTPUT
-            exit 1
+            exit 0
           fi
 
           # Extract version from cask file
@@ -125,8 +125,6 @@ jobs:
             echo "  1. Fork https://github.com/Homebrew/homebrew-cask"
             echo "  2. Update Casks/a/pounding.rb with new version and SHA256"
             echo "  3. Submit PR to Homebrew/homebrew-cask"
-            exit 1
           else
-            echo "::error::Failed to verify — could not fetch cask file from Homebrew repo"
-            exit 1
+            echo "::warning::Failed to verify Homebrew cask (status: ${STATUS:-unknown}) — external dependency, not blocking"
           fi

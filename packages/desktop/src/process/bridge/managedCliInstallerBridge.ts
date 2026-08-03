@@ -471,8 +471,9 @@ function resolveManagedNpm(): string {
 
 async function getGlobalJsCommand(): Promise<string> {
   const managedNpm = resolveManagedNpm();
-  if (fs.existsSync(managedNpm)) return managedNpm;
-  throw new Error('No npm available to install JavaScript CLIs.');
+  if (managedNpm && fs.existsSync(managedNpm)) return managedNpm;
+  // Dev environment / unmanaged install: fall back to npm_execpath or `npm`.
+  return getNpmCommand();
 }
 
 async function installNpmPackage(
@@ -480,10 +481,13 @@ async function installNpmPackage(
   options: { version?: string; timeoutMs?: number } = {}
 ): Promise<void> {
   const spec = options.version ? `${packageName}@${options.version}` : packageName;
+  // Prefer the bundled npm from managed-resources so packaged installs never
+  // depend on the user's system npm (missing on many Windows machines).
+  const npmCommand = await getGlobalJsCommand();
   let lastError: unknown;
   for (const registry of [NPM_MIRROR_REGISTRY, NPM_DEFAULT_REGISTRY]) {
     try {
-      await runCommand(getNpmCommand(), ['install', '-g', spec], {
+      await runCommand(npmCommand, ['install', '-g', spec], {
         env: getNpmEnv(registry),
         timeoutMs: options.timeoutMs ?? NPM_INSTALL_TIMEOUT_MS,
       });
@@ -761,16 +765,9 @@ async function syncAfterUninstall(target: ManagedCliInstallTarget): Promise<void
   await newApiDesktopAccountService.clearManagedRuntimeForCliTarget(target);
 }
 
-async function installManagedCli(input: ManagedCliInstallOptions): Promise<ManagedCliInstallResult> {
-  const descriptor = DESCRIPTORS[input.target];
-  if (!descriptor) {
-    return {
-      success: false,
-      status: 'failed',
-      message: `Unsupported target: ${String(input.target)}`,
-    };
-  }
+const inFlightInstalls = new Map<ManagedCliInstallTarget, Promise<ManagedCliInstallResult>>();
 
+async function installManagedCliInternal(descriptor: ManagedCliDescriptor): Promise<ManagedCliInstallResult> {
   try {
     const alreadyInstalled = await isManagedCliInstalled(descriptor);
     if (alreadyInstalled) {
@@ -845,6 +842,33 @@ async function installManagedCli(input: ManagedCliInstallOptions): Promise<Manag
       status: 'failed',
       message: error instanceof Error ? error.message : String(error),
     };
+  }
+}
+
+export async function installManagedCli(input: ManagedCliInstallOptions): Promise<ManagedCliInstallResult> {
+  const descriptor = DESCRIPTORS[input.target];
+  if (!descriptor) {
+    return {
+      success: false,
+      status: 'failed',
+      message: `Unsupported target: ${String(input.target)}`,
+    };
+  }
+
+  // Serialize concurrent installs of the same target. markBackendReady's
+  // background batch and the OOBE CliPrep page can both install the same CLI
+  // at startup; running two `npm install -g` / `python -m venv --clear` on the
+  // same dirs concurrently corrupts them and looks like a hung install.
+  const existing = inFlightInstalls.get(input.target);
+  if (existing) return existing;
+  const run = installManagedCliInternal(descriptor);
+  inFlightInstalls.set(input.target, run);
+  try {
+    return await run;
+  } finally {
+    if (inFlightInstalls.get(input.target) === run) {
+      inFlightInstalls.delete(input.target);
+    }
   }
 }
 

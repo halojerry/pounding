@@ -27,51 +27,53 @@
 
 ## 文件结构
 
-| 文件 | 责任 |
-|---|---|
-| `packages/desktop/src/process/services/cliDetection.ts`（新建） | 纯函数 CLI 枚举检测：PATH/托管目录扫描、`--version`、来源判定、冲突标记 |
-| `packages/web-host/src/backend-launcher.ts` | `buildSpawnEnv` 追加用户配置的 CLI 目录到 PATH |
-| `packages/desktop/src/process/bridge/managedCliInstallerBridge.ts` | 安装链改官方+COS、保留互斥/超时/IPC；新增按需 COS 兜底 |
-| `packages/desktop/src/index.ts` | 移除 `markBackendReady` 里的自动安装批 |
-| `packages/desktop/src/renderer/pages/cli-prep/*` | 删除（页面+路由+样式） |
-| `packages/desktop/src/renderer/components/settings/RuntimeEnvironmentPanel.tsx`（新建） | 运行环境 UI（每 CLI 一行：来源/路径/版本/状态/按钮） |
-| `packages/desktop/src/renderer/pages/settings/AgentSettings/...` | 挂载运行环境区块入口 |
-| `scripts/prepare-vendor.sh`、`scripts/vendor-managed-resources.sh` | 移除 python/uv/hermes/claude/openclaw vendor |
-| `scripts/afterPack.js` | 硬校验收紧为 后端二进制 + managed node |
-| `scripts/check-version-consistency.sh` | 移除已删 vendor 路径/制品类检查，保留版本 pin 一致性 |
-| `.github/workflows/_build-reusable.yml` | 去掉 Setup Rust 步骤；OOB 门禁语义不变（e2e 里降级） |
-| `.github/workflows/pr-checks.yml` | build-test 矩阵四平台 + Windows 步骤通用化 + MSVC ARM64 + timeout 60 |
-| `tests/e2e/specs/oob-cli-install.e2e.ts` | CLI 断言降 warn，MCP 保持硬断言 |
-| `tests/e2e/specs/pounding-portable-mode.e2e.ts` | 保留不动 |
-| `tests/unit/...` | 各任务对应单测 |
+| 文件                                                                                    | 责任                                                                    |
+| --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `packages/desktop/src/process/services/cliDetection.ts`（新建）                         | 纯函数 CLI 枚举检测：PATH/托管目录扫描、`--version`、来源判定、冲突标记 |
+| `packages/web-host/src/backend-launcher.ts`                                             | `buildSpawnEnv` 追加用户配置的 CLI 目录到 PATH                          |
+| `packages/desktop/src/process/bridge/managedCliInstallerBridge.ts`                      | 安装链改官方+COS、保留互斥/超时/IPC；新增按需 COS 兜底                  |
+| `packages/desktop/src/index.ts`                                                         | 移除 `markBackendReady` 里的自动安装批                                  |
+| `packages/desktop/src/renderer/pages/cli-prep/*`                                        | 删除（页面+路由+样式）                                                  |
+| `packages/desktop/src/renderer/components/settings/RuntimeEnvironmentPanel.tsx`（新建） | 运行环境 UI（每 CLI 一行：来源/路径/版本/状态/按钮）                    |
+| `packages/desktop/src/renderer/pages/settings/AgentSettings/...`                        | 挂载运行环境区块入口                                                    |
+| `scripts/prepare-vendor.sh`、`scripts/vendor-managed-resources.sh`                      | 移除 python/uv/hermes/claude/openclaw vendor                            |
+| `scripts/afterPack.js`                                                                  | 硬校验收紧为 后端二进制 + managed node                                  |
+| `scripts/check-version-consistency.sh`                                                  | 移除已删 vendor 路径/制品类检查，保留版本 pin 一致性                    |
+| `.github/workflows/_build-reusable.yml`                                                 | 去掉 Setup Rust 步骤；OOB 门禁语义不变（e2e 里降级）                    |
+| `.github/workflows/pr-checks.yml`                                                       | build-test 矩阵四平台 + Windows 步骤通用化 + MSVC ARM64 + timeout 60    |
+| `tests/e2e/specs/oob-cli-install.e2e.ts`                                                | CLI 断言降 warn，MCP 保持硬断言                                         |
+| `tests/e2e/specs/pounding-portable-mode.e2e.ts`                                         | 保留不动                                                                |
+| `tests/unit/...`                                                                        | 各任务对应单测                                                          |
 
 ---
 
 ### Task 1: CLI 枚举检测（cliDetection + 单测）
 
 **Files:**
+
 - Create: `packages/desktop/src/process/services/cliDetection.ts`
 - Test: `tests/unit/process/services/cliDetection.test.ts`
 
 **Interfaces:**
+
 - Consumes: 无（独立纯模块；复用 `runCommandOutput` 模式，但不强依赖 bridge）。
 - Produces:
 
 ```ts
 export type CliSource = 'nvm' | 'homebrew' | 'bun' | 'pip' | 'system' | 'managed';
 export type CliInstallation = {
-  binary: string;          // 'claude' | 'hermes' | 'openclaw'
-  path: string;            // 绝对路径
+  binary: string; // 'claude' | 'hermes' | 'openclaw'
+  path: string; // 绝对路径
   version: string | null;
-  runnable: boolean;       // --version 成功
+  runnable: boolean; // --version 成功
   source: CliSource;
-  isDefault: boolean;      // 是否为 PATH 首个命中
+  isDefault: boolean; // 是否为 PATH 首个命中
 };
 export type CliTargetStatus = {
   target: 'claude' | 'hermes' | 'openclaw';
   installations: CliInstallation[];
   defaultPath: string | null;
-  conflict: boolean;       // 多个来源且版本分歧/多处命中
+  conflict: boolean; // 多个来源且版本分歧/多处命中
 };
 export async function detectCliInstallations(
   targets: Array<'claude' | 'hermes' | 'openclaw'>,
@@ -92,11 +94,13 @@ export function isRunnableVersionOutput(output: string): boolean;
 ### Task 2: buildSpawnEnv 支持用户 CLI 目录注入
 
 **Files:**
+
 - Modify: `packages/web-host/src/backend-launcher.ts`（`buildSpawnEnv`）
 - Modify: `tests/unit/bootstrap/backendLauncherSpawnEnv.test.ts`
 - Modify: `packages/web-host/src/backend-launcher.test.ts`（如有 PATH 断言需同步）
 
 **Interfaces:**
+
 - Consumes: 读取配置 `{userData}/cli-paths.json`（不存在返回空）。
 - Produces: 新导出纯函数：
 
@@ -119,11 +123,13 @@ export function resolveManagedPathEntries(
 ### Task 3: 安装链改造（官方 + COS 兜底）与移除自动安装
 
 **Files:**
+
 - Modify: `packages/desktop/src/process/bridge/managedCliInstallerBridge.ts`
 - Modify: `packages/desktop/src/index.ts`（`markBackendReady` 删 `installManagedCliBatch` 调用与相关注释）
 - Modify: `tests/unit/process/managedCliInstallerBridge.test.ts`
 
 **Interfaces:**
+
 - Consumes: 现有 `runCommand`/`runCommandOutput`/`resolveBundledResourcesDir`/`syncAfterInstall`/互斥结构。
 - Produces: 内部 `installOfficial(target, descriptor)` 与 `installFromCosFallback(target, descriptor)`：
   - claude 官方：`npm i -g @anthropic-ai/claude-code@2.1.215`（保留镜像循环）；
@@ -142,12 +148,14 @@ export function resolveManagedPathEntries(
 ### Task 4: 运行环境 UI（新增面板 + 删除 cli-prep + i18n）
 
 **Files:**
+
 - Create: `packages/desktop/src/renderer/components/settings/RuntimeEnvironmentPanel.tsx`、`.module.css`
 - Create: `tests/unit/renderer/RuntimeEnvironmentPanel.dom.test.tsx`
 - Modify: `packages/desktop/src/renderer/pages/settings/AgentSettings/home/*`（挂入口）、路由配置（删 `/cli-prep` 路由）、`packages/desktop/src/renderer/services/i18n/locales/*/settings.json`（9 个）、`i18n-keys.d.ts`（生成）
 - Delete: `packages/desktop/src/renderer/pages/cli-prep/index.tsx`、`index.module.css` 及引用
 
 **Interfaces:**
+
 - Consumes: Task 1 `detectCliInstallations`（经 IPC 或直接调用）、Task 3 `managedCliInstaller` IPC、现有 `AgentHubModal` 状态模式。
 - Produces: 组件 props：`type Props = { compact?: boolean };` 内部状态 `loading | list: CliTargetStatus[]`；操作 `install/upgrade/uninstall/diagnose/selectPath`。
 
@@ -162,6 +170,7 @@ export function resolveManagedPathEntries(
 ### Task 5: 拆捆绑 + 安装器瘦身
 
 **Files:**
+
 - Modify: `scripts/prepare-vendor.sh`、`scripts/vendor-managed-resources.sh`（删 python/uv/hermes/claude/openclaw vendor 段，保留 node/mcp/acp）
 - Delete: `scripts/build-missing-hermes-wheels.sh`
 - Modify: `scripts/afterPack.js`（`verifyManagedResources` 收紧为 node + 后端二进制）
@@ -180,6 +189,7 @@ export function resolveManagedPathEntries(
 ### Task 6: OOB 门禁降级 + pr-checks 四平台
 
 **Files:**
+
 - Modify: `tests/e2e/specs/oob-cli-install.e2e.ts`（CLI 三目标 hard → warn；MCP 保持硬断言；注释同步）
 - Modify: `.github/workflows/pr-checks.yml`（build-test 矩阵 + Windows 步骤通用化 + MSVC ARM64 + timeout 60）
 - Modify: `.github/workflows/_build-reusable.yml`（如 OOB 步骤注释/变量同步）

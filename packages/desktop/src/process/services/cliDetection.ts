@@ -55,11 +55,7 @@ function defaultManagedDirs(home: string): string[] {
 export function classifySource(binaryPath: string, home: string, managedDirs: string[]): CliSource {
   const resolved = path.resolve(binaryPath);
   const normalizedManagedDirs = managedDirs.map((dir) => path.resolve(dir));
-  if (
-    normalizedManagedDirs.some(
-      (dir) => resolved === dir || resolved.startsWith(`${dir}${path.sep}`),
-    )
-  ) {
+  if (normalizedManagedDirs.some((dir) => resolved === dir || resolved.startsWith(`${dir}${path.sep}`))) {
     return 'managed';
   }
 
@@ -72,10 +68,7 @@ export function classifySource(binaryPath: string, home: string, managedDirs: st
     return 'nvm';
   }
 
-  if (
-    resolved.startsWith('/opt/homebrew/') ||
-    resolved.includes(`${path.sep}.linuxbrew${path.sep}`)
-  ) {
+  if (resolved.startsWith('/opt/homebrew/') || resolved.includes(`${path.sep}.linuxbrew${path.sep}`)) {
     return 'homebrew';
   }
 
@@ -106,7 +99,7 @@ function extractVersion(output: string): string | null {
 function runCommandOutput(
   command: string,
   args: string[],
-  options: { timeoutMs?: number; env?: NodeJS.ProcessEnv } = {},
+  options: { timeoutMs?: number; env?: NodeJS.ProcessEnv } = {}
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     const child = execFile(
@@ -127,7 +120,7 @@ function runCommandOutput(
           return;
         }
         resolve(stdout);
-      },
+      }
     );
     child.unref?.();
   });
@@ -162,11 +155,7 @@ function scanManagedDirs(target: CliTargetName, managedDirs: string[]): string[]
   return hits;
 }
 
-async function probeBinary(
-  binary: CliTargetName,
-  binaryPath: string,
-  sourceDirs: string[],
-): Promise<CliInstallation> {
+async function probeBinary(binary: CliTargetName, binaryPath: string, sourceDirs: string[]): Promise<CliInstallation> {
   const source = classifySource(binaryPath, os.homedir(), sourceDirs);
   try {
     const output = await runCommandOutput(binaryPath, ['--version'], {
@@ -204,12 +193,12 @@ function pathKey(p: string): string {
  */
 export async function detectCliInstallations(
   targets: CliTargetName[],
-  options: DetectCliOptions = {},
+  options: DetectCliOptions = {}
 ): Promise<CliTargetStatus[]> {
   const home = os.homedir();
-  const managedDirs = (
-    options.managedDirs !== undefined ? options.managedDirs : defaultManagedDirs(home)
-  ).map((dir) => path.resolve(dir));
+  const managedDirs = (options.managedDirs !== undefined ? options.managedDirs : defaultManagedDirs(home)).map((dir) =>
+    path.resolve(dir)
+  );
   const pathEntries = options.pathEntries ?? (process.env.PATH ?? '').split(path.delimiter).filter(Boolean);
 
   const statuses: CliTargetStatus[] = [];
@@ -247,12 +236,9 @@ export async function detectCliInstallations(
 
     const uniqueSources = new Set(installations.map((installation) => installation.source)).size;
     const uniqueVersions = new Set(
-      installations
-        .map((installation) => installation.version)
-        .filter((version): version is string => version !== null),
+      installations.map((installation) => installation.version).filter((version): version is string => version !== null)
     ).size;
-    const conflict =
-      installations.length > 1 && (uniqueSources > 1 || uniqueVersions > 1 || pathHits.length > 1);
+    const conflict = installations.length > 1 && (uniqueSources > 1 || uniqueVersions > 1 || pathHits.length > 1);
 
     statuses.push({
       target,

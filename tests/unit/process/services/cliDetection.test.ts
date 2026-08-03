@@ -23,11 +23,7 @@ vi.mock('child_process', () => ({
   execFile: execFileMock,
 }));
 
-import {
-  classifySource,
-  detectCliInstallations,
-  isRunnableVersionOutput,
-} from '@/process/services/cliDetection';
+import { classifySource, detectCliInstallations, isRunnableVersionOutput } from '@/process/services/cliDetection';
 
 interface Hit {
   path: string;
@@ -40,7 +36,7 @@ function mockWhichVersion(target: string, hits: Hit[]): void {
       command: string,
       args: string[],
       _options: unknown,
-      cb: (err: Error | null, stdout?: string, stderr?: string) => void,
+      cb: (err: Error | null, stdout?: string, stderr?: string) => void
     ) => {
       if (command === 'which' && args[0] === '-a' && args[1] === target) {
         cb(null, hits.map((hit) => hit.path).join('\n') + (hits.length ? '\n' : ''), '');
@@ -56,7 +52,7 @@ function mockWhichVersion(target: string, hits: Hit[]): void {
         return;
       }
       cb(new Error('ENOENT: not found'), '', '');
-    },
+    }
   );
 }
 
@@ -196,7 +192,7 @@ describe('detectCliInstallations', () => {
         command: string,
         args: string[],
         _options: unknown,
-        cb: (err: Error | null, stdout?: string, stderr?: string) => void,
+        cb: (err: Error | null, stdout?: string, stderr?: string) => void
       ) => {
         if (command === 'which') {
           cb(new Error('not on PATH'), '', '');
@@ -207,7 +203,7 @@ describe('detectCliInstallations', () => {
           return;
         }
         cb(new Error('ENOENT: not found'), '', '');
-      },
+      }
     );
 
     const statuses = await detectCliInstallations(['claude'], {

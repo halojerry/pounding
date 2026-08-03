@@ -9,8 +9,9 @@ permissions:
 on:
   push:
     branches:
-      - main
-      - 'feature/**'
+      # 仅 release/ 分支推送触发全量构建（发布流程）。普通开发/合并 main/
+      # feature/ 不再触发 —— 验证由 pr-checks 的 Build Test 承担，避免每次
+      # push 烧 4 平台 ~2h 的 Actions 分钟（欠费主因）。
       - 'release/**'
     tags:
       - '*'
@@ -432,6 +433,10 @@ jobs:
       - name: Mirror release assets to COS (versioned)
         timeout-minutes: 120
         continue-on-error: true
+        # 保险：COS 只允许 release 流程（tag / 手动发布 / release 分支触发
+        # create-tag 成功）上传。即使未来有人放宽本 job 的 if，普通 push 也
+        # 不会写入 COS —— 避免非发布构建烧 COS 流量/存储。
+        if: ${{ always() && (github.event_name == 'workflow_dispatch' || needs.create-tag.result == 'success' || (startsWith(github.ref, 'refs/tags/') && !contains(github.ref, '-dev-'))) }}
         shell: bash
         env:
           COS_BUCKET: ${{ secrets.TENCENT_COS_BUCKET }}
@@ -459,6 +464,8 @@ jobs:
       - name: Mirror release assets to COS (latest)
         timeout-minutes: 120
         continue-on-error: true
+        # 保险：与 versioned 步骤一致，仅 release 流程上传。
+        if: ${{ always() && (github.event_name == 'workflow_dispatch' || needs.create-tag.result == 'success' || (startsWith(github.ref, 'refs/tags/') && !contains(github.ref, '-dev-'))) }}
         shell: bash
         env:
           COS_BUCKET: ${{ secrets.TENCENT_COS_BUCKET }}

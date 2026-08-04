@@ -257,9 +257,12 @@ describe('installManagedCli version pins', () => {
 
     // Simulate the managed npm prefix bin that npm -g would produce.
     const managedPrefix = path.join(process.env.BUN_INSTALL ?? '', 'install', 'global');
-    mkdirSync(path.join(managedPrefix, 'bin'), { recursive: true });
+    // npm's global bin dir differs per platform: unix <prefix>/bin,
+    // win32 <prefix>/ (root). Mirror the current platform's layout.
+    const managedBinDir = isWin ? managedPrefix : path.join(managedPrefix, 'bin');
+    mkdirSync(managedBinDir, { recursive: true });
     const binName = isWin ? 'claude.cmd' : 'claude';
-    writeFileSync(path.join(managedPrefix, 'bin', binName), isWin ? '@echo off\r\n' : '#!/usr/bin/env node\n');
+    writeFileSync(path.join(managedBinDir, binName), isWin ? '@echo off\r\n' : '#!/usr/bin/env node\n');
 
     const originalResourcesPath = (process as { resourcesPath?: string }).resourcesPath;
     Object.defineProperty(process, 'resourcesPath', { value: root, configurable: true });

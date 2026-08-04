@@ -817,18 +817,19 @@ jobs:
             tests/e2e/specs/pounding-portable-mode.e2e.ts \
             --reporter=line --workers=1
 
-      # Windows install smoke: silently install the NSIS build and fail if the
-      # extraction phase exceeds 5 minutes (slow lzma + AV scanning is the
-      # reported "卡在一半" symptom). Only release builds (strict_vendor) pay
-      # the extra minutes. timeout-minutes 兜底：安装器一旦卡死，默认 360
-      # 分钟的步骤超时会让整个 job 白烧数小时（DURATION 断言在安装器返回
-      # 之后才执行，卡死时永远不会触发）。
+      # Windows install smoke (仅 windows-x64)：静默安装 NSIS 包，解压阶段
+      # 超过 5 分钟即失败（慢 lzma + AV 扫描是用户报的"卡一半"症状）。
+      # 实测 windows-2022 上 x64 静默安装 79s；windows-11-arm 上 arm64 安装器
+      # 在模拟层解压 20 分钟仍未完成（与卡死无关，是 WoW64 模拟慢），因此该
+      # 门禁只对 x64 生效，arm64 由 OOB 门禁（启动+后端+MCP）覆盖。
+      # timeout-minutes 兜底：安装器一旦卡死，默认 360 分钟的步骤超时会让
+      # 整个 job 白烧数小时（DURATION 断言在安装器返回之后才执行，卡死时
+      # 永远不会触发）。
       - name: Verify NSIS installer completes quickly (Windows)
         if: >-
           success() &&
           inputs.strict_vendor &&
-          startsWith(matrix.platform, 'windows') &&
-          (!startsWith(matrix.platform, 'windows') || steps.windows-build.outputs.result == 'success')
+          matrix.platform == 'windows-x64'
         # 用 pwsh 而非 Git Bash：① bash 会把 `/S` 当 POSIX 路径转换成
         # `C:/Program Files/Git/S`，NSIS 收到坏参数后不进入静默模式，而是弹
         # GUI 向导挂在交互会话里等点击（本次 run 卡 100+ 分钟的根因）；

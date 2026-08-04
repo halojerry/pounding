@@ -32,7 +32,7 @@ const MANAGED_BACKENDS = ['claude', 'codex', 'hermes', 'opencode', 'openclaw'];
 test.describe('POUNDING CLI Chat — Preconditions', () => {
   test('at least one managed CLI agent is available', async ({ page }) => {
     await page.waitForTimeout(3000);
-    const agents = await httpGet<AgentMetadata[]>(page, '/api/agents');
+    const agents = await httpGet<AgentMetadata[]>(page, '/api/agents/management');
 
     const availableManaged = agents.filter(
       (a) =>

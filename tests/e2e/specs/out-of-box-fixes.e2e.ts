@@ -65,7 +65,7 @@ test.describe('Out-of-Box Fixes', () => {
   test('all 5 CLI agents registered in backend', async ({ page }) => {
     await page.waitForTimeout(5000);
 
-    const agents = await httpGet<AgentMetadata[]>(page, '/api/agents');
+    const agents = await httpGet<AgentMetadata[]>(page, '/api/agents/management');
     expect(agents).toBeTruthy();
     expect(Array.isArray(agents)).toBe(true);
 

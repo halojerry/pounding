@@ -47,8 +47,8 @@ test.describe('POUNDING Backend Health', () => {
 });
 
 test.describe('POUNDING Agent API', () => {
-  test('/api/agents responds (auth gated)', async () => {
-    const { status } = await apiGet('/api/agents');
+  test('/api/agents/management responds (auth gated)', async () => {
+    const { status } = await apiGet('/api/agents/management');
     // 403=Forbidden (auth required), 200=OK (authenticated)
     expect([200, 401, 403]).toContain(status);
   });

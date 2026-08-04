@@ -70,7 +70,7 @@ test.describe('POUNDING OOBE — Backend Health', () => {
   test('agent list returns all 5 managed CLIs', async ({ page }) => {
     await page.waitForTimeout(3000);
 
-    const agents = await httpGet<AgentMetadata[]>(page, '/api/agents');
+    const agents = await httpGet<AgentMetadata[]>(page, '/api/agents/management');
     expect(agents).toBeTruthy();
     expect(Array.isArray(agents)).toBe(true);
 
@@ -99,13 +99,13 @@ test.describe('POUNDING OOBE — CLI Health', () => {
     test(`${backend}: agent detected and has handshake data`, async ({ page }) => {
       await page.waitForTimeout(3000);
 
-      const agents = await httpGet<AgentMetadata[]>(page, '/api/agents');
+      const agents = await httpGet<AgentMetadata[]>(page, '/api/agents/management');
       const agent = agents.find(
         (a) => (a.backend ?? a.agent_type) === backend || (a.backend ?? a.agent_type) === `${backend}-gateway`
       );
 
       if (!agent) {
-        console.warn(`[OOBE] ${backend}: agent not found in /api/agents`);
+        console.warn(`[OOBE] ${backend}: agent not found in /api/agents/management`);
         // Don't fail — agent may need network to install first
         return;
       }

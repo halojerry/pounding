@@ -28,7 +28,7 @@ test.describe('POUNDING Conversation E2E', () => {
   test('can create conversation for each managed CLI', async ({ page }) => {
     await page.waitForTimeout(3000);
 
-    const agents = await httpGet<AgentInfo[]>(page, '/api/agents');
+    const agents = await httpGet<AgentInfo[]>(page, '/api/agents/management');
     const managedAgents = agents.filter(
       (a) =>
         a.available &&

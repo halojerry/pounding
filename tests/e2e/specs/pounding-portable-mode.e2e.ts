@@ -27,7 +27,7 @@ test.describe('POUNDING Portable Mode', () => {
 
   test('backend is accessible via HTTP', async ({ page }) => {
     await page.waitForTimeout(3000);
-    const agents = await httpGet<Array<{ backend: string; available: boolean }>>(page, '/api/agents');
+    const agents = await httpGet<Array<{ backend: string; available: boolean }>>(page, '/api/agents/management');
     expect(Array.isArray(agents)).toBe(true);
     console.log(`[Portable] Backend accessible, ${agents.length} agents detected`);
   });

@@ -1,6 +1,6 @@
 # POUNDING 发布链路统一（COS latest/ 单一目录）+ CLI 自助安装落地 PRD
 
-> 日期：2026-08-04 · 目标版本：v2.1.42（poundingcoreVersion 保持 v0.1.52，不 bump） · 状态：待评审
+> 日期：2026-08-04 · 目标版本：v2.1.42（poundingcoreVersion **v0.1.53**，含 ozon-probe v0.20.0） · 状态：待评审
 
 ## 1. 摘要
 

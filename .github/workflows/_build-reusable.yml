@@ -205,21 +205,21 @@ jobs:
           echo "=========================================="
 
       - name: Resolve Sentry release name
-        shell: bash
+        # windows-11-arm 上 Git Bash（x86_64/WoW64 模拟）被 arm64 runner
+        # 拉起时偶发启动失败（exit 0x80000004，见 actions/runner-images#14052）。
+        # 该步骤只读 package.json + 写 GITHUB_ENV，改用 PowerShell 规避。
+        shell: pwsh
         run: |
-          set -euo pipefail
-          VERSION=$(node -p "require('./package.json').version")
-
-          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
-            RELEASE_NAME="${GITHUB_REF_NAME}"
-          elif [[ "$GITHUB_REF_NAME" == "dev" ]]; then
-            RELEASE_NAME="v${VERSION}-dev-${{ steps.commit.outputs.short }}"
-          else
-            RELEASE_NAME="v${VERSION}-${{ steps.commit.outputs.short }}"
-          fi
-
-          echo "SENTRY_RELEASE=$RELEASE_NAME" >> "$GITHUB_ENV"
-          echo "Sentry release: $RELEASE_NAME"
+          $VERSION = node -p "require('./package.json').version"
+          if ($env:GITHUB_REF -like 'refs/tags/*') {
+            $RELEASE_NAME = $env:GITHUB_REF_NAME
+          } elseif ($env:GITHUB_REF_NAME -eq 'dev') {
+            $RELEASE_NAME = "v$VERSION-dev-${{ steps.commit.outputs.short }}"
+          } else {
+            $RELEASE_NAME = "v$VERSION-${{ steps.commit.outputs.short }}"
+          }
+          Add-Content -Path $env:GITHUB_ENV -Value "SENTRY_RELEASE=$RELEASE_NAME"
+          Write-Output "Sentry release: $RELEASE_NAME"
 
       - name: Configure Sentry source map upload owner
         shell: bash
@@ -803,6 +803,12 @@ jobs:
           E2E_OOB_GATE: '1'
           E2E_SCREENSHOTS: '0'
           BUN_INSTALL_REGISTRY: 'https://registry.npmjs.org/'
+          # macos-x64 产物在 macos-14(arm64) runner 上经 Rosetta 运行，架构
+          # 守卫（architectureCompatibility.ts）会拒绝启动后端。这里仅对
+          # CI OOB 放行（POUNDING_ALLOW_ROSETTA=1），真实用户行为不变。
+          POUNDING_ALLOW_ROSETTA: ${{ matrix.platform == 'macos-x64' && '1' || '' }}
+          # Rosetta 下后端冷启动 + 首启物化更慢，给 macos-x64 更长的就绪窗口。
+          E2E_BACKEND_READY_SECONDS: ${{ matrix.platform == 'macos-x64' && '300' || '120' }}
         run: |
           set -euo pipefail
           echo "OOB Gate: launching packaged app from out/ to verify startup + builtin MCP"
@@ -814,37 +820,58 @@ jobs:
       # Windows install smoke: silently install the NSIS build and fail if the
       # extraction phase exceeds 5 minutes (slow lzma + AV scanning is the
       # reported "卡在一半" symptom). Only release builds (strict_vendor) pay
-      # the extra minutes.
+      # the extra minutes. timeout-minutes 兜底：安装器一旦卡死，默认 360
+      # 分钟的步骤超时会让整个 job 白烧数小时（DURATION 断言在安装器返回
+      # 之后才执行，卡死时永远不会触发）。
       - name: Verify NSIS installer completes quickly (Windows)
         if: >-
           success() &&
           inputs.strict_vendor &&
           startsWith(matrix.platform, 'windows') &&
           (!startsWith(matrix.platform, 'windows') || steps.windows-build.outputs.result == 'success')
-        shell: bash
+        # 用 pwsh 而非 Git Bash：① bash 会把 `/S` 当 POSIX 路径转换成
+        # `C:/Program Files/Git/S`，NSIS 收到坏参数后不进入静默模式，而是弹
+        # GUI 向导挂在交互会话里等点击（本次 run 卡 100+ 分钟的根因）；
+        # ② 顺带规避 windows-11-arm 上 Git Bash 偶发崩溃（runner-images#14052）。
+        shell: pwsh
+        timeout-minutes: 20
         run: |
-          set -euo pipefail
-          case "${{ matrix.platform }}" in
-            windows-x64)   SUFFIX="win-x64" ;;
-            windows-arm64) SUFFIX="win-arm64" ;;
-          esac
-          INSTALLER=$(ls out/POUNDING-*-${SUFFIX}.exe 2>/dev/null | head -1)
-          if [ -z "$INSTALLER" ]; then
-            echo "::error::No NSIS installer found for ${{ matrix.platform }} (glob -${SUFFIX}.exe)"
+          $ErrorActionPreference = 'Stop'
+          $SUFFIX = if ('${{ matrix.platform }}' -eq 'windows-x64') { 'win-x64' } else { 'win-arm64' }
+          $INSTALLER = Get-ChildItem "out/POUNDING-*-$SUFFIX.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $INSTALLER) {
+            Write-Error "No NSIS installer found for ${{ matrix.platform }} (glob -*$SUFFIX.exe)"
             exit 1
-          fi
-          echo "Running silent install of $(basename "$INSTALLER")..."
-          START=$(date +%s)
-          "$INSTALLER" /S /D=C:\\pounding-smoke-install
-          END=$(date +%s)
-          DURATION=$((END - START))
-          echo "install-smoke-seconds=$DURATION"
-          taskkill //IM POUNDING.exe //F >/dev/null 2>&1 || true
-          if [ "$DURATION" -ge 300 ]; then
-            echo "::error::NSIS install took ${DURATION}s (>= 300s) — extraction stuck"
+          }
+
+          # OOB 门禁可能残留 POUNDING.exe，先清掉，避免安装器等待/文件占用。
+          Stop-Process -Name POUNDING -Force -ErrorAction SilentlyContinue
+
+          # Defender 实时扫描会把未签名 324MB 安装包的解压拖到几十分钟甚至
+          # 更久（用户"卡一半"在 CI 同样复现）。冒烟只验证安装器逻辑，关闭
+          # 实时监控；真实用户的 AV 延迟由 Authenticode 签名（CSC_LINK）解决。
+          try {
+            Set-MpPreference -DisableRealtimeMonitoring $true
+          } catch {
+            Write-Warning "无法关闭 Defender 实时监控，安装冒烟可能超时: $($_.Exception.Message)"
+          }
+
+          Write-Output "Running silent install of $($INSTALLER.Name)..."
+          $START = Get-Date
+          # PowerShell 不经过 Git Bash 的 POSIX 路径转换，/S 与 /D= 原样传给 NSIS。
+          $PROC = Start-Process -FilePath $INSTALLER.FullName -ArgumentList '/S', '/D=C:\pounding-smoke-install' -Wait -PassThru
+          $DURATION = ((Get-Date) - $START).TotalSeconds
+          Write-Output "install-smoke-seconds=$([math]::Round($DURATION, 1))"
+          if ($PROC.ExitCode -ne 0) {
+            Write-Error "NSIS installer exited with code $($PROC.ExitCode)"
             exit 1
-          fi
-          echo "✅ NSIS silent install completed in ${DURATION}s"
+          }
+          Stop-Process -Name POUNDING -Force -ErrorAction SilentlyContinue
+          if ($DURATION -ge 300) {
+            Write-Error "NSIS install took $([math]::Round($DURATION, 1))s (>= 300s) — extraction stuck"
+            exit 1
+          }
+          Write-Output "✅ NSIS silent install completed in $([math]::Round($DURATION, 1))s"
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v6

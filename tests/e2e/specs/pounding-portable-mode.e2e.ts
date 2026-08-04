@@ -15,7 +15,9 @@ type AgentDiagnosticReport = {
 };
 
 test.describe('POUNDING Portable Mode', () => {
-  test.setTimeout(30_000);
+  // 30s 对原生平台够用，但 macos-x64 OOB 在 arm64 runner 上经 Rosetta
+  // 启动 x64 包（若单例应用被回收需重新拉起）会明显更慢，放宽到 90s。
+  test.setTimeout(90_000);
 
   test('app starts successfully in current mode', async ({ page }) => {
     await page.waitForTimeout(5000);

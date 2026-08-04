@@ -18,6 +18,11 @@ import { httpGet, httpPost } from '../helpers';
 
 const OOB_ENABLED = process.env.E2E_OOB_GATE === '1' && process.env.E2E_PACKAGED === '1';
 
+// 后端就绪等待窗口（默认 120s）。macos-x64 的 OOB 在 arm64 runner 上用
+// Rosetta 跑 x64 包，冷启动 + 首启物化更慢，release workflow 对
+// macos-x64 注入 E2E_BACKEND_READY_SECONDS=300。
+const BACKEND_READY_SECONDS = Number(process.env.E2E_BACKEND_READY_SECONDS ?? 120);
+
 type AgentDiagnosticReport = {
   agents: Array<{
     name: string;
@@ -60,20 +65,21 @@ test.describe('OOB Gate — 开箱即用', () => {
   test('claude / hermes / openclaw 状态可报告（可用性非阻断）', async ({ page }) => {
     // 非阻断快检：后端就绪 + 每个 CLI 状态可报告（可用/未装/原因），
     // 不做安装、不轮询可用性、不因 CLI 缺失而失败。
-    test.setTimeout(180_000);
+    // 测试体超时须覆盖就绪窗口（macos-x64 为 300s）+ 后续检查余量。
+    test.setTimeout(Math.max(180_000, BACKEND_READY_SECONDS * 1000 + 30_000));
 
     // 等待后端就绪（__backendPort 由 preload 注入，httpGet 失败会抛错）。
-    // 120s 而非 60s：Intel mac（macos-x64 runner）与慢机上打包应用后端
-    // 冷启动可能超过 60s（macos-arm64 快所以早先通过）。
+    // 默认 120s：Rosetta / 慢机上打包应用后端冷启动可能超过 60s
+    // （macos-arm64 快所以早先通过）。macos-x64 由 CI 注入更长窗口。
     let report: AgentDiagnosticReport | null = null;
-    for (let i = 0; i < 24 && !report; i++) {
+    for (let i = 0; i < Math.ceil(BACKEND_READY_SECONDS / 5) && !report; i++) {
       try {
         report = await httpGet<AgentDiagnosticReport>(page, '/api/doctor/diagnose');
       } catch {
         await page.waitForTimeout(5000);
       }
     }
-    expect(report, 'backend 未在 120s 内就绪').toBeTruthy();
+    expect(report, `backend 未在 ${BACKEND_READY_SECONDS}s 内就绪`).toBeTruthy();
 
     // CLI 不再捆绑进安装器（自助管理：设置→Agent 运行环境）。桌面侧仍把
     // 托管 CLI 目录（~/.local/bin 等）注入 poundingcore 的 PATH

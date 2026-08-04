@@ -13,6 +13,15 @@ type StartupArchitectureCompatibilityEnv = {
   execFileSync?: ExecFileSync;
   isPackaged?: boolean;
   platform?: NodeJS.Platform;
+  /**
+   * CI-only escape hatch: allow a packaged x64 build to start on Apple Silicon
+   * hosts under Rosetta. Release CI verifies the x64 artifact on the arm64
+   * `macos-14` runner via Rosetta, but the startup guard would otherwise
+   * refuse to launch the backend (sysctl.proc_translated). Real users keep
+   * the guard: default behavior is unchanged unless POUNDING_ALLOW_ROSETTA=1
+   * is explicitly set (only the release OOB gate sets it).
+   */
+  allowRosetta?: boolean;
 };
 
 export type StartupArchitectureMismatchDetails = {
@@ -51,7 +60,8 @@ export function detectStartupArchitectureMismatch(
   const platform = env.platform ?? process.platform;
   const packageArch = env.arch ?? process.arch;
   const isPackaged = env.isPackaged ?? false;
-  if (platform !== 'darwin' || !isPackaged || packageArch !== 'x64') {
+  const allowRosetta = env.allowRosetta ?? process.env.POUNDING_ALLOW_ROSETTA === '1';
+  if (platform !== 'darwin' || !isPackaged || packageArch !== 'x64' || allowRosetta) {
     return null;
   }
 

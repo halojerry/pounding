@@ -524,7 +524,10 @@ function writeNpmGlobalShim(target: ManagedCliInstallTarget): void {
   if (!shimPath) return;
   const isWin = process.platform === 'win32';
   const binName = isWin ? `${target}.cmd` : target;
-  const entrypoint = path.join(MANAGED_NPM_GLOBAL_PREFIX, 'bin', binName);
+  // npm's global bin directory differs per platform:
+  //   unix:    <prefix>/bin/<name>
+  //   win32:   <prefix>/<name>.cmd  (bin lives at the prefix root)
+  const entrypoint = path.join(getManagedNpmBinDir(isWin), binName);
   if (!fs.existsSync(entrypoint)) return;
   const nodeForShim = resolveNodeForShim();
   ensureDir(path.dirname(shimPath));
@@ -536,6 +539,10 @@ function writeNpmGlobalShim(target: ManagedCliInstallTarget): void {
     encoding: 'utf8',
     mode: 0o755,
   });
+}
+
+export function getManagedNpmBinDir(isWin: boolean): string {
+  return isWin ? MANAGED_NPM_GLOBAL_PREFIX : path.join(MANAGED_NPM_GLOBAL_PREFIX, 'bin');
 }
 
 function removeCliShim(target: ManagedCliInstallTarget): void {

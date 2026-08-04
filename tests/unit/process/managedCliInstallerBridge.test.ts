@@ -57,6 +57,7 @@ vi.mock('./services/NewApiDesktopAccountService', () => ({
 import {
   buildCosCliBundleUrl,
   type CosBundleDownloader,
+  getManagedNpmBinDir,
   installManagedCli,
   installManagedCliBatch,
 } from '@/process/bridge/managedCliInstallerBridge';
@@ -297,6 +298,14 @@ describe('installManagedCli version pins', () => {
       }
       rmSync(root, { recursive: true, force: true });
     }
+  });
+
+  it('resolves the npm global bin dir per platform (win32 = prefix root, unix = prefix/bin)', () => {
+    const unixBin = getManagedNpmBinDir(false);
+    const winBin = getManagedNpmBinDir(true);
+    expect(unixBin.endsWith(path.join('install', 'global', 'bin'))).toBe(true);
+    expect(winBin.endsWith(path.join('install', 'global'))).toBe(true);
+    expect(winBin.endsWith(path.join('install', 'global', 'bin'))).toBe(false);
   });
 
   it('serializes concurrent installs of the same target (in-flight mutex)', async () => {

@@ -60,17 +60,17 @@ release 照常成功，无人发现。
 
 ## 3. 决策记录（已确认）
 
-| 编号 | 决策                                                                                                                                         |
-| ---- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| D1   | CLI 安装方式 = **用户手动一键安装**（含进度/重试/诊断），不做启动或登录自动安装                                                              |
-| D2   | 安装入口放在**助手页（/assistants）**；设置→Agent 页已隐藏，不再作为入口                                                                     |
-| D3   | COS 只发布 `releases/latest/`（平铺：latest\*.yml + 各平台安装包 + blockmap）；不再写 `releases/download/{tag}/`；版本归档 = GitHub Releases |
-| D4   | 客户端更新路径统一指向 `releases/latest/` 平铺；更新语义 = 下载新版本安装包（win exe / mac dmg+zip）覆盖安装                                 |
-| D5   | 每次 release：清空 `latest/` → 重传 → yml/blockmap 设 no-cache → **硬校验 `latest/latest.yml` 200**（去掉 `continue-on-error`）              |
-| D6   | 全部工作完成、四平台验证通过后才手动触发发布 v2.1.42；本次先不 release                                                                       |
-| D7   | Linux 不进 release/COS（不补 .deb 构建），官网不显示 Linux 下载项                                                                            |
-| D8   | latest/ 存量不单独补刷，随 v2.1.42 发布一起刷新                                                                                              |
-| D9   | workflow 重叠收敛：保留 `cos-mirror.yml`，移除 `release-distribute.yml`                                                                      |
+| 编号 | 决策                                                                                                                                                                             |
+| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D1   | CLI 安装方式 = **按需自动安装（2026-08-04 修订）**：用户首次使用未装 CLI 的助手时，自动安装对应 CLI（带进度、可取消、可重试），不做启动/登录全量自动安装；设置页保留手动安装按钮 |
+| D2   | 安装入口放在**助手页（/assistants）**；设置→Agent 页已隐藏，不再作为入口                                                                                                         |
+| D3   | COS 只发布 `releases/latest/`（平铺：latest\*.yml + 各平台安装包 + blockmap）；不再写 `releases/download/{tag}/`；版本归档 = GitHub Releases                                     |
+| D4   | 客户端更新路径统一指向 `releases/latest/` 平铺；更新语义 = 下载新版本安装包（win exe / mac dmg+zip）覆盖安装                                                                     |
+| D5   | 每次 release：清空 `latest/` → 重传 → yml/blockmap 设 no-cache → **硬校验 `latest/latest.yml` 200**（去掉 `continue-on-error`）                                                  |
+| D6   | 全部工作完成、四平台验证通过后才手动触发发布 v2.1.42；本次先不 release                                                                                                           |
+| D7   | Linux 不进 release/COS（不补 .deb 构建），官网不显示 Linux 下载项                                                                                                                |
+| D8   | latest/ 存量不单独补刷，随 v2.1.42 发布一起刷新                                                                                                                                  |
+| D9   | workflow 重叠收敛：保留 `cos-mirror.yml`，移除 `release-distribute.yml`                                                                                                          |
 
 ## 4. 实施范围
 
@@ -114,12 +114,12 @@ poundingcore 仅此一项，无 workflow/后端代码改动。
 
 ### 4.3 pounding PR-2：CLI 自助安装落地（助手页入口）
 
-| 文件                       | 改动                                                                                                                                    |
-| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `NewApiAccountContext.tsx` | 删除登录后自动触发 `runAutoInstall` 的两处（useEffect + login()），`runAutoInstall` 保留为按钮 handler；`prepStatus` 仅在用户触发时产生 |
-| 助手页 `/assistants`       | 增加"运行环境"区块（复用 `RuntimeEnvironmentPanel`），展示 claude/hermes/openclaw 来源徽章/路径/版本/状态 + [安装][升级][卸载][诊断]    |
-| 对话内联入口               | 使用未装 CLI 的助手时显示内联"未安装 → 去安装"（跳助手页运行环境区块）                                                                  |
-| i18n                       | 9 个 locale 文件同步新增 keys                                                                                                           |
+| 文件                       | 改动                                                                                                                                                    |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NewApiAccountContext.tsx` | 删除登录后自动触发 `runAutoInstall` 的两处（useEffect + login()），`runAutoInstall` 保留为按钮 handler；`prepStatus` 仅在用户触发时产生                 |
+| 助手页 `/assistants`       | 增加"运行环境"区块（复用 `RuntimeEnvironmentPanel`），展示 claude/hermes/openclaw 来源徽章/路径/版本/状态 + [安装][升级][卸载][诊断]                    |
+| 会话内按需自动安装         | 选择未装 CLI 的助手时（guid 页），自动安装该 CLI（`useCliOnDemandInstall` + `CliAutoInstallBanner` 进度横幅，可取消/重试），装完刷新 agent 目录立即可用 |
+| i18n                       | 9 个 locale 文件同步新增 keys                                                                                                                           |
 
 **测试**
 

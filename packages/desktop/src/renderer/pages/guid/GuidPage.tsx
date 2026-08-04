@@ -9,7 +9,8 @@ import { buildGuidSlashCommands } from '@/common/chat/slash/guidSlashCommands';
 import type { SlashCommandItem } from '@/common/chat/slash/types';
 import type { IMcpServer, TProviderWithModel } from '@/common/config/storage';
 import { resolveLocaleKey } from '@/common/utils';
-import type { AssistantDetail } from '@/common/types/agent/assistantTypes';
+import { assistantRuntimeKey, type AssistantDetail } from '@/common/types/agent/assistantTypes';
+import { runtimeKeyToCliTarget, useCliOnDemandInstall } from '@/renderer/hooks/cli/useCliOnDemandInstall';
 
 import { useInputFocusRing } from '@/renderer/hooks/chat/useInputFocusRing';
 import { appendPromptToDraft } from '@/renderer/hooks/chat/useSendBoxDraft';
@@ -17,6 +18,7 @@ import { getFuzzyMatchIndices, useSlashCommandController } from '@/renderer/hook
 import { openExternalUrl } from '@/renderer/utils/platform';
 import SlashCommandMenu, { type SlashCommandMenuItem } from '@/renderer/components/chat/SlashCommandMenu';
 import AssistantSelectionArea from './components/AssistantSelectionArea';
+import CliAutoInstallBanner from './components/CliAutoInstallBanner';
 import GuidActionRow from './components/GuidActionRow';
 import GuidInputCard from './components/GuidInputCard';
 import GuidModelSelector from './components/GuidModelSelector';
@@ -334,6 +336,25 @@ const GuidPage: React.FC = () => {
     const candidates = new Set([selectedId, `builtin-${strippedId}`, strippedId]);
     return agentSelection.assistants.find((item) => candidates.has(item.id));
   }, [agentSelection.assistants, selectedAssistantId, agentSelection.selectedAssistantId]);
+
+  // On-demand CLI auto-install: when the selected assistant needs a
+  // POUNDING-managed runtime (claude/hermes/openclaw) that is not available,
+  // install it automatically with a cancelable progress banner.
+  const selectedCliTarget = useMemo(() => {
+    const selected = agentSelection.selectedAssistant;
+    if (!selected || agentSelection.selectedAssistantAvailable) return null;
+    return runtimeKeyToCliTarget(assistantRuntimeKey(selected));
+  }, [agentSelection.selectedAssistant, agentSelection.selectedAssistantAvailable]);
+
+  const cliAutoInstall = useCliOnDemandInstall();
+  useEffect(() => {
+    if (selectedCliTarget) {
+      cliAutoInstall.requestInstall(selectedCliTarget);
+    } else {
+      cliAutoInstall.cancel();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCliTarget]);
   const selectedAssistantPrompts = useMemo(() => {
     if (!selectedAssistantId) return [];
     const resolvedPrompts =
@@ -685,6 +706,14 @@ const GuidPage: React.FC = () => {
             assistants={agentSelection.assistants}
             localeKey={localeKey}
             onSelectAssistant={handleSelectAssistant}
+          />
+
+          <CliAutoInstallBanner
+            status={cliAutoInstall.status}
+            error={cliAutoInstall.error}
+            target={cliAutoInstall.target}
+            onCancel={cliAutoInstall.cancel}
+            onRetry={cliAutoInstall.retry}
           />
 
           <GuidInputCard

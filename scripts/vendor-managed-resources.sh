@@ -68,6 +68,18 @@ node_platform_key() {
   esac
 }
 
+python_platform_key() {
+  case "$1" in
+    darwin-arm64)  echo 'aarch64-apple-darwin' ;;
+    darwin-x64)    echo 'x86_64-apple-darwin' ;;
+    linux-x64)     echo 'x86_64-unknown-linux-gnu' ;;
+    linux-arm64)   echo 'aarch64-unknown-linux-gnu' ;;
+    win32-x64)     echo 'x86_64-pc-windows-msvc' ;;
+    win32-arm64)   echo 'aarch64-pc-windows-msvc' ;;
+    *) echo "ERROR: unsupported python target $1" >&2; exit 1 ;;
+  esac
+}
+
 # ---------------------------------------------------------------------------
 # 1. Node.js runtime
 # ---------------------------------------------------------------------------
@@ -106,6 +118,34 @@ vendor_node() {
     rm -f "${tmp}"
     echo "  ${node_plat}: done (${dest})"
   done
+}
+
+# ---------------------------------------------------------------------------
+# 1b. Python 3.12 runtime (hermes offline install)
+# ---------------------------------------------------------------------------
+vendor_python() {
+  echo "==> Python v${PYTHON_VERSION} (python-build-standalone ${PYTHON_RELEASE})"
+  # Python runtime is per-platform (single runtimes/python/ dir), so vendor
+  # only the first requested target; use --target to pick a specific one.
+  local first_target="${TARGETS%%,*}"
+  local py_plat filename url tmp dest
+  py_plat="$(python_platform_key "${first_target}")"
+  dest="${VENDOR_DIR}/runtimes/python"
+  if [ -f "${dest}/bin/python3" ] || [ -f "${dest}/python.exe" ]; then
+    echo "  ${first_target}: already vendored"
+    return
+  fi
+  filename="cpython-${PYTHON_VERSION}+${PYTHON_RELEASE}-${py_plat}-install_only.tar.gz"
+  url="https://github.com/astral-sh/python-build-standalone/releases/download/${PYTHON_RELEASE}/${filename}"
+  tmp="/tmp/${filename}"
+  echo "  ${first_target}: downloading"
+  download "${url}" "${tmp}" || return 1
+  echo "  ${first_target}: extracting"
+  rm -rf "${dest}"
+  mkdir -p "${dest}"
+  tar -xzf "${tmp}" -C "${dest}" --strip-components=1
+  rm -f "${tmp}"
+  echo "  ${first_target}: done (${dest})"
 }
 
 # ---------------------------------------------------------------------------
@@ -303,6 +343,8 @@ main() {
   mkdir -p "${VENDOR_DIR}"
 
   vendor_node
+  echo ""
+  vendor_python || echo "  python: FAILED (skipping — hermes will fall back to system python3)"
   echo ""
   vendor_chrome_devtools_mcp
   echo ""

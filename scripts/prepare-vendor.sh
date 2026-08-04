@@ -68,6 +68,44 @@ mkdir -p "${OUT_DIR}"
 # relative dest path would resolve against the wrong CWD afterwards.
 OUT_DIR="$(cd "${OUT_DIR}" && pwd)"
 
+# ── 0. Python 3.12 runtime (hermes offline install) ──────────────────────
+
+PYTHON_VERSION="${PYTHON_VERSION:-3.12.13}"
+PYTHON_RELEASE="${PYTHON_RELEASE:-20260728}"
+
+python_platform_key() {
+  case "$1" in
+    darwin-arm64)  echo 'aarch64-apple-darwin' ;;
+    darwin-x64)    echo 'x86_64-apple-darwin' ;;
+    linux-x64)     echo 'x86_64-unknown-linux-gnu' ;;
+    linux-arm64)   echo 'aarch64-unknown-linux-gnu' ;;
+    win32-x64)     echo 'x86_64-pc-windows-msvc' ;;
+    win32-arm64)   echo 'aarch64-pc-windows-msvc' ;;
+    *) echo "ERROR: unsupported python target $1" >&2; exit 1 ;;
+  esac
+}
+
+vendor_python() {
+  local py_plat filename url tmp dest
+  py_plat="$(python_platform_key "${TARGET}")"
+  dest="${OUT_DIR}/runtimes/python"
+  if [ -f "${dest}/bin/python3" ] || [ -f "${dest}/python.exe" ]; then
+    echo "  python: already vendored"
+    return 0
+  fi
+  filename="cpython-${PYTHON_VERSION}+${PYTHON_RELEASE}-${py_plat}-install_only.tar.gz"
+  url="https://github.com/astral-sh/python-build-standalone/releases/download/${PYTHON_RELEASE}/${filename}"
+  tmp="/tmp/${filename}"
+  echo "  python: downloading ${url}"
+  download "${url}" "${tmp}" || return 1
+  echo "  python: extracting"
+  rm -rf "${dest}"
+  mkdir -p "${dest}"
+  tar -xzf "${tmp}" -C "${dest}" --strip-components=1
+  rm -f "${tmp}"
+  echo "  python: done (${dest})"
+}
+
 # ── 1. chrome-devtools-mcp ───────────────────────────────────────────────
 
 CHROME_DEVTOOLS_MCP_VERSION="${CHROME_DEVTOOLS_MCP_VERSION:-1.4.0}"
@@ -227,6 +265,8 @@ vendor_acp() {
 # 仍可经 workflow 的 strict_vendor 开关保持 warning。
 FAILED=0
 
+echo ""
+vendor_python || FAILED=1
 echo ""
 vendor_chrome_devtools_mcp || FAILED=1
 echo ""

@@ -57,6 +57,7 @@ vi.mock('./services/NewApiDesktopAccountService', () => ({
 import {
   buildCosCliBundleUrl,
   type CosBundleDownloader,
+  getManagedNpmBinDir,
   installManagedCli,
   installManagedCliBatch,
 } from '@/process/bridge/managedCliInstallerBridge';
@@ -64,6 +65,14 @@ import {
 describe('installManagedCli version pins', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Some tests set a persistent mockImplementation; reset it so it does
+    // not leak into subsequent tests (clearAllMocks only clears call data).
+    execFileMock.mockReset();
+    // The hoisted HOME/BUN_INSTALL are fixed tmp paths shared across tests
+    // and runs — clean leftover shims/prefix so no CLI ever looks
+    // "already installed" via the filesystem (short-circuits install paths).
+    rmSync(path.join(process.env.HOME!, '.local'), { recursive: true, force: true });
+    rmSync(path.join(process.env.BUN_INSTALL!, 'install'), { recursive: true, force: true });
     httpRequestMock.mockResolvedValue(undefined);
     reconcileMock.mockResolvedValue(undefined);
   });
@@ -165,6 +174,141 @@ describe('installManagedCli version pins', () => {
       }
       rmSync(root, { recursive: true, force: true });
     }
+  });
+
+  it('uses the bundled Python runtime for hermes instead of system python3', async () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'pounding-managed-py-'));
+    const platformKey = `${process.platform}-${process.arch}`;
+    const isWin = process.platform === 'win32';
+    // Fixture mirrors the managed-resources layout for the CURRENT platform:
+    //   runtimes/python/bin/python3 (unix) / runtimes/python/python.exe (win32)
+    const pythonRoot = path.join(root, 'bundled-poundingcore', platformKey, 'managed-resources', 'runtimes', 'python');
+    const pythonDir = isWin ? pythonRoot : path.join(pythonRoot, 'bin');
+    const pythonName = isWin ? 'python.exe' : 'python3';
+    mkdirSync(pythonDir, { recursive: true });
+    writeFileSync(path.join(pythonDir, pythonName), '');
+
+    const originalResourcesPath = (process as { resourcesPath?: string }).resourcesPath;
+    Object.defineProperty(process, 'resourcesPath', { value: root, configurable: true });
+    try {
+      let venvPython: string | null = null;
+      let installed = false;
+      execFileMock.mockImplementation((cmd: string, args: string[], _o: unknown, cb: (e?: Error) => void) => {
+        const argv = args as string[];
+        if (argv.includes('-m') && argv.includes('venv')) {
+          // create venv with the bundled python
+          venvPython = cmd;
+          cb();
+          return { unref: () => {} };
+        }
+        if (argv.includes('pip') && argv.includes('install')) {
+          installed = true;
+          cb();
+          return { unref: () => {} };
+        }
+        // probe (which hermes): only reports installed after pip succeeded
+        if (installed) {
+          cb();
+        } else {
+          cb(new Error('not found'));
+        }
+        return { unref: () => {} };
+      });
+
+      const [result] = await installManagedCliBatch(['hermes']);
+
+      expect(result.success).toBe(true);
+      expect(venvPython).toBe(path.join(pythonDir, pythonName));
+    } finally {
+      if (originalResourcesPath === undefined) {
+        delete (process as { resourcesPath?: string }).resourcesPath;
+      } else {
+        Object.defineProperty(process, 'resourcesPath', { value: originalResourcesPath, configurable: true });
+      }
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('pins npm global installs to the managed prefix and writes a claude shim', async () => {
+    // The hoisted test HOME/BUN_INSTALL are fixed tmp paths shared across
+    // runs — clean any leftover shims/prefix from previous runs first.
+    rmSync(path.join(process.env.HOME!, '.local'), { recursive: true, force: true });
+    rmSync(path.join(process.env.BUN_INSTALL!, 'install'), { recursive: true, force: true });
+
+    const root = mkdtempSync(path.join(tmpdir(), 'pounding-managed-prefix-'));
+    const platformKey = `${process.platform}-${process.arch}`;
+    const isWin = process.platform === 'win32';
+    const nodeDir = isWin
+      ? path.join(root, 'bundled-poundingcore', platformKey, 'managed-resources', 'node', `node-v24.0.0-${platformKey}`)
+      : path.join(
+          root,
+          'bundled-poundingcore',
+          platformKey,
+          'managed-resources',
+          'node',
+          `node-v24.0.0-${platformKey}`,
+          'bin'
+        );
+    const nodeName = isWin ? 'node.exe' : 'node';
+    const npmName = isWin ? 'npm.cmd' : 'npm';
+    mkdirSync(nodeDir, { recursive: true });
+    writeFileSync(path.join(nodeDir, nodeName), '');
+    writeFileSync(path.join(nodeDir, npmName), '');
+
+    // Simulate the managed npm prefix bin that npm -g would produce.
+    const managedPrefix = path.join(process.env.BUN_INSTALL ?? '', 'install', 'global');
+    // npm's global bin dir differs per platform: unix <prefix>/bin,
+    // win32 <prefix>/ (root). Mirror the current platform's layout.
+    const managedBinDir = isWin ? managedPrefix : path.join(managedPrefix, 'bin');
+    mkdirSync(managedBinDir, { recursive: true });
+    const binName = isWin ? 'claude.cmd' : 'claude';
+    writeFileSync(path.join(managedBinDir, binName), isWin ? '@echo off\r\n' : '#!/usr/bin/env node\n');
+
+    const originalResourcesPath = (process as { resourcesPath?: string }).resourcesPath;
+    Object.defineProperty(process, 'resourcesPath', { value: root, configurable: true });
+    try {
+      let installEnv: NodeJS.ProcessEnv | null = null;
+      execFileMock.mockImplementation(
+        (cmd: string, args: string[], opts: { env?: NodeJS.ProcessEnv }, cb: (e?: Error) => void) => {
+          const argv = args as string[];
+          if (argv.includes('install')) installEnv = opts.env ?? null;
+          if (argv.includes('-g') && argv.includes('install')) {
+            // After npm install, the real bin would exist; our fixture already has it.
+            cb();
+            return { unref: () => {} };
+          }
+          // probe (which claude): not installed until after install
+          if (installEnv) {
+            cb();
+          } else {
+            cb(new Error('not found'));
+          }
+          return { unref: () => {} };
+        }
+      );
+
+      const [result] = await installManagedCliBatch(['claude']);
+
+      expect(result.success).toBe(true);
+      expect(installEnv?.npm_config_prefix).toBe(managedPrefix);
+      const shimPath = path.join(process.env.HOME!, '.local', 'bin', isWin ? 'claude.cmd' : 'claude');
+      expect(readFileSync(shimPath, 'utf8')).toContain(managedPrefix);
+    } finally {
+      if (originalResourcesPath === undefined) {
+        delete (process as { resourcesPath?: string }).resourcesPath;
+      } else {
+        Object.defineProperty(process, 'resourcesPath', { value: originalResourcesPath, configurable: true });
+      }
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('resolves the npm global bin dir per platform (win32 = prefix root, unix = prefix/bin)', () => {
+    const unixBin = getManagedNpmBinDir(false);
+    const winBin = getManagedNpmBinDir(true);
+    expect(unixBin.endsWith(path.join('install', 'global', 'bin'))).toBe(true);
+    expect(winBin.endsWith(path.join('install', 'global'))).toBe(true);
+    expect(winBin.endsWith(path.join('install', 'global', 'bin'))).toBe(false);
   });
 
   it('serializes concurrent installs of the same target (in-flight mutex)', async () => {

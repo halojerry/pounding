@@ -35,6 +35,7 @@ import './process/bridge/feedbackBridge';
 import { wasLaunchedAtLogin } from '@process/bridge/applicationBridge';
 import { onLanguageChanged } from './process/bridge/systemSettingsBridge';
 import { setInitialLanguage } from '@process/services/i18n';
+import { startupSelfCheck } from './process/services/DoctorService';
 import { setupApplicationMenu } from './process/utils/appMenu';
 import { startWebHost } from '@aionui/web-host';
 import { initializeZoomFactor, setupZoomForWindow } from './process/utils/zoom';
@@ -509,6 +510,11 @@ function markBackendReady(backendPort: number, source: string): void {
   broadcastBackendStartupState(null);
   void ensureAdminUserOnce(backendPort);
   scheduleBackendMigrations();
+  // Real startup self-check: diagnose managed CLI / runtime availability and
+  // self-heal "installed but broken" agents in the background. Never blocks
+  // backend/window startup, and never auto-installs CLIs that are simply
+  // missing (that behavior was deliberately removed).
+  void startupSelfCheck();
 }
 
 function resolveDebugBackendStartupFailure(): BackendStartupFailureInfo | null {

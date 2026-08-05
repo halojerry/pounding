@@ -145,6 +145,24 @@ jobs:
       - name: Run postinstall
         run: npm run postinstall || true
 
+      # Regression guard for the v2.1.42 Windows CLI-install bug: the desktop
+      # now runs npm as `node <npm-cli.js>` (execFile cannot launch npm.cmd
+      # directly on Windows → spawn EINVAL). Prove that exact mechanism works
+      # on a real Windows runner with a tiny package into a temp prefix.
+      - name: Smoke — node + npm-cli.js global install (Windows .cmd regression)
+        if: matrix.os == 'windows-2022'
+        shell: pwsh
+        run: |
+          $nodeDir = Split-Path (Get-Command node).Source
+          $npmCli = Join-Path $nodeDir 'node_modules\npm\bin\npm-cli.js'
+          if (-not (Test-Path $npmCli)) { throw "npm-cli.js not found next to node: $npmCli" }
+          $prefix = Join-Path $env:RUNNER_TEMP 'pounding-npm-smoke'
+          New-Item -ItemType Directory -Path $prefix -Force | Out-Null
+          node $npmCli install -g json5@2.2.3 --prefix $prefix --no-audit --no-fund
+          $bin = Join-Path $prefix 'json5.cmd'
+          if (-not (Test-Path $bin)) { throw "npm global bin not created at $bin" }
+          Write-Host "npm-cli.js smoke OK: $bin"
+
       - name: Run extension system tests
         run: bunx vitest run
 

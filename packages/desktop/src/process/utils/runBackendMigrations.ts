@@ -204,6 +204,92 @@ function buildBuiltinBrowserServer(): McpImportServer {
   };
 }
 
+function resolveBundledNodeRoot(): string {
+  // Packaged app: managed node runtime is shipped under
+  // resources/bundled-poundingcore/<platform>-<arch>/managed-resources/node/
+  // (exported by poundingcore `prepare-managed-resources`). The old dev
+  // layout (~/.pounding/runtime/node) does not exist in a packaged app, so
+  // without this the seed commands fell back to bare `node`, which is not on
+  // PATH on Windows → chrome-devtools / image-gen MCP could never start.
+  if (!process.resourcesPath) return '';
+  const platformKey = `${process.platform}-${process.arch}`;
+  const base = path.join(process.resourcesPath, 'bundled-poundingcore', platformKey, 'managed-resources', 'node');
+  if (!fs.existsSync(base)) return '';
+  const versions = fs.readdirSync(base).filter((d) => d.startsWith('node-v'));
+  if (versions.length === 0) return '';
+  const root = path.join(base, versions[0]);
+  const bin = process.platform === 'win32' ? 'node.exe' : path.join('bin', 'node');
+  return fs.existsSync(path.join(root, bin)) ? root : '';
+}
+
+function resolveManagedNodeRoot(): string {
+  // 1. Bundled managed node runtime (packaged app) — same layout the backend
+  //    exports into resources/bundled-poundingcore/.
+  const bundledRoot = resolveBundledNodeRoot();
+  if (bundledRoot) return bundledRoot;
+  // 2. Legacy dev layout: ~/.pounding/runtime/node (dev / unpackaged runs).
+  const homedir = require('os').homedir();
+  const dataDirName = getEnvAwareName('.pounding');
+  const managedRoot = path.join(homedir, dataDirName, 'runtime', 'node');
+  if (fs.existsSync(managedRoot)) {
+    const versions = fs.readdirSync(managedRoot).filter((d) => d.startsWith('node-v'));
+    if (versions.length > 0) {
+      return path.join(managedRoot, versions[0]);
+    }
+  }
+  return ''; // fall back to system PATH
+}
+
+function resolveManagedNodeCommand(): string {
+  const root = resolveManagedNodeRoot();
+  if (!root) return 'node';
+  const isWin = process.platform === 'win32';
+  // Windows Node.js distribution: node.exe is at the root level
+  // Unix Node.js distribution: bin/node
+  return isWin ? path.join(root, 'node.exe') : path.join(root, 'bin', 'node');
+}
+
+function resolveManagedNodeModule(pkgName: string, entry: string): string {
+  const root = resolveManagedNodeRoot();
+  if (!root) return ''; // fall back to npx download
+
+  // Managed Node's global modules are installed to {root}/tools/global/lib/node_modules/
+  // (npm prefix = root/tools/global). Also check the legacy {root}/lib/node_modules/ path.
+  const candidates = [
+    path.join(root, 'tools', 'global', 'lib', 'node_modules', pkgName, entry),
+    path.join(root, 'lib', 'node_modules', pkgName, entry),
+  ];
+  for (const pkgPath of candidates) {
+    if (fs.existsSync(pkgPath)) return pkgPath;
+  }
+  return '';
+}
+
+/** Copy a compiled builtin MCP script from the build output to the data
+ *  directory so the Rust ACP injection path can find it. */
+function materializeBuiltinMcpScript(scriptName: string, targetName: string): void {
+  try {
+    const src = getBuiltinMcpScriptPath(scriptName);
+    if (!fs.existsSync(src)) {
+      console.warn(`[POUNDING] Builtin MCP script not found: ${src}`);
+      return;
+    }
+    const destDir = path.join(getDataPath(), 'builtin-mcp');
+    fs.mkdirSync(destDir, { recursive: true });
+    const dest = path.join(destDir, targetName);
+    // Skip if already up-to-date (same size)
+    if (fs.existsSync(dest)) {
+      const srcStat = fs.statSync(src);
+      const destStat = fs.statSync(dest);
+      if (srcStat.size === destStat.size) return;
+    }
+    fs.copyFileSync(src, dest);
+    console.log(`[POUNDING] Materialized builtin MCP script: ${dest}`);
+  } catch (err) {
+    console.warn(`[POUNDING] Failed to materialize builtin MCP script ${scriptName}:`, err);
+  }
+}
+
 function buildDefaultMcpServers(): McpImportServer[] {
   const chromeConfig = {
     // Upstream default: chrome-devtools-mcp is fetched on demand via npx. The

@@ -196,8 +196,8 @@ function getNpmEnv(registry: string): NodeJS.ProcessEnv {
   return {
     npm_config_registry: registry,
     NPM_CONFIG_REGISTRY: registry,
-    // Global installs stay inside the POUNDING-managed dir (same location
-    // materializeFromBundled uses), not the user's system npm prefix.
+    // Global installs stay inside the POUNDING-managed dir (self-contained,
+    // portable-safe), not the user's system npm prefix.
     npm_config_prefix: MANAGED_NPM_GLOBAL_PREFIX,
   };
 }
@@ -348,131 +348,38 @@ export function resolveBundledPythonBinary(): string | null {
   return fs.existsSync(candidate) ? candidate : null;
 }
 
-function copyDirContents(src: string, dest: string): void {
-  if (!fs.existsSync(src)) return;
-  ensureDir(dest);
-  for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
-    const srcPath = path.join(src, entry.name);
-    const destPath = path.join(dest, entry.name);
-    if (entry.isDirectory()) {
-      copyDirContents(srcPath, destPath);
-    } else {
-      try {
-        fs.linkSync(srcPath, destPath);
-      } catch {
-        fs.copyFileSync(srcPath, destPath);
-      }
-    }
-  }
-}
-
-function materializeFromBundled(descriptor: ManagedCliDescriptor, bundledDir: string): void {
-  const manifestPath = path.join(bundledDir, 'manifest.json');
-  if (!fs.existsSync(manifestPath)) {
-    throw new Error(`Bundle manifest missing at ${manifestPath}`);
-  }
-  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
-  const entrypointRel: string | undefined = manifest.entrypoint;
-  if (!entrypointRel) {
-    throw new Error(`Bundle manifest missing entrypoint at ${manifestPath}`);
-  }
-
-  const entrypointAbs = path.join(bundledDir, entrypointRel);
-  if (!fs.existsSync(entrypointAbs)) {
-    throw new Error(`Bundle entrypoint not found: ${entrypointAbs}`);
-  }
-
-  const kind: string = manifest.kind || 'node'; // default 'node' for backward compat
-
-  if (kind === 'native') {
-    // ── Native binary (e.g. Claude) ──────────────────────────────────
-    // Copy the binary next to the detect path, then write a launcher shim.
-    // Shims with absolute paths break on app update; a copied binary is
-    // self-contained and survives updates.
-    //
-    // Windows: detectPaths[0] is a `.cmd` shim path — we must NOT copy the
-    // native binary content into the `.cmd` file (it would never execute).
-    // Copy the binary as `claude.exe` beside it and have the `.cmd` shim
-    // launch that. Unix: copy the binary straight to the detect path.
-    const shimPath = descriptor.detectPaths?.[0];
-    if (!shimPath) return;
-    if (process.platform === 'win32') {
-      const exePath = shimPath.replace(/\.cmd$/i, '.exe');
-      ensureDir(path.dirname(shimPath));
-      if (!fs.existsSync(exePath)) {
-        fs.copyFileSync(entrypointAbs, exePath);
-      }
-      if (!fs.existsSync(shimPath)) {
-        fs.writeFileSync(shimPath, `@echo off\r\n"${exePath}" %*\r\n`, { encoding: 'utf8' });
-      }
-      return;
-    }
-    if (!fs.existsSync(shimPath)) {
-      ensureDir(path.dirname(shimPath));
-      fs.copyFileSync(entrypointAbs, shimPath);
-      fs.chmodSync(shimPath, 0o755);
-    }
-    return;
-  }
-
-  // ── Node.js package ──────────────────────────────────────────────
-  // Copy node_modules to the global install dir so the CLI can resolve
-  // its dependencies. Then create a launcher at the detect path.
-  //   Unix: a script with a #!/usr/bin/env node shebang (no absolute-path
-  //         shim that breaks on app update).
-  //   Windows: a `.cmd` shim that invokes the managed node with the
-  //         entrypoint (a shebang script is not executable on Windows).
-
-  const bundledNodeModules = path.join(bundledDir, 'node_modules');
-  if (fs.existsSync(bundledNodeModules)) {
-    const targetNodeModules = path.join(BUN_HOME_DIR, 'install', 'global', 'node_modules');
-    ensureDir(targetNodeModules);
-    const pkgParts = entrypointRel.split(path.sep);
-    const scopeIdx = pkgParts.indexOf('node_modules');
-    if (scopeIdx >= 0 && pkgParts.length > scopeIdx + 2) {
-      const srcPkg = path.join(bundledNodeModules, pkgParts[scopeIdx + 1]!);
-      const destPkg = path.join(targetNodeModules, pkgParts[scopeIdx + 1]!);
-      copyDirContents(srcPkg, destPkg);
-      const srcBin = path.join(bundledNodeModules, '.bin');
-      const destBin = path.join(targetNodeModules, '.bin');
-      if (fs.existsSync(srcBin)) copyDirContents(srcBin, destBin);
-    }
-  }
-
-  const shimPath = descriptor.detectPaths?.[0];
-  if (!shimPath || fs.existsSync(shimPath)) return;
-  ensureDir(path.dirname(shimPath));
-  if (process.platform === 'win32') {
-    const nodeForShim = resolveNodeForShim();
-    fs.writeFileSync(shimPath, `@echo off\r\n"${nodeForShim}" "${entrypointAbs}" %*\r\n`, { encoding: 'utf8' });
-    return;
-  }
-  const content = fs.readFileSync(entrypointAbs, 'utf-8');
-  const withShebang = content.startsWith('#!') ? content : `#!/usr/bin/env node\n${content}`;
-  fs.writeFileSync(shimPath, withShebang, { encoding: 'utf8', mode: 0o755 });
-}
-
-function resolveManagedNpm(): string {
-  // Use the managed Node.js runtime's npm (already bundled in managed-resources).
-  // Skips the need to download bun — everything is offline from the installer.
+/**
+ * Resolve the bundled Node.js runtime + its npm-cli.js entrypoint.
+ *
+ * Windows cannot `execFile` a `.cmd`/`.bat` shim directly (spawn EINVAL), so
+ * invoking the bundled npm via `node <npm-cli.js>` works on every platform
+ * without a shell. npm-cli.js lives at `<nodeRoot>/node_modules/npm/bin/`
+ * in official Node distributions (node.exe at root on win32, bin/node on unix).
+ */
+function resolveManagedNpmCli(): { node: string; npmCliJs: string } | null {
   const nodeForShim = resolveNodeForShim();
-  if (nodeForShim) {
-    const npmBin =
-      process.platform === 'win32'
-        ? path.join(path.dirname(nodeForShim), 'npm.cmd')
-        : path.join(path.dirname(nodeForShim), 'npm');
-    if (fs.existsSync(npmBin)) return npmBin;
-  }
-  // Fallback to system npm (dev environment or unmanaged installation)
-  if (fs.existsSync('/usr/bin/npm')) return '/usr/bin/npm';
-  return getNpmCommand();
+  // `'node'` is the fallback of resolveNodeForShim (no bundled runtime);
+  // there is no managed npm-cli.js to point at in that case.
+  if (!nodeForShim || nodeForShim === 'node') return null;
+  const nodeRoot = process.platform === 'win32' ? path.dirname(nodeForShim) : path.dirname(path.dirname(nodeForShim));
+  const npmCliJs = path.join(nodeRoot, 'node_modules', 'npm', 'bin', 'npm-cli.js');
+  if (!fs.existsSync(nodeForShim) || !fs.existsSync(npmCliJs)) return null;
+  return { node: nodeForShim, npmCliJs };
 }
 
-async function getGlobalJsCommand(): Promise<string> {
-  const managedNpm = resolveManagedNpm();
-  if (managedNpm && fs.existsSync(managedNpm)) return managedNpm;
-  // Dev environment / unmanaged install: fall back to npm_execpath or `npm`.
-  return getNpmCommand();
+/**
+ * Resolve the command + leading args used to run npm.
+ *
+ * Managed runtime present → `node <npm-cli.js> …` (no `.cmd`, works on
+ * Windows/macOS/Linux). Otherwise fall back to the system `npm` command
+ * (dev environment / unmanaged installation).
+ */
+function getNpmInvocation(): { command: string; args: string[] } {
+  const managed = resolveManagedNpmCli();
+  if (managed) {
+    return { command: managed.node, args: [managed.npmCliJs] };
+  }
+  return { command: getNpmCommand(), args: [] };
 }
 
 async function installNpmPackage(
@@ -480,13 +387,15 @@ async function installNpmPackage(
   options: { version?: string; timeoutMs?: number } = {}
 ): Promise<void> {
   const spec = options.version ? `${packageName}@${options.version}` : packageName;
-  // Prefer the bundled npm from managed-resources so packaged installs never
-  // depend on the user's system npm (missing on many Windows machines).
-  const npmCommand = await getGlobalJsCommand();
+  // Prefer the bundled Node.js runtime's npm (managed-resources) so packaged
+  // installs never depend on the user's system npm (missing on many Windows
+  // machines). npm runs as `node <npm-cli.js>` — never execFile npm.cmd
+  // directly (Windows throws spawn EINVAL on .cmd).
+  const { command, args } = getNpmInvocation();
   let lastError: unknown;
   for (const registry of [NPM_MIRROR_REGISTRY, NPM_DEFAULT_REGISTRY]) {
     try {
-      await runCommand(npmCommand, ['install', '-g', spec], {
+      await runCommand(command, [...args, 'install', '-g', spec], {
         env: getNpmEnv(registry),
         timeoutMs: options.timeoutMs ?? NPM_INSTALL_TIMEOUT_MS,
       });
@@ -500,7 +409,8 @@ async function installNpmPackage(
 
 async function uninstallNpmPackage(packageName: string): Promise<void> {
   try {
-    await runCommand(await getGlobalJsCommand(), ['uninstall', '-g', packageName], {
+    const { command, args } = getNpmInvocation();
+    await runCommand(command, [...args, 'uninstall', '-g', packageName], {
       env: getNpmEnv(NPM_DEFAULT_REGISTRY),
     });
   } catch {
@@ -659,100 +569,6 @@ async function commandExists(command: string): Promise<boolean> {
   }
 }
 
-// ── COS on-demand fallback ────────────────────────────────────────────
-// When the official install (npm/pip) fails — e.g. blocked network — the
-// desktop downloads a pre-built bundle from POUNDING COS instead of failing.
-// The published artifact at `<target>/<version>/<platform>/bundle.tar.gz`
-// contains the same layout the old installer-embedded bundle used:
-// `manifest.json` (+ `entrypoint`, optional `node_modules/`), so the existing
-// `materializeFromBundled` path writes the managed shim unchanged.
-const COS_CLI_BASE_URL = 'https://yss-1256275613.cos.ap-guangzhou.myqcloud.com/pounding/cli';
-const COS_DOWNLOAD_TIMEOUT_MS = 300_000;
-const COS_EXTRACT_TIMEOUT_MS = 120_000;
-
-export type CosBundleDownloader = (target: ManagedCliInstallTarget, version: string, destDir: string) => Promise<void>;
-
-function getCliVersion(target: ManagedCliInstallTarget): string {
-  switch (target) {
-    case 'claude':
-      return CLAUDE_CLI_VERSION;
-    case 'hermes':
-      return HERMES_VERSION;
-    case 'openclaw':
-      return OPENCLAW_VERSION;
-    default:
-      return 'latest';
-  }
-}
-
-export function buildCosCliBundleUrl(target: ManagedCliInstallTarget): string {
-  const version = getCliVersion(target);
-  const platformKey = `${process.platform}-${process.arch}`;
-  return `${COS_CLI_BASE_URL}/${target}/${version}/${platformKey}/bundle.tar.gz`;
-}
-
-function resolveCliFallbackCacheDir(target: ManagedCliInstallTarget, version: string): string {
-  const platformKey = `${process.platform}-${process.arch}`;
-  return path.join(getPOUNDINGDevDir(), 'runtime', 'cli', target, version, platformKey);
-}
-
-async function downloadToFile(url: string, destFile: string, timeoutMs: number): Promise<void> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  timer.unref?.();
-  try {
-    const response = await fetch(url, { redirect: 'follow', signal: controller.signal });
-    if (!response.ok || !response.body) {
-      throw new Error(`Download failed: HTTP ${response.status} for ${url}`);
-    }
-    const data = Buffer.from(await response.arrayBuffer());
-    ensureDir(path.dirname(destFile));
-    fs.writeFileSync(destFile, data);
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-async function defaultCosBundleDownloader(
-  target: ManagedCliInstallTarget,
-  version: string,
-  destDir: string
-): Promise<void> {
-  const url = buildCosCliBundleUrl(target);
-  const tarball = path.join(os.tmpdir(), `pounding-cli-${target}-${version}-${process.pid}.tar.gz`);
-  try {
-    await downloadToFile(url, tarball, COS_DOWNLOAD_TIMEOUT_MS);
-    ensureDir(destDir);
-    await runCommand('tar', ['-xzf', tarball, '-C', destDir], { timeoutMs: COS_EXTRACT_TIMEOUT_MS });
-  } finally {
-    safeRm(tarball);
-  }
-}
-
-export async function installFromCosFallback(
-  target: ManagedCliInstallTarget,
-  downloader: CosBundleDownloader = defaultCosBundleDownloader
-): Promise<boolean> {
-  const descriptor = DESCRIPTORS[target];
-  if (!descriptor) return false;
-  try {
-    const version = getCliVersion(target);
-    const destDir = resolveCliFallbackCacheDir(target, version);
-    safeRm(destDir);
-    await downloader(target, version, destDir);
-    if (!fs.existsSync(path.join(destDir, 'manifest.json'))) {
-      console.warn(`[POUNDING] COS fallback bundle missing manifest.json for ${target}`);
-      return false;
-    }
-    materializeFromBundled(descriptor, destDir);
-    console.log(`[POUNDING] ${target} installed from COS fallback bundle`);
-    return true;
-  } catch (err) {
-    console.warn(`[POUNDING] COS fallback install failed for ${target}:`, err);
-    return false;
-  }
-}
-
 const DESCRIPTORS: Record<ManagedCliInstallTarget, ManagedCliDescriptor> = {
   claude: {
     target: 'claude',
@@ -828,10 +644,7 @@ async function syncAfterUninstall(target: ManagedCliInstallTarget): Promise<void
 
 const inFlightInstalls = new Map<ManagedCliInstallTarget, Promise<ManagedCliInstallResult>>();
 
-async function installManagedCliInternal(
-  descriptor: ManagedCliDescriptor,
-  cosDownloader?: CosBundleDownloader
-): Promise<ManagedCliInstallResult> {
+async function installManagedCliInternal(descriptor: ManagedCliDescriptor): Promise<ManagedCliInstallResult> {
   try {
     const alreadyInstalled = await isManagedCliInstalled(descriptor);
     if (alreadyInstalled) {
@@ -839,9 +652,12 @@ async function installManagedCliInternal(
       return { success: true, status: 'installed' };
     }
 
-    // Official-first: run the CLI's native package manager (npm/pip) with the
-    // pinned version and mirror fallbacks. The bundled-first materialization
-    // was removed with the installer de-bundling.
+    // Run the CLI's official package manager (npm/pip) with the pinned version
+    // and mirror fallbacks. CLIs are no longer bundled into the installer —
+    // they are self-served from Settings → Agent 运行环境. When the official
+    // install fails, surface the REAL error (npm stderr/timeout) instead of a
+    // generic "not available in PATH" — the UI layer shows the official
+    // install command as the last-resort fallback.
     try {
       console.log(`[POUNDING] Installing ${descriptor.target} via official package manager...`);
       await descriptor.install();
@@ -850,26 +666,16 @@ async function installManagedCliInternal(
       if (installed) {
         return { success: true, status: 'installed' };
       }
-      console.warn(`[POUNDING] Official install finished but ${descriptor.target} is not detectable, trying COS...`);
+      throw new Error(`Official install finished but ${descriptor.detectCommand} is not detectable`);
     } catch (err) {
-      console.warn(`[POUNDING] Official install failed for ${descriptor.target}, trying COS fallback:`, err);
+      const detail = err instanceof Error ? err.message : String(err);
+      console.warn(`[POUNDING] Official install failed for ${descriptor.target}: ${detail}`);
+      return {
+        success: false,
+        status: 'failed',
+        message: `Failed to install ${descriptor.target}: ${detail}`,
+      };
     }
-
-    // COS fallback: download the pre-built bundle and materialize the shim.
-    const cosOk = await installFromCosFallback(descriptor.target, cosDownloader);
-    if (cosOk) {
-      await syncAfterInstall(descriptor.target);
-      const installed = await isManagedCliInstalled(descriptor);
-      if (installed) {
-        return { success: true, status: 'installed' };
-      }
-    }
-
-    return {
-      success: false,
-      status: 'failed',
-      message: `${descriptor.detectCommand} is still not available in PATH`,
-    };
   } catch (error) {
     return {
       success: false,
@@ -879,10 +685,7 @@ async function installManagedCliInternal(
   }
 }
 
-export async function installManagedCli(
-  input: ManagedCliInstallOptions,
-  cosDownloader?: CosBundleDownloader
-): Promise<ManagedCliInstallResult> {
+export async function installManagedCli(input: ManagedCliInstallOptions): Promise<ManagedCliInstallResult> {
   const descriptor = DESCRIPTORS[input.target];
   if (!descriptor) {
     return {
@@ -898,7 +701,7 @@ export async function installManagedCli(
   // corrupts them and looks like a hung install.
   const existing = inFlightInstalls.get(input.target);
   if (existing) return existing;
-  const run = installManagedCliInternal(descriptor, cosDownloader);
+  const run = installManagedCliInternal(descriptor);
   inFlightInstalls.set(input.target, run);
   try {
     return await run;

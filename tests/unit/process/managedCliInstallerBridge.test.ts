@@ -55,8 +55,6 @@ vi.mock('./services/NewApiDesktopAccountService', () => ({
 }));
 
 import {
-  buildCosCliBundleUrl,
-  type CosBundleDownloader,
   getManagedNpmBinDir,
   installManagedCli,
   installManagedCliBatch,
@@ -120,7 +118,7 @@ describe('installManagedCli version pins', () => {
     expect(installCall![1]).toContain('openclaw@2026.6.33');
   });
 
-  it('uses the bundled managed npm (offline bundle) instead of system npm', async () => {
+  it('runs the bundled managed npm as node <npm-cli.js> instead of system npm (no .cmd exec)', async () => {
     const root = mkdtempSync(path.join(tmpdir(), 'pounding-managed-npm-'));
     // Fixture mirrors the managed-resources layout for the CURRENT platform
     // (resolveBundledResourcesDir builds the key as `${platform}-${arch}`):
@@ -140,10 +138,12 @@ describe('installManagedCli version pins', () => {
           'bin'
         );
     const nodeName = isWin ? 'node.exe' : 'node';
-    const npmName = isWin ? 'npm.cmd' : 'npm';
+    const nodeRoot = isWin ? nodeDir : path.dirname(nodeDir);
+    const npmCliJs = path.join(nodeRoot, 'node_modules', 'npm', 'bin', 'npm-cli.js');
     mkdirSync(nodeDir, { recursive: true });
     writeFileSync(path.join(nodeDir, nodeName), '');
-    writeFileSync(path.join(nodeDir, npmName), '');
+    mkdirSync(path.dirname(npmCliJs), { recursive: true });
+    writeFileSync(npmCliJs, '#!/usr/bin/env node\n');
 
     const originalResourcesPath = (process as { resourcesPath?: string }).resourcesPath;
     Object.defineProperty(process, 'resourcesPath', { value: root, configurable: true });
@@ -153,9 +153,11 @@ describe('installManagedCli version pins', () => {
         cb(new Error('not found'));
       });
       let managedNpmCommand: string | null = null;
+      let managedNpmArgs: string[] = [];
       execFileMock.mockImplementationOnce((cmd: string, args: string[], _o: unknown, cb: (e?: Error) => void) => {
         if ((args as string[]).includes('install')) {
           managedNpmCommand = cmd;
+          managedNpmArgs = args as string[];
         }
         cb();
       });
@@ -165,7 +167,12 @@ describe('installManagedCli version pins', () => {
 
       const result = await installManagedCli({ target: 'claude' });
       expect(result.success).toBe(true);
-      expect(managedNpmCommand).toBe(path.join(nodeDir, npmName));
+      // Must invoke the managed node with npm-cli.js — never npm.cmd directly
+      // (Windows execFile would throw spawn EINVAL on the .cmd shim).
+      expect(managedNpmCommand).toBe(path.join(nodeDir, nodeName));
+      expect(managedNpmArgs[0]).toBe(npmCliJs);
+      expect(managedNpmArgs).toContain('install');
+      expect(managedNpmArgs).toContain('-g');
     } finally {
       if (originalResourcesPath === undefined) {
         delete (process as { resourcesPath?: string }).resourcesPath;
@@ -250,10 +257,12 @@ describe('installManagedCli version pins', () => {
           'bin'
         );
     const nodeName = isWin ? 'node.exe' : 'node';
-    const npmName = isWin ? 'npm.cmd' : 'npm';
+    const nodeRoot = isWin ? nodeDir : path.dirname(nodeDir);
+    const npmCliJs = path.join(nodeRoot, 'node_modules', 'npm', 'bin', 'npm-cli.js');
     mkdirSync(nodeDir, { recursive: true });
     writeFileSync(path.join(nodeDir, nodeName), '');
-    writeFileSync(path.join(nodeDir, npmName), '');
+    mkdirSync(path.dirname(npmCliJs), { recursive: true });
+    writeFileSync(npmCliJs, '#!/usr/bin/env node\n');
 
     // Simulate the managed npm prefix bin that npm -g would produce.
     const managedPrefix = path.join(process.env.BUN_INSTALL ?? '', 'install', 'global');
@@ -358,28 +367,14 @@ describe('installManagedCli version pins', () => {
   });
 });
 
-describe('installManagedCli official-first + COS fallback', () => {
-  const testHome = path.join(tmpdir(), 'pounding-cli-test-home');
-
+describe('installManagedCli official-first (no COS fallback)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Drop any persistent implementation a previous test left behind (e.g.
-    // the mutex test's mockImplementation), and any unconsumed once-impls.
     execFileMock.mockReset();
     reconcileMock.mockResolvedValue(undefined);
-    // Isolate per-test state: clean up shims/bundles the previous test wrote.
-    for (const dir of ['.local', '.bun', '.pounding', '.hermes']) {
-      rmSync(path.join(testHome, dir), { recursive: true, force: true });
-    }
   });
 
-  it('builds the pinned COS bundle URL for a target/version/platform', () => {
-    const url = buildCosCliBundleUrl('claude');
-    expect(url).toContain('/pounding/cli/claude/2.1.215/');
-    expect(url).toContain(`/${process.platform}-${process.arch}/bundle.tar.gz`);
-  });
-
-  it('uses the official installer when it succeeds and never touches the COS fallback', async () => {
+  it('uses the official installer and reports success when the CLI becomes detectable', async () => {
     execFileMock.mockImplementationOnce((_c: string, _a: string[], _o: unknown, cb: (e?: Error) => void) => {
       cb(new Error('not found'));
       return { unref: () => {} };
@@ -393,48 +388,13 @@ describe('installManagedCli official-first + COS fallback', () => {
       return { unref: () => {} };
     });
 
-    const downloader = vi.fn(async () => {
-      throw new Error('COS fallback must not run when the official install succeeds');
-    });
-
-    const result = await installManagedCli({ target: 'claude' }, downloader);
-
-    expect(result.success).toBe(true);
-    expect(downloader).not.toHaveBeenCalled();
-  });
-
-  it('falls back to the COS bundle when the official install fails, then writes the managed shim', async () => {
-    // probe: not installed → official npm install: fails
-    execFileMock.mockImplementationOnce((_c: string, _a: string[], _o: unknown, cb: (e?: Error) => void) => {
-      cb(new Error('not found'));
-      return { unref: () => {} };
-    });
-    execFileMock.mockImplementationOnce((_c: string, _a: string[], _o: unknown, cb: (e?: Error) => void) => {
-      cb(new Error('npm EAI_AGAIN'));
-      return { unref: () => {} };
-    });
-
-    const downloader: CosBundleDownloader = async (_target, _version, destDir) => {
-      mkdirSync(destDir, { recursive: true });
-      writeFileSync(
-        path.join(destDir, 'manifest.json'),
-        JSON.stringify({ entrypoint: 'claude', kind: 'native' }),
-        'utf8'
-      );
-      writeFileSync(path.join(destDir, 'claude'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
-    };
-
-    const result = await installManagedCli({ target: 'claude' }, downloader);
+    const result = await installManagedCli({ target: 'claude' });
 
     expect(result.success).toBe(true);
     expect(result.status).toBe('installed');
-    // The managed shim under ~/.local/bin was materialized from the COS bundle
-    const shimName = process.platform === 'win32' ? 'claude.cmd' : 'claude';
-    const shimPath = path.join(testHome, '.local', 'bin', shimName);
-    expect(require('fs').existsSync(shimPath)).toBe(true);
   });
 
-  it('reports failure when the official install and the COS fallback both fail', async () => {
+  it('surfaces the real official-install error instead of a generic PATH message', async () => {
     execFileMock.mockImplementationOnce((_c: string, _a: string[], _o: unknown, cb: (e?: Error) => void) => {
       cb(new Error('not found'));
       return { unref: () => {} };
@@ -443,23 +403,27 @@ describe('installManagedCli official-first + COS fallback', () => {
       cb(new Error('npm EAI_AGAIN'));
       return { unref: () => {} };
     });
+    execFileMock.mockImplementationOnce((_c: string, _a: string[], _o: unknown, cb: (e?: Error) => void) => {
+      cb(new Error('npm EAI_AGAIN'));
+      return { unref: () => {} };
+    });
 
-    const downloader: CosBundleDownloader = async () => {
-      throw new Error('COS unreachable');
-    };
-
-    const result = await installManagedCli({ target: 'claude' }, downloader);
+    const result = await installManagedCli({ target: 'claude' });
 
     expect(result.success).toBe(false);
     expect(result.status).toBe('failed');
+    expect(result.message).toContain('npm EAI_AGAIN');
   });
 });
 
 describe('startup no longer auto-installs managed CLIs', () => {
-  it('index.ts markBackendReady no longer references installManagedCliBatch', () => {
+  it('index.ts wires the DoctorService self-check but never the raw batch installer', () => {
     const indexPath = fileURLToPath(new URL('../../../packages/desktop/src/index.ts', import.meta.url));
     const source = readFileSync(indexPath, 'utf8');
     expect(source).not.toContain('installManagedCliBatch');
     expect(source).not.toContain('Managed CLI tools ready');
+    // Diagnostics are wired back in: markBackendReady kicks off the real
+    // self-check (diagnose + self-heal broken installs, no boot auto-install).
+    expect(source).toContain('startupSelfCheck');
   });
 });

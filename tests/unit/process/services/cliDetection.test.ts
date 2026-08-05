@@ -154,6 +154,52 @@ describe('win32 managed-dir scanning', () => {
       rmSync(tmp, { recursive: true, force: true });
     }
   });
+
+  it('routes .cmd shim probes through cmd.exe /c on Windows (execFile cannot run .cmd)', async () => {
+    const originalPlatform = process.platform;
+    const tmp = mkdtempSync(path.join(tmpdir(), 'pounding-win-cmd-probe-'));
+    Object.defineProperty(process, 'platform', { value: 'win32' });
+    try {
+      writeFileSync(path.join(tmp, 'hermes.cmd'), '@echo off\r\n');
+      const probeCalls: Array<{ command: string; args: string[] }> = [];
+      execFileMock.mockImplementation(
+        (
+          command: string,
+          args: string[],
+          _options: unknown,
+          cb: (err: Error | null, stdout?: string, stderr?: string) => void
+        ) => {
+          probeCalls.push({ command, args });
+          if (command === 'where') {
+            cb(null, '', '');
+            return;
+          }
+          if (args.includes('--version')) {
+            cb(null, '9.9.9\n', '');
+            return;
+          }
+          cb(new Error('ENOENT: not found'), '', '');
+        }
+      );
+
+      const [hermes] = await detectCliInstallations(['hermes'], {
+        pathEntries: [],
+        managedDirs: [tmp],
+      });
+
+      const hermesShim = path.join(tmp, 'hermes.cmd');
+      expect(hermes.installations[0]?.runnable).toBe(true);
+      // The --version probe of the .cmd shim must be wrapped: cmd.exe /c <shim> --version
+      const probe = probeCalls.find((c) => c.args.includes('--version'));
+      expect(probe).toBeDefined();
+      expect(probe!.command).toBe('cmd.exe');
+      expect(probe!.args[0]).toBe('/c');
+      expect(probe!.args[1]).toBe(hermesShim);
+    } finally {
+      Object.defineProperty(process, 'platform', { value: originalPlatform });
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('isRunnableVersionOutput', () => {

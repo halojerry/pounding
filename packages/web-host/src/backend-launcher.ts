@@ -321,7 +321,7 @@ const POUNDINGCORE_LISTENING_PREFIX = 'POUNDINGCORE_LISTENING ';
 // actually begins serving (see poundingcore cmd_server.rs). Authoritative "ready"
 // signal — matched by exact whole-line equality. The port is already known from
 // the earlier POUNDINGCORE_LISTENING line, so this marker carries no payload.
-const POUNDINGCORE_READY_MARKER = 'AIONCORE_READY';
+const POUNDINGCORE_READY_MARKER = 'POUNDINGCORE_READY';
 const BACKEND_PORT_REPORT_TIMEOUT_MS = 60_000;
 
 // Benign boundary code emitted by an aioncore instance that yielded the

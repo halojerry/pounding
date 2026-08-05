@@ -71,7 +71,14 @@ function patchElectronBuilderNsisInstaller() {
   // Normalize artifacts left by older (pre-POUNDING-branding) patch runs so
   // the checks below recognize the file as already patched instead of
   // inserting duplicate override blocks or failing the template check.
+  // Legacy runs wrote the upstream AionUi session-log/session-id NSIS
+  // variables into the template; fold them back to the POUNDING names so the
+  // ExecWait match below succeeds on stale node_modules copies.
   patched = patched
+    .split('--installer-log="$AionUiSessionLogPath" --installer-session="$AionUiSessionId"')
+    .join('--installer-log="$POUNDINGSessionLogPath" --installer-session="$POUNDINGSessionId"')
+    .split('--installer-log="$AionUiSessionLogPath"')
+    .join('--installer-log="$POUNDINGSessionLogPath"')
     .split('POUNDING-fixed-uninstaller.exe')
     .join('POUNDING-fixed-uninstaller.exe')
     .split('POUNDING-bundled-uninstaller override source.')
@@ -104,17 +111,20 @@ function patchElectronBuilderNsisInstaller() {
   }
 
   const copiedUninstallerExec = `ExecWait '"$uninstallerFileNameTemp" /S /KEEP_APP_DATA $0 _?=$installationDir' $R0`;
-  const copiedUninstallerExecWithLog = `ExecWait '"$uninstallerFileNameTemp" /S /KEEP_APP_DATA $0 --installer-log="$AionUiSessionLogPath" --installer-session="$AionUiSessionId" _?=$installationDir' $R0`;
-  if (patched.includes(copiedUninstallerExec)) {
-    patched = patched.replace(copiedUninstallerExec, copiedUninstallerExecWithLog);
-  } else if (
-    patched.includes(
-      `ExecWait '"$uninstallerFileNameTemp" /S /KEEP_APP_DATA $0 --installer-log="$AionUiSessionLogPath" _?=$installationDir' $R0`
-    )
-  ) {
-    patched = patched.replace(
-      `ExecWait '"$uninstallerFileNameTemp" /S /KEEP_APP_DATA $0 --installer-log="$AionUiSessionLogPath" _?=$installationDir' $R0`,
-      copiedUninstallerExecWithLog
+  const copiedUninstallerExecWithLog = `ExecWait '"$uninstallerFileNameTemp" /S /KEEP_APP_DATA $0 --installer-log="$POUNDINGSessionLogPath" --installer-session="$POUNDINGSessionId" _?=$installationDir' $R0`;
+  const copiedUninstallerExecLogOnly = `ExecWait '"$uninstallerFileNameTemp" /S /KEEP_APP_DATA $0 --installer-log="$POUNDINGSessionLogPath" _?=$installationDir' $R0`;
+  // NSIS template lines are indented and their quote escaping can vary across
+  // electron-builder versions (26.6.x uses \"…\", 26.15.x plain "…"), so match
+  // the ExecWait statement by leading-whitespace-insensitive whole-line compare
+  // instead of substring search.
+  const execWaitLine = (target) => new RegExp(`^\\s*${target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'm');
+  if (execWaitLine(copiedUninstallerExec).test(patched)) {
+    patched = patched.replace(execWaitLine(copiedUninstallerExec), (m) =>
+      m.replace(copiedUninstallerExec, copiedUninstallerExecWithLog)
+    );
+  } else if (execWaitLine(copiedUninstallerExecLogOnly).test(patched)) {
+    patched = patched.replace(execWaitLine(copiedUninstallerExecLogOnly), (m) =>
+      m.replace(copiedUninstallerExecLogOnly, copiedUninstallerExecWithLog)
     );
   } else if (!patched.includes(copiedUninstallerExecWithLog)) {
     throw new Error(
@@ -157,16 +167,16 @@ function patchElectronBuilderNsisInstaller() {
   }
 
   const inPlaceUninstallerExec = `ExecWait '"$uninstallerFileName" /S /KEEP_APP_DATA $0 _?=$installationDir' $R0`;
-  const inPlaceUninstallerExecWithLog = `ExecWait '"$uninstallerFileName" /S /KEEP_APP_DATA $0 --installer-log="$AionUiSessionLogPath" --installer-session="$AionUiSessionId" _?=$installationDir' $R0`;
+  const inPlaceUninstallerExecWithLog = `ExecWait '"$uninstallerFileName" /S /KEEP_APP_DATA $0 --installer-log="$POUNDINGSessionLogPath" --installer-session="$POUNDINGSessionId" _?=$installationDir' $R0`;
   if (patched.includes(inPlaceUninstallerExec)) {
     patched = patched.replace(inPlaceUninstallerExec, inPlaceUninstallerExecWithLog);
   } else if (
     patched.includes(
-      `ExecWait '"$uninstallerFileName" /S /KEEP_APP_DATA $0 --installer-log="$AionUiSessionLogPath" _?=$installationDir' $R0`
+      `ExecWait '"$uninstallerFileName" /S /KEEP_APP_DATA $0 --installer-log="$POUNDINGSessionLogPath" _?=$installationDir' $R0`
     )
   ) {
     patched = patched.replace(
-      `ExecWait '"$uninstallerFileName" /S /KEEP_APP_DATA $0 --installer-log="$AionUiSessionLogPath" _?=$installationDir' $R0`,
+      `ExecWait '"$uninstallerFileName" /S /KEEP_APP_DATA $0 --installer-log="$POUNDINGSessionLogPath" _?=$installationDir' $R0`,
       inPlaceUninstallerExecWithLog
     );
   } else if (!patched.includes(inPlaceUninstallerExecWithLog)) {

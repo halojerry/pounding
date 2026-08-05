@@ -94,7 +94,6 @@ describe('useManagedAgents', () => {
 
     expect(mutate).toHaveBeenCalledWith('agents.managed');
     expect(mutate).toHaveBeenCalledWith('assistants.list');
-    expect(mutate).toHaveBeenCalledWith('assistants');
   });
 
   it('refreshCustomAgents refreshes management and assistant caches without a backend rescan', async () => {
@@ -109,7 +108,6 @@ describe('useManagedAgents', () => {
     expect(ipcBridge.acpConversation.refreshCustomAgents.invoke).not.toHaveBeenCalled();
     expect(mutate).toHaveBeenCalledWith('agents.managed');
     expect(mutate).toHaveBeenCalledWith('assistants.list');
-    expect(mutate).toHaveBeenCalledWith('assistants');
   });
 
   it('getManagedAgents fetches the management catalog without invalidating the detected cache', async () => {

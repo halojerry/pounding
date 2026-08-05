@@ -34,7 +34,7 @@
 </p>
 
 <p align="center">
-  <strong>💬 커뮤니티:</strong> <a href="https://discord.gg/2QAwJn7Egx" target="_blank">Discord (English)</a> | <a href="../../resources/wx-17.png" target="_blank">微信 (中文群)</a> | <a href="https://twitter.com/AionUI" target="_blank">Twitter</a>
+  <strong>💬 커뮤니티:</strong> <a href="https://discord.gg/2QAwJn7Egx" target="_blank">Discord (English)</a> | <a href="../../resources/wx-18.png" target="_blank">微信 (中文群)</a> | <a href="https://twitter.com/AionUI" target="_blank">Twitter</a>
 </p>
 
 ---
@@ -54,7 +54,8 @@
 </h3>
 
 <p align="center">
-  <sub><strong>Kimi K3</strong> 출시 — POUNDING에서 바로 사용할 수 있습니다. <a href="https://www.kimi.com/code?aff=aionui" target="_blank">Kimi For Coding 플랜 구독</a> 또는 API 키 발급（<a href="https://platform.kimi.ai?aff=aionui" target="_blank">글로벌</a> / <a href="https://platform.kimi.com?aff=aionui" target="_blank">중국</a>）</sub>
+  <sub><strong>Kimi K3</strong> 출시 — POUNDING에서 바로 사용할 수 있습니다. <a href="https://www.kimi.com/code?aff=aionui" target="_blank">Kimi For Coding 플랜 구독</a> 또는 API 키 발급（<a href="https://platform.kimi.ai?track_id=track-32e04532b08d460fac729191744fa75c&aff=aionui" target="_blank">글로벌</a> / <a href="https://platform.kimi.com?track_id=track-98f92981df1c4c61b2c68930ba3ab658&aff=aionui" target="_blank">중국</a>）</sub>
+
 </p>
 
 ---
@@ -635,7 +636,7 @@ brew install aionui
 - [문제 보고](https://github.com/iOfficeAI/AionUi/issues) — 버그 및 기능 요청
 - [릴리스 업데이트](https://github.com/iOfficeAI/AionUi/releases) — 최신 버전 받기
 - [Discord 커뮤니티](https://discord.gg/2QAwJn7Egx) — 영어 커뮤니티
-- [WeChat 그룹](../../resources/wx-17.png) — 중국어 커뮤니티
+- [WeChat 그룹](../../resources/wx-18.png) — 중국어 커뮤니티
 
 ### 기여하기
 

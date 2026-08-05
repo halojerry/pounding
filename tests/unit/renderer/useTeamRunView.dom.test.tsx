@@ -185,6 +185,20 @@ describe('useTeamRunView', () => {
     expect(result.current.state.activeRun).toBeUndefined();
   });
 
+  it('treats omitted slot work in a new team snapshot as empty', async () => {
+    const { result } = renderHook(() => useTeamRunView('team-1'));
+    const runUpdated = teamEventMocks.handlers.runUpdated as TeamRunHandler;
+    act(() => runUpdated(runEvent({ slot_work: [slotWork('lead')] })));
+    teamEventMocks.invoke.getRunState.mockResolvedValue({ active_run: null });
+
+    await act(async () => {
+      expect(await result.current.reconcile('new-team')).toBe(true);
+    });
+
+    expect(result.current.state.slotWorkBySlot).toEqual({});
+    expect(result.current.state.activeRun).toBeUndefined();
+  });
+
   it('slot_work_changed_clears_an_orphaned_running_slot_without_an_active_run', () => {
     const { result } = renderHook(() => useTeamRunView('team-1'));
     const runCompleted = teamEventMocks.handlers.runCompleted as TeamRunHandler;
@@ -236,7 +250,7 @@ describe('useTeamRunView', () => {
 
   it('session_status_stopped_sets_session_stopped_flag', () => {
     const { result } = renderHook(() => useTeamRunView('team-1'));
-    const sessionStatus = teamEventMocks.handlers.sessionChanged as SessionStatusHandler;
+    const sessionStatus = teamEventMocks.handlers.sessionStatusChanged as SessionStatusHandler;
 
     act(() => sessionStatus({ team_id: 'team-1', status: 'stopped' }));
 
@@ -245,7 +259,7 @@ describe('useTeamRunView', () => {
 
   it('session_status_ready_and_starting_clear_the_session_stopped_flag', () => {
     const { result } = renderHook(() => useTeamRunView('team-1'));
-    const sessionStatus = teamEventMocks.handlers.sessionChanged as SessionStatusHandler;
+    const sessionStatus = teamEventMocks.handlers.sessionStatusChanged as SessionStatusHandler;
 
     act(() => sessionStatus({ team_id: 'team-1', status: 'stopped' }));
     expect(result.current.state.sessionStopped).toBe(true);
@@ -260,7 +274,7 @@ describe('useTeamRunView', () => {
 
   it('session_status_stopped_is_ignored_for_other_teams', () => {
     const { result } = renderHook(() => useTeamRunView('team-1'));
-    const sessionStatus = teamEventMocks.handlers.sessionChanged as SessionStatusHandler;
+    const sessionStatus = teamEventMocks.handlers.sessionStatusChanged as SessionStatusHandler;
 
     act(() => sessionStatus({ team_id: 'other-team', status: 'stopped' }));
 
@@ -269,7 +283,7 @@ describe('useTeamRunView', () => {
 
   it('applied_active_run_event_self_heals_the_session_stopped_flag', () => {
     const { result } = renderHook(() => useTeamRunView('team-1'));
-    const sessionStatus = teamEventMocks.handlers.sessionChanged as SessionStatusHandler;
+    const sessionStatus = teamEventMocks.handlers.sessionStatusChanged as SessionStatusHandler;
     const runUpdated = teamEventMocks.handlers.runUpdated as TeamRunHandler;
 
     act(() => sessionStatus({ team_id: 'team-1', status: 'stopped' }));

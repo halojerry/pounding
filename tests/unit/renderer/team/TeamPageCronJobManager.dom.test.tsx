@@ -67,6 +67,8 @@ vi.mock('@/common', () => ({
       agentSpawned: makeTeamEventChannel('agentSpawned'),
       agentRemoved: makeTeamEventChannel('agentRemoved'),
       agentRenamed: makeTeamEventChannel('agentRenamed'),
+      agentRuntimeStatusChanged: makeTeamEventChannel('agentRuntimeStatusChanged'),
+      sessionStatusChanged: makeTeamEventChannel('sessionStatusChanged'),
       taskChanged: makeTeamEventChannel('taskChanged'),
       sessionChanged: makeTeamEventChannel('sessionChanged'),
       runAccepted: makeTeamEventChannel('runAccepted'),
@@ -88,6 +90,7 @@ vi.mock('@/common', () => ({
       list: { invoke: vi.fn(async () => []) },
     },
     conversation: {
+      listChanged: makeTeamEventChannel('conversationListChanged'),
       confirmation: {
         list: { invoke: vi.fn(async () => []) },
         add: makeTeamEventChannel('confirmationAdd'),
@@ -139,7 +142,7 @@ vi.mock('@/renderer/pages/cron', () => ({
 }));
 
 vi.mock('@/renderer/pages/conversation/Preview/context/PreviewContext', () => ({
-  usePreviewContext: () => ({ closePreview: () => {}, closePreviewIfWorkspaceChanged: () => {} }),
+  usePreviewContext: () => ({ closePreview: () => {}, closePreviewIfScopeChanged: () => {} }),
 }));
 
 import { ipcBridge } from '@/common';
@@ -215,7 +218,7 @@ describe('TeamPage cron job manager', () => {
     expect(addMember).toBeDisabled();
 
     act(() => {
-      for (const handler of teamEventHandlers.agentStatusChanged ?? []) {
+      for (const handler of teamEventHandlers.agentRuntimeStatusChanged ?? []) {
         handler({
           team_id: 'team-1',
           slot_id: 'member-slot',

@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { execFile, execFileSync } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { getEnvAwareName } from '@/common/config/appEnv';
@@ -12,6 +12,7 @@ import { migrateConfigStorage, migrateLegacyMcpConfigToDb, migrateProviders } fr
 import { httpRequest } from '@/common/adapter/httpBridge';
 import { mcpService } from '@/common/adapter/ipcBridge';
 import type { ImageGenerationModelSetting } from '@/common/config/clientSettings';
+import { BUILTIN_BROWSER_MCP_NAME } from '@/common/config/constants';
 import {
   removeImageGenerationEnvKeys,
   resolveImageGenerationMcpEnv,
@@ -27,6 +28,20 @@ type MigrationStepResult = boolean;
 type McpImportServer = Partial<IMcpServer> & Pick<IMcpServer, 'name' | 'transport'>;
 type BackendClientPreferences = Record<string, unknown>;
 const BUILTIN_CHROME_DEVTOOLS_NAME = 'chrome-devtools';
+
+/**
+ * 内置「应用内浏览器」MCP。
+ *
+ * 与 chrome-devtools 的区别：那个默认关闭，开启后会由 MCP 自己开一个独立 Chrome
+ * 窗口 —— 用户在 APP 里看不见。这个默认开启，且强制连到 APP 自己的 CDP 端口，
+ * Agent 的每一步操作都发生在用户能看到的侧边预览面板里。
+ *
+ * The built-in in-app browser MCP. Unlike `chrome-devtools` (default-disabled and
+ * spawning its own separate Chrome window the user cannot see), this one is
+ * enabled by default and pinned to the app's own CDP port, so every agent action
+ * happens in the side preview panel where the user can watch it.
+ */
+const BUILTIN_BROWSER_SCRIPT = 'builtin-mcp-browser';
 
 const LEGACY_BACKEND_CLIENT_PREFERENCE_KEYS = [
   'assistants',
@@ -120,7 +135,7 @@ function buildBuiltinImageGenerationServer(
   const scriptPath = getBuiltinMcpScriptPath('builtin-mcp-image-gen');
   const env = resolution.ok ? resolution.env : {};
   const serverConfig = {
-    command: resolveManagedNodeCommand(),
+    command: 'node',
     args: [scriptPath],
     env,
   };
@@ -132,7 +147,7 @@ function buildBuiltinImageGenerationServer(
     builtin: true,
     transport: {
       type: 'stdio',
-      command: resolveManagedNodeCommand(),
+      command: 'node',
       args: [scriptPath],
       env,
     },
@@ -164,210 +179,45 @@ function isSameStdioTransport(left: IMcpServer['transport'], right: IMcpServer['
   );
 }
 
-/** Recursively copy a directory. Creates target directory if needed. */
-function copyDirectorySync(src: string, dest: string): void {
-  fs.mkdirSync(dest, { recursive: true });
-  for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
-    const srcPath = path.join(src, entry.name);
-    const destPath = path.join(dest, entry.name);
-    if (entry.isDirectory()) {
-      copyDirectorySync(srcPath, destPath);
-    } else if (entry.isSymbolicLink()) {
-      fs.symlinkSync(fs.readlinkSync(srcPath), destPath);
-    } else {
-      fs.copyFileSync(srcPath, destPath);
-    }
-  }
-}
+function buildBuiltinBrowserServer(): McpImportServer {
+  const scriptPath = getBuiltinMcpScriptPath(BUILTIN_BROWSER_SCRIPT);
+  const serverConfig = {
+    command: 'node',
+    args: [scriptPath],
+  };
 
-function resolveBundledNodeRoot(): string {
-  // Packaged app: managed node runtime is shipped under
-  // resources/bundled-poundingcore/<platform>-<arch>/managed-resources/node/
-  // (exported by poundingcore `prepare-managed-resources`). The old dev
-  // layout (~/.pounding/runtime/node) does not exist in a packaged app, so
-  // without this the seed commands fell back to bare `node`, which is not on
-  // PATH on Windows → chrome-devtools / image-gen MCP could never start.
-  if (!process.resourcesPath) return '';
-  const platformKey = `${process.platform}-${process.arch}`;
-  const base = path.join(process.resourcesPath, 'bundled-poundingcore', platformKey, 'managed-resources', 'node');
-  if (!fs.existsSync(base)) return '';
-  const versions = fs.readdirSync(base).filter((d) => d.startsWith('node-v'));
-  if (versions.length === 0) return '';
-  const root = path.join(base, versions[0]);
-  const bin = process.platform === 'win32' ? 'node.exe' : path.join('bin', 'node');
-  return fs.existsSync(path.join(root, bin)) ? root : '';
-}
-
-function resolveManagedNodeRoot(): string {
-  // 1. Bundled managed node runtime (packaged app) — same layout the backend
-  //    exports into resources/bundled-poundingcore/.
-  const bundledRoot = resolveBundledNodeRoot();
-  if (bundledRoot) return bundledRoot;
-  // 2. Legacy dev layout: ~/.pounding/runtime/node (dev / unpackaged runs).
-  const homedir = require('os').homedir();
-  const dataDirName = getEnvAwareName('.pounding');
-  const managedRoot = path.join(homedir, dataDirName, 'runtime', 'node');
-  if (fs.existsSync(managedRoot)) {
-    const versions = fs.readdirSync(managedRoot).filter((d) => d.startsWith('node-v'));
-    if (versions.length > 0) {
-      return path.join(managedRoot, versions[0]);
-    }
-  }
-  return ''; // fall back to system PATH
-}
-
-function resolveManagedNodeCommand(): string {
-  const root = resolveManagedNodeRoot();
-  if (!root) return 'node';
-  const isWin = process.platform === 'win32';
-  // Windows Node.js distribution: node.exe is at the root level
-  // Unix Node.js distribution: bin/node
-  return isWin ? path.join(root, 'node.exe') : path.join(root, 'bin', 'node');
-}
-
-function resolveManagedNodeModule(pkgName: string, entry: string): string {
-  const root = resolveManagedNodeRoot();
-  if (!root) return ''; // fall back to npx download
-
-  // Managed Node's global modules are installed to {root}/tools/global/lib/node_modules/
-  // (npm prefix = root/tools/global). Also check the legacy {root}/lib/node_modules/ path.
-  const candidates = [
-    path.join(root, 'tools', 'global', 'lib', 'node_modules', pkgName, entry),
-    path.join(root, 'lib', 'node_modules', pkgName, entry),
-  ];
-  for (const pkgPath of candidates) {
-    if (fs.existsSync(pkgPath)) return pkgPath;
-  }
-  return '';
-}
-
-/** Copy a compiled builtin MCP script from the build output to the data
- *  directory so the Rust ACP injection path can find it. */
-function materializeBuiltinMcpScript(scriptName: string, targetName: string): void {
-  try {
-    const src = getBuiltinMcpScriptPath(scriptName);
-    if (!fs.existsSync(src)) {
-      console.warn(`[POUNDING] Builtin MCP script not found: ${src}`);
-      return;
-    }
-    const destDir = path.join(getDataPath(), 'builtin-mcp');
-    fs.mkdirSync(destDir, { recursive: true });
-    const dest = path.join(destDir, targetName);
-    // Skip if already up-to-date (same size)
-    if (fs.existsSync(dest)) {
-      const srcStat = fs.statSync(src);
-      const destStat = fs.statSync(dest);
-      if (srcStat.size === destStat.size) return;
-    }
-    fs.copyFileSync(src, dest);
-    console.log(`[POUNDING] Materialized builtin MCP script: ${dest}`);
-  } catch (err) {
-    console.warn(`[POUNDING] Failed to materialize builtin MCP script ${scriptName}:`, err);
-  }
-}
-
-/** Pre-install chrome-devtools-mcp into the managed Node runtime's global
- *  modules so it is available offline without `npx` downloading at runtime.
- *
- *  Tries bundled resources first (shipped with the app), then falls back
- *  to `npm install -g` for dev/network environments. */
-function preinstallChromeDevtoolsMcp(): void {
-  const root = resolveManagedNodeRoot();
-  if (!root) {
-    console.warn('[POUNDING] Managed Node runtime not found; skipping chrome-devtools-mcp preinstall');
-    return;
-  }
-  const isWin = process.platform === 'win32';
-  // Windows Node.js distribution: node.exe, npm.cmd at root level (no bin/)
-  // Unix Node.js distribution: bin/node, bin/npm
-  const nodeBin = isWin ? path.join(root, 'node.exe') : path.join(root, 'bin', 'node');
-  const npmBin = isWin ? path.join(root, 'npm.cmd') : path.join(root, 'bin', 'npm');
-  if (!fs.existsSync(nodeBin) || !fs.existsSync(npmBin)) {
-    console.warn('[POUNDING] Managed node/npm binaries not found; skipping chrome-devtools-mcp preinstall');
-    return;
-  }
-  // Check if already installed
-  const installedPath = path.join(root, 'tools', 'global', 'lib', 'node_modules', 'chrome-devtools-mcp');
-  if (fs.existsSync(installedPath)) {
-    return; // already installed
-  }
-
-  // Try bundled resources first (offline path from vendor-managed-resources.sh)
-  const platformKey = `${process.platform}-${process.arch}`;
-  const bundledMCP =
-    process.resourcesPath &&
-    path.join(process.resourcesPath, 'bundled-poundingcore', platformKey, 'managed-resources', 'mcp');
-  if (bundledMCP && fs.existsSync(bundledMCP)) {
-    const versions = fs.readdirSync(bundledMCP).filter((d) => d.startsWith('chrome-devtools-mcp'));
-    if (versions.length > 0) {
-      // Find the right platform subdirectory
-      for (const ver of versions) {
-        const platDirs = fs
-          .readdirSync(path.join(bundledMCP, ver))
-          .filter((d) => d.includes(process.platform) && d.includes(process.arch));
-        for (const platDir of platDirs) {
-          const srcDir = path.join(bundledMCP, ver, platDir);
-          if (fs.existsSync(path.join(srcDir, 'manifest.json'))) {
-            try {
-              const destDir = path.join(root, 'tools', 'global', 'lib', 'node_modules');
-              fs.mkdirSync(destDir, { recursive: true });
-              const dest = path.join(destDir, 'chrome-devtools-mcp');
-              if (!fs.existsSync(dest)) {
-                copyDirectorySync(srcDir, dest);
-                console.log('[POUNDING] chrome-devtools-mcp materialized from bundled resources');
-              }
-              return;
-            } catch (err) {
-              console.warn('[POUNDING] Failed to materialize chrome-devtools-mcp from bundle:', err);
-            }
-          }
-        }
-      }
-    }
-  }
-
-  // Fallback: npm install (needs network)
-  console.log('[POUNDING] Pre-installing chrome-devtools-mcp to managed Node runtime...');
-  try {
-    const npmPrefix = path.join(root, 'tools', 'global');
-    execFileSync(nodeBin, [npmBin, 'install', '-g', 'chrome-devtools-mcp'], {
-      stdio: 'pipe',
-      timeout: 120_000,
-      env: {
-        ...process.env,
-        npm_config_prefix: npmPrefix,
-        npm_config_userconfig: path.join(root, 'blank_user_npmrc'),
-        npm_config_globalconfig: path.join(root, 'blank_global_npmrc'),
-      },
-    });
-    console.log('[POUNDING] chrome-devtools-mcp installed successfully');
-  } catch (err) {
-    console.warn('[POUNDING] Failed to preinstall chrome-devtools-mcp:', err);
-  }
+  return {
+    name: BUILTIN_BROWSER_MCP_NAME,
+    description:
+      "Control POUNDING's built-in browser (the side preview panel): open pages, click, type and read content. " +
+      'Sign-in state is shared across tabs and preserved between sessions.',
+    // 默认开启：用户装好即可用，无需任何配置
+    // Enabled by default: works out of the box with zero configuration.
+    enabled: true,
+    builtin: true,
+    transport: {
+      type: 'stdio',
+      command: serverConfig.command,
+      args: serverConfig.args,
+    },
+    original_json: JSON.stringify({ mcpServers: { [BUILTIN_BROWSER_MCP_NAME]: serverConfig } }, null, 2),
+  };
 }
 
 function buildDefaultMcpServers(): McpImportServer[] {
   const chromeConfig = {
-    // Use managed node binary with locally-installed chrome-devtools-mcp
-    command: resolveManagedNodeCommand(),
-    args: [
-      resolveManagedNodeModule('chrome-devtools-mcp', 'build/src/bin/chrome-devtools-mcp.js'),
-      '--browser-url=http://127.0.0.1:9230',
-    ],
-  };
-
-  const imageGenConfig = {
-    // Managed node binary (bundled) — bare `node` is not on PATH on Windows
-    // in a packaged install.
-    command: resolveManagedNodeCommand(),
-    args: [getBuiltinMcpScriptPath('builtin-mcp-image-gen')],
+    // Upstream default: chrome-devtools-mcp is fetched on demand via npx. The
+    // managed-node preinstall path was retired together with the offline
+    // bundling of the runtime (D6).
+    command: 'npx',
+    args: ['-y', 'chrome-devtools-mcp@latest'],
   };
 
   return [
     {
       name: BUILTIN_CHROME_DEVTOOLS_NAME,
       description: 'Default MCP server: chrome-devtools',
-      enabled: true,
+      enabled: false,
       builtin: true,
       transport: {
         type: 'stdio',
@@ -376,18 +226,7 @@ function buildDefaultMcpServers(): McpImportServer[] {
       },
       original_json: JSON.stringify({ mcpServers: { [BUILTIN_CHROME_DEVTOOLS_NAME]: chromeConfig } }, null, 2),
     },
-    {
-      name: BUILTIN_IMAGE_GEN_NAME,
-      description: 'Built-in image generation tool powered by AI models. Configure the model in Settings > Tools.',
-      enabled: true,
-      builtin: true,
-      transport: {
-        type: 'stdio',
-        command: imageGenConfig.command,
-        args: imageGenConfig.args,
-      },
-      original_json: JSON.stringify({ mcpServers: { [BUILTIN_IMAGE_GEN_NAME]: imageGenConfig } }, null, 2),
-    },
+    buildBuiltinBrowserServer(),
   ];
 }
 
@@ -461,14 +300,6 @@ function buildOriginalJsonFromTransport(server: Pick<IMcpServer, 'name' | 'descr
 }
 
 async function ensureBootstrapMcpServersInDb(configFile: ConfigFile): Promise<void> {
-  // Pre-install chrome-devtools-mcp into the managed Node runtime so the
-  // default MCP server runs offline (no `npx` download at runtime) and
-  // materialize the builtin image-gen script next to the data dir. Both were
-  // dead code (never invoked) — without them the builtin MCP commands point
-  // at modules/scripts that may not exist on disk.
-  preinstallChromeDevtoolsMcp();
-  materializeBuiltinMcpScript('builtin-mcp-image-gen', 'builtin-mcp-image-gen.js');
-
   const [backendPrefs, fileImageConfig, providers] = await Promise.all([
     fetchBackendClientPreferences(),
     configFile.get('tools.imageGenerationModel').catch((): undefined => undefined),
@@ -595,10 +426,53 @@ async function ensureBootstrapMcpServersInDb(configFile: ConfigFile): Promise<vo
     );
   }
 
+  /**
+   * 修复浏览器 MCP 记录里过期的脚本绝对路径。
+   *
+   * 注册时把绝对路径写进了 transport.args，只在「首次插入」时写一次。应用被移动过
+   * （用户把 .app 拖出 /Applications、Windows 重装到别的目录、开发时换 worktree）
+   * 之后这条路径就失效了，而按名字判断「已注册」使它永远不会被重新插入 ——
+   * 结果是浏览器工具永久失效且不会自愈。所以每次启动都对齐一次实际路径。
+   *
+   * Repair a stale absolute script path in the browser MCP record. The path is baked
+   * into transport.args and only written on first insert, so once the app moves (user
+   * drags the .app out of /Applications, a Windows reinstall to a different directory,
+   * a developer switching worktrees) it goes stale — and because "already registered"
+   * is decided by name, it is never re-inserted, leaving the browser tools broken with
+   * no self-heal. Reconcile against the real path on every startup instead.
+   */
+  const existingBrowserServer = existing.find((server) => server.name === BUILTIN_BROWSER_MCP_NAME);
+  let browserServerUpdated = false;
+  if (existingBrowserServer) {
+    const desiredBrowserServer = buildBuiltinBrowserServer();
+    const browserTransportChanged = !isSameStdioTransport(
+      existingBrowserServer.transport,
+      desiredBrowserServer.transport
+    );
+    const browserJsonChanged = existingBrowserServer.original_json !== desiredBrowserServer.original_json;
+    if (browserTransportChanged || browserJsonChanged) {
+      console.info(
+        '[Migration] browser MCP path drifted, server id: %s, transport changed: %s, json changed: %s',
+        existingBrowserServer.id,
+        browserTransportChanged ? 'yes' : 'no',
+        browserJsonChanged ? 'yes' : 'no'
+      );
+      await mcpService.updateServer.invoke({
+        id: existingBrowserServer.id,
+        data: {
+          transport: desiredBrowserServer.transport,
+          original_json: desiredBrowserServer.original_json,
+        },
+      });
+      browserServerUpdated = true;
+    }
+  }
+
   console.info(
-    '[Migration] MCP bootstrap completed, imported %d missing defaults, updated image server: %s, image config source: %s, image enabled: %s',
+    '[Migration] MCP bootstrap completed, imported %d missing defaults, updated image server: %s, updated browser server: %s, image config source: %s, image enabled: %s',
     missing.length,
     imageServerUpdated ? 'yes' : 'no',
+    browserServerUpdated ? 'yes' : 'no',
     imageConfigSource,
     imageConfig?.switch === true ? 'yes' : 'no'
   );

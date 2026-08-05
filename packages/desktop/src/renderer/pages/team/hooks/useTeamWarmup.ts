@@ -51,7 +51,7 @@ export function useTeamWarmup(team_id: string): TeamWarmupState {
     setPhase('warming');
     setRuntimeStatus(new Map<string, TeamWarmupMemberState>());
 
-    const unsubRuntime = ipcBridge.team.agentStatusChanged.on((event: ITeamAgentRuntimeStatusEvent) => {
+    const unsubRuntime = ipcBridge.team.agentRuntimeStatusChanged.on((event: ITeamAgentRuntimeStatusEvent) => {
       if (event.team_id !== team_id || cancelled) return;
       setRuntimeStatus((prev) => {
         const next = new Map(prev);
@@ -60,7 +60,7 @@ export function useTeamWarmup(team_id: string): TeamWarmupState {
       });
     });
 
-    const unsubSessionStatus = ipcBridge.team.sessionChanged.on((event: ITeamSessionStatusChangedEvent) => {
+    const unsubSessionStatus = ipcBridge.team.sessionStatusChanged.on((event: ITeamSessionStatusChangedEvent) => {
       if (event.team_id !== team_id || cancelled) return;
       if (event.status === 'starting') {
         setPhase('warming');

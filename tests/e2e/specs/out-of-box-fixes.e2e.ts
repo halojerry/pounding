@@ -4,7 +4,7 @@
  * Validates the 7 commits on feature/out-of-box-fixes:
  *   - PATH fix (Windows ENOENT, command-not-found)
  *   - CLI auto-install (all 5 agents registered)
- *   - Branding (no AionUi residue)
+ *   - Branding (no POUNDING residue)
  *   - COS upload (backend healthy, no protocol errors)
  *   - Codex proxy auto-start (no ECONNREFUSED on port 18792)
  *
@@ -54,11 +54,11 @@ test.describe('Out-of-Box Fixes', () => {
     expect(criticalErrors).toHaveLength(0);
   });
 
-  // ── TC2: POUNDING branding — no AionUi residue ─────────────────────────────
-  test('POUNDING branding, no AionUi residue', async ({ page }) => {
+  // ── TC2: POUNDING branding — no POUNDING residue ─────────────────────────────
+  test('POUNDING branding, no POUNDING residue', async ({ page }) => {
     await page.waitForLoadState('domcontentloaded', { timeout: 30_000 });
     const bodyText = await page.textContent('body');
-    expect(bodyText).not.toContain('AionUi');
+    expect(bodyText).not.toContain('POUNDING');
   });
 
   // ── TC3: All 5 managed CLI agents registered in backend ────────────────────

@@ -1,4 +1,7 @@
 {
+  "officePreview": {
+    "fileWatchUnavailable": "Live file watching is unavailable — the system may have run out of file-watch handles (inotify). Auto-preview of new Office files is disabled. Raise fs.inotify.max_user_instances or close programs holding many file watches."
+  },
   "welcome": {
     "title": "Hi, what's your plan for today?",
     "placeholder": "Send a message, upload files, open a folder, create a scheduled task, or type / for commands...",
@@ -74,7 +77,9 @@
     "removeProjectConfirm": "Remove project \"{{name}}\"? Its {{count}} conversation(s) will be removed too.",
     "newConversationInProject": "New chat in this project",
     "deleting": "Deleting...",
-    "reorderPinned": "Drag to reorder pinned conversation"
+    "reorderPinned": "Drag to reorder pinned conversation",
+    "forkedFrom": "Forked from “{{name}}”",
+    "forkedConversation": "Forked conversation"
   },
   "historySearch": {
     "tooltip": "Search messages",
@@ -416,7 +421,8 @@
     "openWith": {
       "vscode": "VS Code",
       "terminal": "Terminal",
-      "explorer": "File Explorer"
+      "explorer": "File Explorer",
+      "browser": "Browser"
     }
   },
   "minimap": {
@@ -442,6 +448,7 @@
     "switchAgentFailed": "Failed to switch agent",
     "speech": {
       "recordTooltip": "Start voice input",
+      "recordTooltipWithShortcut": "Voice input cmd+M",
       "pickFileTooltip": "Select an audio file",
       "stopTooltip": "Stop recording",
       "processing": "Transcribing audio...",
@@ -508,7 +515,15 @@
     }
   },
   "contextUsage": {
-    "contextUsed": "context used"
+    "contextUsed": "context used",
+    "tokensUsed": "{{tokens}} tokens used",
+    "windowUnknown": "Context window size unknown",
+    "sessionCost": "Session cost",
+    "input": "Input",
+    "output": "Output",
+    "thought": "Thinking",
+    "cachedRead": "Cache read",
+    "cachedWrite": "Cache write"
   },
   "skill_generator": {
     "title": "Generate Skill/Rule",
@@ -555,7 +570,8 @@
     "sendboxHint": "Preparing the runtime environment. First startup can take a little longer."
   },
   "sendbox": {
-    "hint": "Type / for commands, @ to reference files, ↑/↓ for message history"
+    "hint": "Type / for commands, @ to reference files, ↑/↓ for message history",
+    "mediaPathFallback": "This agent has no native support for this file type; it will be sent as a file path."
   },
   "agentTip": {
     "codes": {
@@ -563,7 +579,10 @@
         "body": "This request produced no visible reply."
       },
       "ACP_EMPTY_TURN_NEEDS_AUTH": {
-        "body": "This request produced no visible reply. The agent may need you to sign in first — {{hint}}."
+        "body": "This request produced no visible reply. If you're already signed in, this may be a transient backend or connection issue — try again or start a new conversation. If you're not signed in yet, you can sign in — {{hint}}."
+      },
+      "ACP_EMPTY_TURN_TOKEN_LIMIT": {
+        "body": "This request produced no visible reply. The current conversation may be approaching the context length limit — try again, or start a new conversation and retry."
       },
       "ACP_EMPTY_TURN_MAX_TOKENS": {
         "body": "This request hit the model's output token limit before any visible reply was produced."
@@ -573,8 +592,47 @@
       },
       "ACP_EMPTY_TURN_REFUSAL": {
         "body": "The model refused this request before producing any visible reply."
+      },
+      "ANTIGRAVITY_STEPS_FAILED": {
+        "body": "{{count}} step(s) failed and did NOT take effect. agy ends such turns as successful, so check the result rather than the reply."
+      },
+      "ANTIGRAVITY_VERSION_OLDER": {
+        "body": "agy {{reported}} is older than the {{verified}} this integration was verified against; some features may be missing. Consider upgrading agy."
+      },
+      "ANTIGRAVITY_VERSION_NEWER": {
+        "body": "agy {{reported}} is newer than the {{verified}} this integration was verified against. It should still work; report anything that behaves oddly."
       }
     }
   },
-  "notFound": "Conversation not found or has been deleted"
+  "notFound": "Conversation not found or has been deleted",
+  "explorer": {
+    "addFolder": "Add folder to project",
+    "removeFolder": "Remove from project",
+    "attachDuplicate": "This folder is already in the project",
+    "attachOverlap": "This folder overlaps a folder already in the project",
+    "attachFailed": "Couldn't add the folder",
+    "removeFailed": "Couldn't remove the folder",
+    "contextMenu": {
+      "rename": "Rename",
+      "addToChat": "Add to chat"
+    },
+    "namePlaceholder": "Name",
+    "deleteConfirm": "Delete “{{name}}”? This can’t be undone.",
+    "renameFailed": "Couldn't rename",
+    "tabs": {
+      "files": "Files",
+      "changes": "Changes"
+    },
+    "changesPlaceholder": "Source control lives in a separate lane — coming soon.",
+    "addedToChat": "Added {{name}} to chat",
+    "imported": "Imported {{count}} file(s)",
+    "importPartialFailed": "{{copied}} copied, {{failed}} failed (name conflicts or unsupported)",
+    "importFailed": "Failed to import files",
+    "search": {
+      "placeholder": "Search files by name",
+      "searching": "Searching…",
+      "empty": "No files match",
+      "limitReached": "Showing first {{count}} — refine to narrow"
+    }
+  }
 }

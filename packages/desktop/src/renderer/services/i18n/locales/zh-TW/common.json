@@ -60,6 +60,7 @@
   "historyBack": "後退",
   "more": "更多",
   "refresh": "重新整理",
+  "readOnly": "唯讀",
   "tray.showWindow": "顯示 POUNDING",
   "tray.newChat": "新建對話",
   "tray.closeToTray": "隱藏到托盤",
@@ -124,7 +125,13 @@
       "diagnosticsSent": "診斷報告已傳送",
       "diagnosticsReportSuccess": "診斷報告已傳送",
       "diagnosticsReportFailed": "診斷報告傳送失敗",
-      "rebuildFailed": "備份舊資料庫並重建新資料庫失敗"
+      "rebuildFailed": "備份舊資料庫並重建新資料庫失敗",
+      "confirmDialog": {
+        "title": "確認重建資料庫？",
+        "content": "此操作會備份目前損壞的資料庫並建立一個全新空庫。歷史對話將不再顯示（舊庫會保留為備份檔案）。確定要繼續嗎？",
+        "okText": "確認重建",
+        "cancelText": "取消"
+      }
     },
     "transientConcurrentStartup": {
       "title": "POUNDING 正在啟動",
@@ -134,6 +141,34 @@
       "diagnosticsReportSuccess": "診斷報告已傳送",
       "diagnosticsReportFailed": "診斷報告傳送失敗",
       "diagnosticsHint": "如果此問題反覆出現，您可以傳送診斷報告。"
+    },
+    "pendingSlow": {
+      "title": "正在啟動",
+      "description": "poundingcore 正在啟動，請稍候。若長時間無回應，可結束應用程式後再試。"
+    },
+    "exited": {
+      "title": "啟動未完成",
+      "description": "poundingcore 未能完成啟動並已結束。請重新啟動應用程式；若反覆出現，請回報診斷資訊。",
+      "sendDiagnostics": "傳送診斷",
+      "diagnosticsSent": "診斷已傳送",
+      "diagnosticsReportSuccess": "診斷資訊已回報",
+      "diagnosticsReportFailed": "診斷回報失敗，請稍後再試"
+    },
+    "portReportTimeout": {
+      "title": "啟動逾時",
+      "description": "poundingcore 未在預期時間內完成啟動。請重新啟動應用程式；若反覆出現，請傳送診斷。",
+      "sendDiagnostics": "傳送診斷",
+      "diagnosticsSent": "診斷已傳送",
+      "diagnosticsReportSuccess": "診斷資訊已回報",
+      "diagnosticsReportFailed": "診斷回報失敗，請稍後再試"
+    },
+    "startupFailed": {
+      "title": "啟動失敗",
+      "description": "poundingcore 啟動失敗。請重新啟動應用程式；若反覆出現，請傳送診斷。",
+      "sendDiagnostics": "傳送診斷",
+      "diagnosticsSent": "診斷已傳送",
+      "diagnosticsReportSuccess": "診斷資訊已回報",
+      "diagnosticsReportFailed": "診斷回報失敗，請稍後再試"
     }
   },
   "fileAttach.addFiles": "新增檔案",

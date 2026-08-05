@@ -39,6 +39,12 @@
     "detailUsedByTitle": "Used by",
     "detailUsedByEmpty": "No assistants are using this skill yet.",
     "detailBuiltinAssistant": "Built-in",
+    "detailFilesTitle": "Skill files",
+    "detailFilesError": "Could not load this skill's files.",
+    "editViaChat": {
+      "buttonLabel": "Edit via chat",
+      "defaultPrompt": "I'd like to improve this Skill: {{skillName}}\n\nPlease review its content and help me make improvements. My suggestions are:"
+    },
     "usedByCount": "Used by {{count}} assistant(s)",
     "manageInHub": "Manage in Skills Hub",
     "recommend": "Recommend Skills",
@@ -105,7 +111,8 @@
     "officialSkillsEmpty": "No official skills available.",
     "noSearchResults": "No matching skills.",
     "customHint": "Import a skill folder, parent folder, or zip; up to {{maxFileSize}} per file and {{maxTotalSize}} per skill; importing the same name overwrites the existing skill.",
-    "officialHint": "Official skills bundled with POUNDING — ready to use out of the box, read-only, and updated with each release."
+    "officialHint": "Official skills bundled with POUNDING — ready to use out of the box, read-only, and updated with each release.",
+    "deleteAffectsNewOnlyHint": "Deleting only affects new conversations. Skills already selected in existing conversations keep working."
   },
   "authMethod": "Authentication",
   "geminiApiKey": "Gemini API Key",
@@ -1161,7 +1168,9 @@
       "command_missing": "Install {{command}} and retry the connection test.",
       "managed_runtime_unavailable": "Repair or reinstall {{resource}}, then retry the connection test.",
       "auth_required": "The agent is reachable but requires sign-in. Log in via the CLI, or add the required API key under Environment Variables, then retry the connection test.",
-      "no_provider": "No model provider is configured. Add and enable a provider in Settings, then retry the connection test."
+      "no_provider": "No model provider is configured. Add and enable a provider in Settings, then retry the connection test.",
+      "version_drift_older": "The installed agy is older than the version this integration was verified against; some features may be missing. Consider upgrading agy.",
+      "version_drift_newer": "The installed agy is newer than the version this integration was verified against. It should still work; report anything that behaves oddly."
     },
     "boundAssistantsTitle": "Assistants using this agent",
     "boundAssistantsCount": "{{count}} assistant(s)",
@@ -1253,6 +1262,7 @@
   "runtimeResource": {
     "node": "the managed Node runtime",
     "acpTool": "the managed ACP tool",
+    "codexAcp": "the Codex ACP runtime component",
     "claudeAgentAcp": "the Claude ACP runtime component"
   },
   "runtimeScope": {
@@ -1333,5 +1343,21 @@
       "diagnose": "Diagnose",
       "selectPath": "Select path"
     }
+  },
+  "hardwareAccelerationAutoDisabledTitle": "Hardware acceleration disabled",
+  "hardwareAccelerationAutoDisabledNotice": "Repeated graphics crashes were detected, so hardware acceleration was turned off automatically to keep POUNDING stable. You can re-enable it in Settings → System.",
+  "browserData": {
+    "title": "In-app browser",
+    "agentControlLabel": "Let the agent use the in-app browser",
+    "agentControlDesc": "When on, the agent can open pages, click and fill in forms in the in-app browser for you — for example to look something up or complete a flow on a website. It can only drive that one browser view: it cannot reach the POUNDING interface itself, and it never opens a separate Chrome window. When off, the browser still works for you; only the agent loses access.",
+    "agentControlSaved": "Setting saved",
+    "agentControlFailed": "Failed to save setting",
+    "agentControlRestartRequired": "This setting takes effect after you restart the app.",
+    "clearLabel": "Clear browsing data",
+    "clearDesc": "Signs out of every site the browser is logged into and clears its cache. Open browser tabs take effect after a reload.",
+    "clearConfirmTitle": "Clear browsing data?",
+    "clearConfirmContent": "You will be signed out of every site in the in-app browser. This cannot be undone.",
+    "clearSuccess": "Browsing data cleared",
+    "clearFailed": "Failed to clear browsing data"
   }
 }

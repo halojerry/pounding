@@ -404,6 +404,16 @@ ipcMain.handle('backend:recover-corrupted-database', async () => {
   });
 });
 
+// Push the latest backend startup state to the renderer so it can either show
+// the "starting" view, switch to the honest-failure view, or return to the App.
+// The renderer only reads window.__backendStartupFailure once at preload; this
+// channel delivers subsequent ready/exit transitions.
+function broadcastBackendStartupState(state: BackendStartupFailureInfo | null): void {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('backend-startup-state', state);
+  }
+}
+
 function markBackendStartupFailed(error: unknown): void {
   backendStartupFailed = true;
   backendStartupFailureInfo = classifyBackendStartupFailure(error);
@@ -414,6 +424,7 @@ function markBackendStartupFailed(error: unknown): void {
       win.webContents.send('backend:startup-failed');
     }
   }
+  broadcastBackendStartupState(backendStartupFailureInfo);
 }
 
 function registerCronResumeBridge(backendPort: number): void {
@@ -494,8 +505,66 @@ function markBackendReady(backendPort: number, source: string): void {
   backendStartupFailed = false;
   backendStartupFailureInfo = null;
   (globalThis as typeof globalThis & { __backendStartupFailed?: boolean }).__backendStartupFailed = false;
+  // Backend is ready: tell the renderer to drop any "starting" view and show the App.
+  broadcastBackendStartupState(null);
   void ensureAdminUserOnce(backendPort);
   scheduleBackendMigrations();
+}
+
+function resolveDebugBackendStartupFailure(): BackendStartupFailureInfo | null {
+  const reason = process.env.POUNDING_DEBUG_BACKEND_STARTUP_FAILURE as BackendStartupFailureInfo['reason'] | undefined;
+  if (!reason) {
+    return null;
+  }
+  if ((app.isPackaged && !isE2ETestMode) || isWebUIMode || isResetPasswordMode) {
+    console.warn('[POUNDING] Ignoring POUNDING_DEBUG_BACKEND_STARTUP_FAILURE outside desktop dev/e2e mode.');
+    return null;
+  }
+
+  if (reason === 'backend_incompatible_runtime') {
+    return { reason, runtime: 'glibc', requiredVersions: ['2.28'] };
+  }
+  if (reason === 'backend_package_architecture_mismatch') {
+    return {
+      reason,
+      deviceArch: process.arch === 'arm64' ? 'arm64' : 'x64',
+      expectedDownloadArch: process.arch === 'arm64' ? 'arm64' : 'x64',
+      packageArch: process.arch === 'arm64' ? 'x64' : 'arm64',
+    };
+  }
+  if (reason === 'backend_startup_failed') {
+    return {
+      reason,
+      backendBoundaryCode: 'E2E_DEBUG_BACKEND_STARTUP_FAILURE',
+      backendBoundaryStage: 'debug_injection',
+    };
+  }
+  if (reason === 'backend_incomplete_installation') {
+    return {
+      reason,
+      incompleteInstallationKind: 'missing_directory_resources',
+      missingRuntimeDir: true,
+      missingResources: ['managed node runtime', 'ACP adapters'],
+    };
+  }
+  if (reason === 'backend_startup_pending_slow') {
+    return { reason };
+  }
+  if (reason === 'backend_startup_exited') {
+    return { reason };
+  }
+  if (reason === 'backend_startup_port_report_timeout') {
+    return { reason };
+  }
+
+  console.warn(`[POUNDING] Ignoring unknown POUNDING_DEBUG_BACKEND_STARTUP_FAILURE value: ${reason}`);
+  return null;
+}
+
+function applyDebugBackendStartupFailure(failure: BackendStartupFailureInfo): void {
+  backendStartupFailed = true;
+  backendStartupFailureInfo = failure;
+  (globalThis as typeof globalThis & { __backendStartupFailed?: boolean }).__backendStartupFailed = true;
 }
 
 const createWindow = ({ showOnReady = true }: { showOnReady?: boolean } = {}): void => {
@@ -629,11 +698,16 @@ const createWindow = ({ showOnReady = true }: { showOnReady?: boolean } = {}): v
           autoUpdaterService.setBeforeQuitAndInstall(async () => {
             await backendManager.stop();
           });
-          // Check for updates after 3 seconds delay
-          // 3秒后检查更新
-          setTimeout(() => {
-            void autoUpdaterService.checkForUpdatesAndNotify();
-          }, 3000);
+          // Check for updates after 3 seconds delay. Skipped in the discontinued
+          // build: POUNDING's final version guides users to the website instead of
+          // auto-checking, so startup stays silent. The flag is a compile-time
+          // literal, so this branch is tree-shaken out of non-discontinued builds.
+          // 3秒后检查更新。停更版启动静默，不做应用内检测。
+          if (!process.env.IS_DISCONTINUED_BUILD) {
+            setTimeout(() => {
+              void autoUpdaterService.checkForUpdatesAndNotify();
+            }, 3000);
+          }
         }
       )
       .catch((error) => {
@@ -782,59 +856,150 @@ const handleAppReady = async (): Promise<void> => {
   // Start aioncore only after initializeProcess(). initStorage may open
   // the legacy Electron SQLite catalog for a one-shot v26 migration and must
   // close it before the backend touches the same file.
-  const backendStartup = await startBackendOrExit({
-    startBackend: async () => {
-      assertStartupArchitectureCompatible({
-        arch: process.arch,
-        isPackaged: app.isPackaged,
-        platform: process.platform,
+  //
+  /**
+   * 启动单目标 CDP 通道，并把端口/口令写进自己的 env。
+   *
+   * ⚠️ 必须在 startBackendOrExit() 之前 —— 这是硬顺序，不是风格问题。
+   *
+   * 两个值靠进程继承链传给 Agent：aioncore 是本进程的子进程，内置浏览器 MCP 又是
+   * aioncore 的子进程，所以不用落库、不用写配置。但继承是「spawn 那一刻的快照」：
+   * backend-launcher 用 `{ ...process.env }` spawn aioncore，此后我们再改 process.env
+   * 对已经起来的 aioncore 毫无影响。一旦这段挪到 backend 启动之后，aioncore 继承到的
+   * 口令就是 undefined，浏览器 MCP 读不到凭证直接 exit(1)，「Agent 可控」这条链就断在
+   * 最后一环 —— 而手动浏览、标签、前进后退全都正常，故障看起来跟浏览器无关，极难排查。
+   *
+   * 这里只起一个 node http/ws 服务，不碰 Electron 的 app.ready 相关能力，
+   * 附加目标是后续渲染进程通过 IPC 报上来的，所以放在这个位置是安全的。
+   *
+   * Start the single-target CDP bridge and publish port/token into our own env.
+   *
+   * ⚠️ MUST run before startBackendOrExit(). This ordering is a hard requirement, not
+   * style. Both values reach the agent by process inheritance (aioncore is our child; the
+   * in-app browser MCP is aioncore's child), so neither is persisted. But inheritance is a
+   * snapshot taken at spawn time: backend-launcher spawns aioncore with
+   * `{ ...process.env }`, and any later mutation of our process.env is invisible to the
+   * already-running aioncore. Move this block after backend startup and aioncore inherits
+   * an undefined token, so the browser MCP exits(1) for want of credentials and agent
+   * control silently breaks at the last hop — while manual browsing, tabs and history all
+   * keep working, making the failure look unrelated to the browser and very hard to trace.
+   *
+   * Safe this early: it only starts a node http/ws server and touches no app.ready-gated
+   * Electron API. The attach target arrives later over IPC from the renderer.
+   */
+  const { cdpStartupEnabled, setActiveCdpPort } = await import('./process/utils/configureChromium');
+  if (cdpStartupEnabled) {
+    try {
+      const { startCdpBridge } = await import('./process/resources/builtinMcp/cdpBridge');
+      const { setCdpBridgeHandle } = await import('./process/utils/cdpBridgeRegistry');
+      const bridge = await startCdpBridge();
+      setCdpBridgeHandle(bridge);
+      /**
+       * 回填真实端口，让设置页显示的是「连得上的地址」。
+       * 以前这里显示的是 9230 段那个预留号，而通道走 listen(0) —— 用户照着复制的
+       * MCP 配置根本连不上。
+       *
+       * Backfill the real port so the settings page shows a reachable address. It used to
+       * display the reserved 9230-range number while the bridge listened on listen(0), so
+       * any MCP config the user copied from there could never connect.
+       */
+      setActiveCdpPort(bridge.port);
+      process.env.AIONUI_CDP_ACTIVE_PORT = String(bridge.port);
+      process.env.AIONUI_CDP_BRIDGE_TOKEN = bridge.token;
+      console.log(`[CDP] Single-target bridge listening on 127.0.0.1:${bridge.port} (token required)`);
+      app.once('will-quit', () => {
+        void bridge.close();
+        setCdpBridgeHandle(null);
+        setActiveCdpPort(null);
       });
-      const { getDataPath } = await import('./process/utils/utils');
-      const { getSystemDir } = await import('./process/utils/initStorage');
-      const sysDir = getSystemDir();
-      return backendManager.start(
-        getDataPath(),
-        sysDir.logDir,
-        {
-          cacheDir: sysDir.cacheDir,
-          workDir: sysDir.workDir,
-          logDir: sysDir.logDir,
-        },
-        {
-          allowPendingOnHealthTimeout: !(isWebUIMode || isResetPasswordMode),
-          onHealthTimeout: async (error) => {
-            markBackendStartupFailed(error);
-            await captureBackendStartupFailure(error);
+      mark('cdpBridge');
+    } catch (error) {
+      /**
+       * 通道起不来就不设 env。MCP 读不到端口/口令会自行退出（见 browserServer.ts），
+       * 绝不会退回去自己开一个独立 Chrome —— 那正是我们要消灭的行为。
+       *
+       * If the bridge fails to start we leave the env unset. The MCP exits when it cannot
+       * read port/token (see browserServer.ts) and never falls back to spawning its own
+       * separate Chrome — the exact behaviour we are eliminating.
+       */
+      console.error('[CDP] Failed to start single-target bridge; agent browser control stays off.', error);
+    }
+  }
+
+  const debugBackendStartupFailure = resolveDebugBackendStartupFailure();
+  if (debugBackendStartupFailure) {
+    applyDebugBackendStartupFailure(debugBackendStartupFailure);
+    mark(`debugBackendStartupFailure:${debugBackendStartupFailure.reason}`);
+  } else {
+    const backendStartup = await startBackendOrExit({
+      startBackend: async () => {
+        assertStartupArchitectureCompatible({
+          arch: process.arch,
+          isPackaged: app.isPackaged,
+          platform: process.platform,
+        });
+        const { getDataPath } = await import('./process/utils/utils');
+        const { getSystemDir } = await import('./process/utils/initStorage');
+        const sysDir = getSystemDir();
+        return backendManager.start(
+          getDataPath(),
+          sysDir.logDir,
+          {
+            cacheDir: sysDir.cacheDir,
+            workDir: sysDir.workDir,
+            logDir: sysDir.logDir,
           },
-          onPendingExit: async (error) => {
-            markBackendStartupFailed(error);
-            await captureBackendStartupFailure(error);
-          },
-          onReady: (backendPort) => {
-            markBackendReady(backendPort, 'backendManager.lateReady');
-          },
+          {
+            allowPendingOnHealthTimeout: !(isWebUIMode || isResetPasswordMode),
+            onHealthTimeout: async (error) => {
+              markBackendStartupFailed(error);
+              // Hard rule: while the process is still alive, a health timeout is a
+              // recoverable "still starting" state — never auto-report to Sentry
+              // or escalate to a fatal dialog. Only genuinely abnormal shapes that
+              // fall through to a non-pending reason are captured.
+              if (backendStartupFailureInfo?.reason === 'backend_startup_pending_slow') {
+                return;
+              }
+              await captureBackendStartupFailure(error);
+            },
+            onPendingExit: async (error) => {
+              markBackendStartupFailed(error);
+              await captureBackendStartupFailure(error);
+            },
+            onReady: (backendPort) => {
+              markBackendReady(backendPort, 'backendManager.lateReady');
+            },
+          }
+        );
+      },
+      onStarted: (backendPort) => {
+        exposeBackendPort(backendPort);
+        if (backendManager.status === 'running') {
+          markBackendReady(backendPort, 'backendManager.start');
+          return;
         }
-      );
-    },
-    onStarted: (backendPort) => {
-      exposeBackendPort(backendPort);
-      if (backendManager.status === 'running') {
-        markBackendReady(backendPort, 'backendManager.start');
+        mark(`backendManager.start pending health (port=${backendPort})`);
+      },
+      captureFailure: async (error) => {
+        markBackendStartupFailed(error);
+        await captureBackendStartupFailure(error);
+      },
+      exitApp: (code) => app.exit(code),
+      exitOnFailure: isWebUIMode || isResetPasswordMode,
+      logError: console.error,
+    });
+    if (!backendStartup.ok) {
+      if (isWebUIMode || isResetPasswordMode) {
         return;
       }
-      mark(`backendManager.start pending health (port=${backendPort})`);
-    },
-    captureFailure: async (error) => {
-      markBackendStartupFailed(error);
-      await captureBackendStartupFailure(error);
-    },
-    exitApp: (code) => app.exit(code),
-    exitOnFailure: isWebUIMode || isResetPasswordMode,
-    logError: console.error,
-  });
-  if (!backendStartup.ok) {
-    if (isWebUIMode || isResetPasswordMode) {
-      return;
+    }
+
+    // One-shot WebUI admin credential migration. Must run after the backend is
+    // up (__backendPort set) and before any mode branch below that might log the
+    // user in. Swallows its own errors; the next boot retries.
+    const bootBackendPort = (globalThis as typeof globalThis & { __backendPort?: number }).__backendPort;
+    if (backendStartedOk && bootBackendPort) {
+      await ensureAdminUserOnce(bootBackendPort);
     }
   }
 
@@ -1036,20 +1201,6 @@ const handleAppReady = async (): Promise<void> => {
       mainWindow.webContents.once('did-finish-load', () => {
         handleDeepLinkUrl(pendingUrl);
       });
-    }
-  }
-
-  // Verify CDP is ready and log status
-  const { cdpPort, verifyCdpReady } = await import('./process/utils/configureChromium');
-  if (cdpPort) {
-    const cdpReady = await verifyCdpReady(cdpPort);
-    if (cdpReady) {
-      console.log(`[CDP] Remote debugging server ready at http://127.0.0.1:${cdpPort}`);
-      console.log(
-        `[CDP] MCP chrome-devtools: managed node + vendored chrome-devtools-mcp (see prepare-vendor.sh) --browser-url=http://127.0.0.1:${cdpPort}`
-      );
-    } else {
-      console.warn(`[CDP] Warning: Remote debugging port ${cdpPort} not responding`);
     }
   }
 };

@@ -1,4 +1,5 @@
 import { ipcBridge } from '@/common';
+import type { ChatFileRef } from '@/common/types/chatFile';
 import type { IConversationMcpStatus, IProvider, TChatConversation, TProviderWithModel } from '@/common/config/storage';
 import { Message, Spin } from '@arco-design/web-react';
 import React, { Suspense, useCallback } from 'react';
@@ -14,6 +15,7 @@ import {
 } from './teamSendRuntime';
 import type { TeamRunViewState } from '../hooks/useTeamRunView';
 import TeamChatEmptyState from './TeamChatEmptyState';
+import { useTeamTabs } from '@/renderer/pages/team/hooks/TeamTabsContext';
 import { usePresetAssistantInfo } from '@/renderer/hooks/agent/usePresetAssistantInfo';
 import { resolveConversationBackend } from '@/renderer/pages/conversation/utils/conversationAssistantIdentity';
 
@@ -25,7 +27,7 @@ const LegacyReadOnlyConversation = React.lazy(
 
 // Narrow to Aionrs conversations so model field is always available
 type AionrsConversation = Extract<TChatConversation, { type: 'aionrs' }>;
-type TeamSendOverride = (payload: { input: string; files: string[] }) => Promise<void>;
+type TeamSendOverride = (payload: { input: string; files: ChatFileRef[] }) => Promise<void>;
 type TeamConversationCapabilitySnapshot = {
   skills?: string[];
   mcp_servers?: string[];
@@ -131,6 +133,7 @@ const TeamChatView: React.FC<TeamChatViewProps> = ({
   onRunStateStale,
 }) => {
   const { t } = useTranslation();
+  const { activeSlotId, switchTab } = useTeamTabs();
   const { info: presetAssistantInfo } = usePresetAssistantInfo(conversation);
   const capabilitySnapshot = conversation.extra as TeamConversationCapabilitySnapshot | undefined;
   // Single source of truth for the team greeting. Each *Chat simply forwards
@@ -211,6 +214,10 @@ const TeamChatView: React.FC<TeamChatViewProps> = ({
           // Only offer "retry start" when this slot's runtime failed; it triggers
           // a directed per-member attach (not warmupSession/ensure_session).
           onRetryStart: isRuntimeFailed ? buildTeamRetryStartHandler({ team_id, slot_id }) : undefined,
+          // Focus coordination: the active tab owns its column's sendbox focus,
+          // and focusing that sendbox syncs the active tab back.
+          isActive: slot_id === activeSlotId,
+          onFocus: () => switchTab(slot_id),
         }
       : undefined;
   const content = (() => {
@@ -220,6 +227,11 @@ const TeamChatView: React.FC<TeamChatViewProps> = ({
 
     switch (conversation.type) {
       case 'acp':
+      // Antigravity renders through the ACP chat surface here for the same
+      // reason it does outside a team: same extra payload, same event stream,
+      // same send box. Without this it falls to `default: null` and the
+      // teammate shows neither a message list nor an input box.
+      case 'antigravity':
         return (
           <AcpChat
             key={conversation.id}

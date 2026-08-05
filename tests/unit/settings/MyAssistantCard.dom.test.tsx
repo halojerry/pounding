@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -63,14 +63,13 @@ const makeAssistant = (overrides: Partial<AssistantListItem> = {}): AssistantLis
 const renderCard = (
   assistant: AssistantListItem,
   handlers: Partial<
-    Record<'onOpenDetail' | 'onDelete' | 'onToggleEnabled' | 'onStartChat' | 'onGoInstall', ReturnType<typeof vi.fn>>
+    Record<'onOpenDetail' | 'onDelete' | 'onToggleEnabled' | 'onStartChat', ReturnType<typeof vi.fn>>
   > = {}
 ) => {
   const onOpenDetail = handlers.onOpenDetail ?? vi.fn();
   const onDelete = handlers.onDelete ?? vi.fn();
   const onToggleEnabled = handlers.onToggleEnabled ?? vi.fn();
   const onStartChat = handlers.onStartChat ?? vi.fn();
-  const onGoInstall = handlers.onGoInstall ?? vi.fn();
   render(
     <MyAssistantCard
       assistant={assistant}
@@ -79,10 +78,9 @@ const renderCard = (
       onDelete={onDelete}
       onToggleEnabled={onToggleEnabled}
       onStartChat={onStartChat}
-      onGoInstall={onGoInstall}
     />
   );
-  return { onOpenDetail, onDelete, onToggleEnabled, onStartChat, onGoInstall };
+  return { onOpenDetail, onDelete, onToggleEnabled, onStartChat };
 };
 
 describe('MyAssistantCard', () => {
@@ -154,18 +152,5 @@ describe('MyAssistantCard', () => {
     const { onDelete } = renderCard(makeAssistant({ id: 'card-1', source: 'user' }));
     fireEvent.click(screen.getByTestId('menu-delete-card-1'));
     expect(onDelete).toHaveBeenCalledWith(expect.objectContaining({ id: 'card-1' }));
-  });
-
-  it('shows a go-install action for a missing agent and invokes onGoInstall', () => {
-    const { onGoInstall } = renderCard(makeAssistant({ id: 'card-1', agent_status: 'missing' }));
-    const installBtn = screen.getByTestId('btn-go-install-card-1');
-    expect(installBtn).toBeInTheDocument();
-    fireEvent.click(installBtn);
-    expect(onGoInstall).toHaveBeenCalledTimes(1);
-  });
-
-  it('does not show a go-install action when the agent is online', () => {
-    renderCard(makeAssistant({ id: 'card-1', agent_status: 'online' }));
-    expect(screen.queryByTestId('btn-go-install-card-1')).not.toBeInTheDocument();
   });
 });

@@ -16,6 +16,11 @@
   "downloadFailed": "下载失败",
   "imageLoadFailed": "图片加载失败",
   "scrollToBottom": "滚动到底部",
+  "anchorRail": {
+    "label": "对话消息锚点",
+    "tickAria": "跳转到第 {{index}} 条消息",
+    "searchAria": "搜索对话内容"
+  },
   "availableCommands": "{{count}} 个可用命令",
   "atFile.hint": "输入以搜索文件",
   "atFile.menuLabel": "文件提及",
@@ -72,5 +77,13 @@
     "file_nameLabel": "文件名",
     "file_namePlaceholder": "输入文件名",
     "conversation_idLabel": "对话 ID"
+  },
+  "fork": {
+    "action": "从此处分叉",
+    "errorTurnInFlight": "请等待当前回复完成后再分叉",
+    "errorParentUnbound": "该会话还没有可分叉的后端会话",
+    "errorPointUnsupported": "该智能体仅支持从最新消息分叉",
+    "errorUnsupported": "该智能体不支持会话分叉",
+    "errorGeneric": "分叉失败：{{message}}"
   }
 }

@@ -116,7 +116,7 @@ export const useAssistantEditor = ({
   );
 
   const refreshAssistantCatalog = useCallback(async () => {
-    await Promise.all([loadAssistants(), swrMutate('assistants.list'), swrMutate('assistants')]);
+    await Promise.all([loadAssistants(), swrMutate('assistants.list')]);
   }, [loadAssistants]);
 
   const refreshAssistantDetailCaches = useCallback(

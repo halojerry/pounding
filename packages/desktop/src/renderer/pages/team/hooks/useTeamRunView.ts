@@ -67,9 +67,9 @@ const debugTeamChildTurnEvent = (source: string, event: ITeamChildTurnEvent) => 
   });
 };
 
-const indexSlotWork = (slotWork: ITeamSlotWork[]): Record<string, ITeamSlotWork | undefined> => {
+const indexSlotWork = (slotWork?: ITeamSlotWork[] | null): Record<string, ITeamSlotWork | undefined> => {
   const indexed: Record<string, ITeamSlotWork | undefined> = {};
-  for (const work of slotWork) {
+  for (const work of slotWork ?? []) {
     indexed[work.slot_id] = work;
   }
   return indexed;
@@ -224,7 +224,7 @@ export const useTeamRunView = (team_id: string) => {
       ipcBridge.team.agentRenamed.on((event) => {
         if (event.team_id === team_id) void reconcile('team.agentRenamed');
       }),
-      ipcBridge.team.sessionChanged.on((event) => {
+      ipcBridge.team.sessionStatusChanged.on((event) => {
         if (event.team_id !== team_id) return;
         if (event.status === 'stopped') {
           setState((prev) => ({ ...prev, sessionStopped: true }));

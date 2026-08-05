@@ -150,6 +150,8 @@ export function isBackendHttpError(error: unknown): error is BackendHttpError {
  */
 export type HttpRequestOptions = {
   silentStatuses?: number[];
+  /** Extra request headers merged on top of the default `Content-Type`. */
+  headers?: Record<string, string>;
 };
 
 const SENSITIVE_LOG_KEY_PATTERN = /api[_-]?key|authorization|auth[_-]?token|access[_-]?token|refresh[_-]?token|secret/i;
@@ -181,6 +183,10 @@ export async function httpRequest<T>(
 
   if (body !== undefined) {
     headers['Content-Type'] = 'application/json';
+  }
+
+  if (options?.headers) {
+    Object.assign(headers, options.headers);
   }
 
   console.debug(
@@ -296,14 +302,15 @@ export function httpPost<Data, Params = undefined>(
 export function httpPut<Data, Params = undefined>(
   path: string | ((params: Params) => string),
   mapBody?: (params: Params) => unknown,
-  options?: HttpRequestOptions
+  options?: HttpRequestOptions | ((params: Params) => HttpRequestOptions | undefined)
 ): ProviderLike<Data, Params> {
   return {
     provider: () => {},
     invoke: (async (params?: Params) => {
       const resolvedPath = typeof path === 'function' ? path(params!) : path;
       const body = mapBody ? mapBody(params!) : params;
-      return httpRequest<Data>('PUT', resolvedPath, body, options);
+      const opts = typeof options === 'function' ? options(params!) : options;
+      return httpRequest<Data>('PUT', resolvedPath, body, opts);
     }) as ProviderLike<Data, Params>['invoke'],
   };
 }
@@ -443,6 +450,31 @@ function scheduleWsReconnect(): void {
     wsReconnectTimer = null;
     ensureWs();
   }, delay);
+}
+
+/**
+ * Send an outbound frame over the shared WS singleton, wrapped in the realtime
+ * envelope `{ name, data }` (backend routes by `name`; the fs monitor uses
+ * `name === "fs"`, see stage-1 protocol.md v3).
+ *
+ * Ordered-stream semantics: if the socket is not OPEN the frame is **dropped**
+ * (never buffered). The caller re-declares full state on reconnect (the monitor
+ * client zeroes `current` and re-subscribes via `realtime.reconnected`), so a
+ * dropped outbound never leaves an undetectable gap. Returns `true` when the
+ * frame was handed to the socket.
+ */
+export function wsSend(name: string, data: unknown): boolean {
+  ensureWs();
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    return false;
+  }
+  try {
+    ws.send(JSON.stringify({ name, data }));
+    return true;
+  } catch (e) {
+    console.error('[wsSend] send failed:', e);
+    return false;
+  }
 }
 
 // ---------------------------------------------------------------------------

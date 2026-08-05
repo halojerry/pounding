@@ -74,7 +74,9 @@
     "removeProjectConfirm": "\"{{name}}\" projesi kaldırılsın mı? Projedeki {{count}} konuşma da kaldırılacak.",
     "newConversationInProject": "Bu projede yeni konuşma",
     "deleting": "Siliniyor...",
-    "reorderPinned": "Sabitlenmiş sohbetin sırasını değiştirmek için sürükleyin"
+    "reorderPinned": "Sabitlenmiş sohbetin sırasını değiştirmek için sürükleyin",
+    "forkedFrom": "“{{name}}” konuşmasından çatallandı",
+    "forkedConversation": "Çatallanmış konuşma"
   },
   "historySearch": {
     "tooltip": "Mesajları ara",
@@ -401,7 +403,8 @@
     "openWith": {
       "vscode": "VS Code",
       "terminal": "Terminal",
-      "explorer": "Dosya Gezgini"
+      "explorer": "Dosya Gezgini",
+      "browser": "Tarayıcı"
     }
   },
   "minimap": {
@@ -493,7 +496,15 @@
     }
   },
   "contextUsage": {
-    "contextUsed": "bağlam kullanıldı"
+    "contextUsed": "bağlam kullanıldı",
+    "tokensUsed": "{{tokens}} jeton kullanıldı",
+    "windowUnknown": "Bağlam penceresi boyutu bilinmiyor",
+    "sessionCost": "Oturum maliyeti",
+    "input": "Girdi",
+    "output": "Çıktı",
+    "thought": "Düşünme",
+    "cachedRead": "Önbellek okuma",
+    "cachedWrite": "Önbellek yazma"
   },
   "skill_generator": {
     "title": "Yetenek/Kural Oluştur",
@@ -557,7 +568,8 @@
     "sendboxHint": "Çalışma ortamı hazırlanıyor. İlk başlatma biraz daha uzun sürebilir."
   },
   "sendbox": {
-    "hint": "Komutlar için /, dosya için @ yazın, ↑/↓ ile mesaj geçmişi"
+    "hint": "Komutlar için /, dosya için @ yazın, ↑/↓ ile mesaj geçmişi",
+    "mediaPathFallback": "Bu ajan bu dosya türünü yerel olarak desteklemiyor; dosya yolu olarak gönderilecek."
   },
   "agentTip": {
     "codes": {
@@ -565,7 +577,10 @@
         "body": "Bu istek görünür bir yanıt üretmedi."
       },
       "ACP_EMPTY_TURN_NEEDS_AUTH": {
-        "body": "Bu istek görünür bir yanıt üretmedi. Aracı önce oturum açmanızı gerektirebilir: {{hint}}."
+        "body": "Bu istek görünür bir yanıt üretmedi. Zaten oturum açtıysanız, bu geçici bir arka uç veya bağlantı sorunu olabilir; tekrar deneyin ya da yeni bir sohbet başlatın. Henüz oturum açmadıysanız oturum açabilirsiniz: {{hint}}."
+      },
+      "ACP_EMPTY_TURN_TOKEN_LIMIT": {
+        "body": "Bu istek görünür bir yanıt üretmedi. Geçerli sohbet bağlam uzunluğu sınırına yaklaşmış olabilir; tekrar deneyin veya yeni bir sohbet başlatıp yeniden deneyin."
       },
       "ACP_EMPTY_TURN_MAX_TOKENS": {
         "body": "Bu istek, görünür bir yanıt üretilmeden önce modelin çıktı token sınırına ulaştı."
@@ -575,8 +590,47 @@
       },
       "ACP_EMPTY_TURN_REFUSAL": {
         "body": "Model, görünür bir yanıt üretmeden önce bu isteği reddetti."
+      },
+      "ANTIGRAVITY_STEPS_FAILED": {
+        "body": "{{count}} adım başarısız oldu ve etkili OLMADI. agy bu turları yine de başarılı olarak bitirir; bu yüzden yanıta değil gerçek sonuca bakın."
+      },
+      "ANTIGRAVITY_VERSION_OLDER": {
+        "body": "Kurulu agy {{reported}} sürümü, bu entegrasyonun doğrulandığı {{verified}} sürümünden eski; bazı özellikler eksik olabilir. agy'yi güncellemeniz önerilir."
+      },
+      "ANTIGRAVITY_VERSION_NEWER": {
+        "body": "Kurulu agy {{reported}} sürümü, bu entegrasyonun doğrulandığı {{verified}} sürümünden yeni. Yine de çalışması beklenir; tuhaf davranışları bildirin."
       }
     }
   },
-  "notFound": "Konuşma bulunamadı veya silinmiş"
+  "notFound": "Konuşma bulunamadı veya silinmiş",
+  "explorer": {
+    "addFolder": "Add folder to project",
+    "removeFolder": "Remove from project",
+    "attachDuplicate": "This folder is already in the project",
+    "attachOverlap": "This folder overlaps a folder already in the project",
+    "attachFailed": "Couldn't add the folder",
+    "removeFailed": "Couldn't remove the folder",
+    "contextMenu": {
+      "rename": "Yeniden adlandır",
+      "addToChat": "Sohbete ekle"
+    },
+    "namePlaceholder": "Ad",
+    "deleteConfirm": "“{{name}}” silinsin mi? Bu geri alınamaz.",
+    "renameFailed": "Yeniden adlandırılamadı",
+    "tabs": {
+      "files": "Dosyalar",
+      "changes": "Değişiklikler"
+    },
+    "changesPlaceholder": "Kaynak denetimi ayrı bir hatta — yakında.",
+    "addedToChat": "{{name}} sohbete eklendi",
+    "imported": "{{count}} dosya içe aktarıldı",
+    "importPartialFailed": "{{copied}} kopyalandı, {{failed}} başarısız (ad çakışması veya desteklenmiyor)",
+    "importFailed": "Dosyalar içe aktarılamadı",
+    "search": {
+      "placeholder": "Dosya adına göre ara",
+      "searching": "Aranıyor…",
+      "empty": "Eşleşen dosya yok",
+      "limitReached": "İlk {{count}} gösteriliyor — daraltın"
+    }
+  }
 }

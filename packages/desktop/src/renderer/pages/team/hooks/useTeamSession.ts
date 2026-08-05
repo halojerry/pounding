@@ -80,7 +80,7 @@ export function useTeamSession(team: TTeam, warmupPhase?: TeamWarmupPhase) {
       void mutateTeam();
     });
 
-    const unsubRuntimeStatus = ipcBridge.team.agentStatusChanged.on((event: ITeamAgentRuntimeStatusEvent) => {
+    const unsubRuntimeStatus = ipcBridge.team.agentRuntimeStatusChanged.on((event: ITeamAgentRuntimeStatusEvent) => {
       if (event.team_id !== team.id) return;
       setMembershipMutationState((prev) =>
         applyTeamRuntimeStatusToMembershipMutationState(prev, event.slot_id, event.status)
@@ -100,7 +100,7 @@ export function useTeamSession(team: TTeam, warmupPhase?: TeamWarmupPhase) {
       void revalidateAcpConfigOptions(event.conversation_id);
     });
 
-    const unsubSessionStatus = ipcBridge.team.sessionChanged.on((event: ITeamSessionStatusChangedEvent) => {
+    const unsubSessionStatus = ipcBridge.team.sessionStatusChanged.on((event: ITeamSessionStatusChangedEvent) => {
       if (event.team_id !== team.id) return;
       setMembershipMutationState((prev) => applyTeamSessionStatusToMembershipMutationState(prev, event.status));
     });

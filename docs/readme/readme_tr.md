@@ -34,7 +34,7 @@
 </p>
 
 <p align="center">
-  <strong>💬 Topluluk:</strong> <a href="https://discord.gg/2QAwJn7Egx" target="_blank">Discord (English)</a> | <a href="../../resources/wx-17.png" target="_blank">微信 (中文群)</a> | <a href="https://twitter.com/AionUI" target="_blank">Twitter</a>
+  <strong>💬 Topluluk:</strong> <a href="https://discord.gg/2QAwJn7Egx" target="_blank">Discord (English)</a> | <a href="../../resources/wx-18.png" target="_blank">微信 (中文群)</a> | <a href="https://twitter.com/AionUI" target="_blank">Twitter</a>
 </p>
 
 ---
@@ -54,7 +54,8 @@
 </h3>
 
 <p align="center">
-  <sub><strong>Kimi K3</strong> yayında ve POUNDING'de kutudan çıktığı gibi çalışıyor — <a href="https://www.kimi.com/code?aff=aionui" target="_blank">Kimi For Coding planı edinin</a> veya API anahtarı alın (<a href="https://platform.kimi.ai?aff=aionui" target="_blank">Global</a> / <a href="https://platform.kimi.com?aff=aionui" target="_blank">Çin</a>)</sub>
+  <sub><strong>Kimi K3</strong> yayında ve POUNDING'de kutudan çıktığı gibi çalışıyor — <a href="https://www.kimi.com/code?aff=aionui" target="_blank">Kimi For Coding planı edinin</a> veya API anahtarı alın (<a href="https://platform.kimi.ai?track_id=track-32e04532b08d460fac729191744fa75c&aff=aionui" target="_blank">Global</a> / <a href="https://platform.kimi.com?track_id=track-98f92981df1c4c61b2c68930ba3ab658&aff=aionui" target="_blank">Çin</a>)</sub>
+
 </p>
 
 ---
@@ -635,7 +636,7 @@ brew install aionui
 - [Sorun Bildir](https://github.com/iOfficeAI/AionUi/issues) — hatalar ve özellik istekleri
 - [Sürüm Güncellemeleri](https://github.com/iOfficeAI/AionUi/releases) — en son sürümü alın
 - [Discord Topluluğu](https://discord.gg/2QAwJn7Egx) — İngilizce topluluk
-- [WeChat Grubu](../../resources/wx-17.png) — Çince topluluk
+- [WeChat Grubu](../../resources/wx-18.png) — Çince topluluk
 
 ### Katkıda Bulunma
 

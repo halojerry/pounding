@@ -189,6 +189,8 @@ vi.mock('@/renderer/utils/file/fileSelection', () => ({
 }));
 vi.mock('@/renderer/utils/file/messageFiles', () => ({
   buildDisplayMessage: (input: string) => input,
+  collectChatFileRefs: () => [],
+  splitChatFileRefs: () => [],
 }));
 vi.mock('@/renderer/pages/conversation/platforms/acp/useAcpInitialMessage', () => ({
   useAcpInitialMessage: vi.fn(),

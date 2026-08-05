@@ -281,9 +281,11 @@ function preinstallChromeDevtoolsMcp(): void {
   // Windows Node.js distribution: node.exe, npm.cmd at root level (no bin/)
   // Unix Node.js distribution: bin/node, bin/npm
   const nodeBin = isWin ? path.join(root, 'node.exe') : path.join(root, 'bin', 'node');
-  const npmBin = isWin ? path.join(root, 'npm.cmd') : path.join(root, 'bin', 'npm');
-  if (!fs.existsSync(nodeBin) || !fs.existsSync(npmBin)) {
-    console.warn('[POUNDING] Managed node/npm binaries not found; skipping chrome-devtools-mcp preinstall');
+  // Run npm as `node <npm-cli.js>` — execFile cannot launch npm.cmd directly
+  // on Windows (spawn EINVAL), and node.exe <npm-cli.js> works everywhere.
+  const npmCliJs = path.join(root, 'node_modules', 'npm', 'bin', 'npm-cli.js');
+  if (!fs.existsSync(nodeBin) || !fs.existsSync(npmCliJs)) {
+    console.warn('[POUNDING] Managed node/npm-cli.js not found; skipping chrome-devtools-mcp preinstall');
     return;
   }
   // Check if already installed
@@ -330,7 +332,7 @@ function preinstallChromeDevtoolsMcp(): void {
   console.log('[POUNDING] Pre-installing chrome-devtools-mcp to managed Node runtime...');
   try {
     const npmPrefix = path.join(root, 'tools', 'global');
-    execFileSync(nodeBin, [npmBin, 'install', '-g', 'chrome-devtools-mcp'], {
+    execFileSync(nodeBin, [npmCliJs, 'install', '-g', 'chrome-devtools-mcp'], {
       stdio: 'pipe',
       timeout: 120_000,
       env: {

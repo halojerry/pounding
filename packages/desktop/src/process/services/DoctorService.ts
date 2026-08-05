@@ -111,8 +111,18 @@ async function repairFromBundled(agentName: string, backend: string | null): Pro
 
 /**
  * Startup self-check: diagnose all agents and auto-repair issues.
- * Called from handleAppReady after backend is healthy.
- * Silently fixes issues; only reports to Sentry on total failure.
+ * Wired into `markBackendReady` (non-blocking, fire-and-forget) so it never
+ * delays window/backend startup.
+ *
+ * Deliberately NOT a "install every missing CLI at boot" loop — that behavior
+ * was removed for good reason (network churn + OOBE stalls). We only self-heal
+ * agents whose reason says the CLI *is* present but broken ("not runnable" /
+ * managed runtime unavailable): those get the real installer re-run, then a
+ * backend re-probe. Agents that are simply not installed ("not on $PATH") are
+ * left to the user's explicit action (Settings → Agent 运行环境, or the
+ * assistant picker's on-demand install).
+ *
+ * Only reports to Sentry on total failure.
  */
 export async function startupSelfCheck(): Promise<void> {
   console.log('[DoctorService] Running startup self-check...');
@@ -120,14 +130,14 @@ export async function startupSelfCheck(): Promise<void> {
   const report = await diagnose();
 
   if (report.summary.healthy) {
-    console.log('[DoctorService] All agents healthy.');
+    console.log(`[DoctorService] All agents healthy (${report.agents.length} agents).`);
     return;
   }
 
   const issues = report.summary.issues;
   console.log(`[DoctorService] Found ${issues.length} issues: ${issues.join(', ')}`);
 
-  // Log detailed agent status for diagnostics
+  // Log detailed agent status for diagnostics (real status, not a facade)
   for (const agent of report.agents) {
     console.log(
       `[DoctorService]   ${agent.name} (backend=${agent.backend ?? 'none'}): available=${agent.available}` +
@@ -137,6 +147,15 @@ export async function startupSelfCheck(): Promise<void> {
 
   for (const agent of report.agents) {
     if (agent.available) continue;
+
+    // Only self-heal "installed but broken" agents. "not on $PATH" means the
+    // CLI is simply missing — installing it here would re-introduce the
+    // removed boot-time auto-install for every unavailable tool.
+    const reason = agent.reason ?? '';
+    if (!/not runnable|unavailable/i.test(reason)) {
+      console.log(`[DoctorService] ${agent.name}: not installed (${reason || 'no reason'}) — skipping boot repair`);
+      continue;
+    }
 
     const repairAttempts: RepairAttempt[] = [];
 

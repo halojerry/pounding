@@ -270,6 +270,17 @@ export async function startStaticServer(opts: StaticServerOptions): Promise<Stat
   const localUrl = `http://127.0.0.1:${actualPort}`;
   const networkUrl = lanIP ? `http://${lanIP}:${actualPort}` : undefined;
 
+  // Diagnosability: surface the exact bind/URL and whether the SPA assets
+  // exist, so "WebUI won't open / keeps spinning" reports are resolvable from
+  // the log instead of requiring a second remote session.
+  console.log(
+    `[WebUI] static server ready (${localUrl}${networkUrl ? `, network=${networkUrl}` : ''}, ` +
+      `backendPort=${opts.backendPort}, staticIndex=${hasStaticIndex}${spaProxyPort ? `, devProxy=${spaProxyPort}` : ''})`
+  );
+  if (!hasStaticIndex && !spaProxyPort) {
+    console.warn(`[WebUI] static dir has no index.html (${opts.staticDir}) and no dev proxy — SPA requests will 404`);
+  }
+
   return {
     port: actualPort,
     url: networkUrl ?? localUrl,

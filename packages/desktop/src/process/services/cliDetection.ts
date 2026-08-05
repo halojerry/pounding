@@ -105,9 +105,19 @@ function runCommandOutput(
   options: { timeoutMs?: number; env?: NodeJS.ProcessEnv } = {}
 ): Promise<string> {
   return new Promise((resolve, reject) => {
+    // Windows cannot `execFile` a `.cmd`/`.bat` shim directly (spawn EINVAL) —
+    // npm/pip-installed CLIs (hermes/claude/openclaw) land as `.cmd` shims in
+    // ~/.local/bin. Route them through `cmd.exe /c` so the --version probe
+    // actually runs; macOS/Linux shebang shims need no wrapping.
+    let execCommand = command;
+    let execArgs = args;
+    if (process.platform === 'win32' && /\.(cmd|bat)$/i.test(command)) {
+      execCommand = 'cmd.exe';
+      execArgs = ['/c', command, ...args];
+    }
     const child = execFile(
-      command,
-      args,
+      execCommand,
+      execArgs,
       {
         env: {
           ...process.env,

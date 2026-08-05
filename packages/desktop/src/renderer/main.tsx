@@ -400,7 +400,17 @@ void registerPwa();
 
 const root = createRoot(document.getElementById('root')!);
 const backendStartupFailure = window.__backendStartupFailure;
-const bootGateState = resolveBootGateState(window.__backendPort ?? 0, backendStartupFailure);
+// WebUI browser mode: no Electron preload, so `window.electronAPI` /
+// `__backendPort` / `__onBackendPortUpdate` are all absent. The backend is
+// already running (web-host serves the page and reverse-proxies /api + /ws to
+// it), so the boot gate must NOT sit on the splash spinner waiting for a
+// port-update broadcast that can never arrive — that left WebUI pages spinning
+// forever in v2.1.42 (the splash gate was added for Electron slow boots).
+const isWebUiBrowser =
+  typeof window !== 'undefined' &&
+  typeof document !== 'undefined' &&
+  !(window as { electronAPI?: unknown }).electronAPI;
+const bootGateState = isWebUiBrowser ? 'app' : resolveBootGateState(window.__backendPort ?? 0, backendStartupFailure);
 
 if (bootGateState === 'failure') {
   root.render(

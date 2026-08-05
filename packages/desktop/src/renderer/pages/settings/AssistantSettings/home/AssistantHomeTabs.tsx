@@ -177,6 +177,7 @@ const AssistantHomeTabs: React.FC<AssistantHomeTabsProps> = ({
               onToggleEnabled={onToggleEnabled}
               onReorder={onReorderEnabled}
               onGoInstall={onGoInstall}
+              onStartChat={onStartChat}
             />
           ) : tab === 'mine' ? (
             <MyAssistantsList

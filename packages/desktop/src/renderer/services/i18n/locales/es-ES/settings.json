@@ -39,6 +39,12 @@
     "detailUsedByTitle": "Usada por",
     "detailUsedByEmpty": "Ningún asistente usa esta habilidad todavía.",
     "detailBuiltinAssistant": "Integrado",
+    "detailFilesTitle": "Archivos de la habilidad",
+    "detailFilesError": "No se pudieron cargar los archivos de esta habilidad.",
+    "editViaChat": {
+      "buttonLabel": "Editar mediante chat",
+      "defaultPrompt": "Me gustaría mejorar este Skill: {{skillName}}\n\nRevisa su contenido y ayúdame a mejorarlo. Mis sugerencias de cambio son:"
+    },
     "usedByCount": "Usada por {{count}} asistente(s)",
     "manageInHub": "Administrar en Centro de habilidades",
     "recommend": "Recomendar habilidades",
@@ -105,7 +111,8 @@
     "officialSkillsEmpty": "No hay habilidades oficiales disponibles.",
     "noSearchResults": "No hay habilidades coincidentes.",
     "customHint": "Importa una carpeta de habilidad, carpeta superior o zip; hasta {{maxFileSize}} por archivo y {{maxTotalSize}} por habilidad; importar el mismo nombre sobrescribe la habilidad existente.",
-    "officialHint": "Habilidades oficiales incluidas en POUNDING: listas para usar, de solo lectura y actualizadas con cada versión."
+    "officialHint": "Habilidades oficiales incluidas en POUNDING: listas para usar, de solo lectura y actualizadas con cada versión.",
+    "deleteAffectsNewOnlyHint": "Deleting only affects new conversations. Skills already selected in existing conversations keep working."
   },
   "authMethod": "Autenticación",
   "geminiApiKey": "Clave API de Gemini",
@@ -1149,7 +1156,9 @@
       "command_missing": "Install {{command}} and retry the connection test.",
       "managed_runtime_unavailable": "Repair or reinstall {{resource}}, then retry the connection test.",
       "auth_required": "The agent is reachable but requires sign-in. Log in via the CLI, or add the required API key under Environment Variables, then retry the connection test.",
-      "no_provider": "No model provider is configured. Add and enable a provider in Settings, then retry the connection test."
+      "no_provider": "No model provider is configured. Add and enable a provider in Settings, then retry the connection test.",
+      "version_drift_older": "La versión instalada de agy es anterior a la verificada para esta integración; puede que falten funciones. Se recomienda actualizar.",
+      "version_drift_newer": "La versión instalada de agy es posterior a la verificada para esta integración. Debería seguir funcionando; informa de cualquier comportamiento extraño."
     },
     "boundAssistantsTitle": "Assistants using this agent",
     "boundAssistantsCount": "{{count}} assistant(s)",
@@ -1219,6 +1228,7 @@
   "runtimeResource": {
     "node": "el runtime de Node administrado",
     "acpTool": "la herramienta ACP administrada",
+    "codexAcp": "el componente de runtime ACP de Codex",
     "claudeAgentAcp": "el componente de runtime ACP de Claude"
   },
   "runtimeScope": {
@@ -1333,5 +1343,21 @@
       "diagnose": "Diagnose",
       "selectPath": "Select path"
     }
+  },
+  "hardwareAccelerationAutoDisabledTitle": "Aceleración por hardware desactivada",
+  "hardwareAccelerationAutoDisabledNotice": "Se detectaron fallos gráficos repetidos, por lo que la aceleración por hardware se desactivó automáticamente para mantener la aplicación estable. Puedes volver a activarla en Ajustes → Sistema.",
+  "browserData": {
+    "title": "Navegador integrado",
+    "agentControlLabel": "Permitir que el agente use el navegador integrado",
+    "agentControlDesc": "Cuando está activado, el agente puede abrir páginas, hacer clic y rellenar formularios por ti en el navegador integrado, por ejemplo para buscar información o completar un trámite en un sitio web. Solo puede controlar esa vista del navegador: no llega a la interfaz de POUNDING ni abre nunca una ventana de Chrome aparte. Si lo desactivas, el navegador sigue funcionando para ti; solo el agente pierde el acceso.",
+    "agentControlSaved": "Ajuste guardado",
+    "agentControlFailed": "No se pudo guardar el ajuste",
+    "agentControlRestartRequired": "Este ajuste se aplica al reiniciar la aplicación.",
+    "clearLabel": "Borrar datos de navegación",
+    "clearDesc": "Cierra la sesión en todos los sitios donde el navegador está conectado y borra la caché. Las pestañas abiertas se actualizan al recargar.",
+    "clearConfirmTitle": "¿Borrar los datos de navegación?",
+    "clearConfirmContent": "Se cerrará tu sesión en todos los sitios del navegador integrado. Esta acción no se puede deshacer.",
+    "clearSuccess": "Datos de navegación borrados",
+    "clearFailed": "No se pudieron borrar los datos de navegación"
   }
 }

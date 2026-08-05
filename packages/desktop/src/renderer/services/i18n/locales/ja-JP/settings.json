@@ -39,6 +39,12 @@
     "detailUsedByTitle": "使用中のアシスタント",
     "detailUsedByEmpty": "このスキルを使用しているアシスタントはまだありません。",
     "detailBuiltinAssistant": "組み込み",
+    "detailFilesTitle": "スキルファイル",
+    "detailFilesError": "このスキルのファイルを読み込めませんでした。",
+    "editViaChat": {
+      "buttonLabel": "チャットで編集",
+      "defaultPrompt": "この Skill を改善したいです：{{skillName}}\n\n内容を確認し、改善を手伝ってください。私の修正案は次のとおりです："
+    },
     "usedByCount": "{{count}} 件のアシスタントが使用中",
     "manageInHub": "スキルハブで管理",
     "recommend": "スマート推薦",
@@ -105,7 +111,8 @@
     "officialSkillsEmpty": "利用可能な公式スキルがありません。",
     "noSearchResults": "一致するスキルがありません。",
     "customHint": "スキルフォルダ、親フォルダ、または zip をインポートできます。1 ファイルあたり最大 {{maxFileSize}}、1 スキルあたり最大 {{maxTotalSize}}。同名でインポートすると既存のスキルを上書きします。",
-    "officialHint": "POUNDING に同梱される公式スキル。すぐに使え、読み取り専用で、リリースごとに更新されます。"
+    "officialHint": "POUNDING に同梱される公式スキル。すぐに使え、読み取り専用で、リリースごとに更新されます。",
+    "deleteAffectsNewOnlyHint": "Deleting only affects new conversations. Skills already selected in existing conversations keep working."
   },
   "authMethod": "認証",
   "geminiApiKey": "Gemini API キー",
@@ -1148,7 +1155,9 @@
       "command_missing": "Install {{command}} and retry the connection test.",
       "managed_runtime_unavailable": "Repair or reinstall {{resource}}, then retry the connection test.",
       "auth_required": "エージェントに接続できますが、サインインが必要です。CLI でログインするか、「環境変数」に必要な API キーを追加してから、接続テストを再実行してください。",
-      "no_provider": "モデルプロバイダーが設定されていません。設定でプロバイダーを追加して有効にしてから、接続テストを再実行してください。"
+      "no_provider": "モデルプロバイダーが設定されていません。設定でプロバイダーを追加して有効にしてから、接続テストを再実行してください。",
+      "version_drift_older": "インストールされている agy は、この統合が検証したバージョンより古いため、一部の機能が利用できない可能性があります。更新をご検討ください。",
+      "version_drift_newer": "インストールされている agy は、この統合が検証したバージョンより新しいものです。通常は問題なく動作しますが、異常があればご報告ください。"
     },
     "boundAssistantsTitle": "このエージェントを使用するアシスタント",
     "boundAssistantsCount": "{{count}} 個のアシスタント",
@@ -1274,6 +1283,7 @@
   "runtimeResource": {
     "node": "the managed Node runtime",
     "acpTool": "the managed ACP tool",
+    "codexAcp": "the Codex ACP runtime component",
     "claudeAgentAcp": "the Claude ACP runtime component"
   },
   "updateReadyInstall": "{{version}} の準備ができました。今すぐインストール",
@@ -1342,5 +1352,21 @@
       "diagnose": "Diagnose",
       "selectPath": "Select path"
     }
+  },
+  "hardwareAccelerationAutoDisabledTitle": "ハードウェアアクセラレーションを無効化しました",
+  "hardwareAccelerationAutoDisabledNotice": "グラフィックスの繰り返しクラッシュを検出したため、アプリを安定させるためにハードウェアアクセラレーションを自動的に無効化しました。設定 → システム から再度有効にできます。",
+  "browserData": {
+    "title": "アプリ内ブラウザー",
+    "agentControlLabel": "アプリ内ブラウザのエージェント操作を許可",
+    "agentControlDesc": "オンにすると、エージェントがアプリ内ブラウザでページを開いたり、クリックやフォーム入力を代行できます（調べ物やサイト上の手続きなど）。操作できるのはアプリ内ブラウザのビューのみで、POUNDING の画面自体には触れられず、別の Chrome ウィンドウを開くこともありません。オフにしてもブラウザは通常どおり使えますが、エージェントは操作できなくなります。",
+    "agentControlSaved": "設定を保存しました",
+    "agentControlFailed": "設定の保存に失敗しました",
+    "agentControlRestartRequired": "この設定はアプリを再起動すると有効になります。",
+    "clearLabel": "閲覧データを消去",
+    "clearDesc": "ブラウザーでログイン済みのすべてのサイトからサインアウトし、キャッシュを消去します。開いているタブは再読み込み後に反映されます。",
+    "clearConfirmTitle": "閲覧データを消去しますか？",
+    "clearConfirmContent": "アプリ内ブラウザーのすべてのサイトからサインアウトされます。この操作は取り消せません。",
+    "clearSuccess": "閲覧データを消去しました",
+    "clearFailed": "閲覧データの消去に失敗しました"
   }
 }

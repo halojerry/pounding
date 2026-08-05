@@ -39,6 +39,12 @@
     "detailUsedByTitle": "Verwendet von",
     "detailUsedByEmpty": "Noch kein Assistent verwendet diesen Skill.",
     "detailBuiltinAssistant": "Integriert",
+    "detailFilesTitle": "Skill-Dateien",
+    "detailFilesError": "Die Dateien dieses Skills konnten nicht geladen werden.",
+    "editViaChat": {
+      "buttonLabel": "Per Chat bearbeiten",
+      "defaultPrompt": "Ich möchte diesen Skill verbessern: {{skillName}}\n\nBitte prüfe den Inhalt und hilf mir, ihn zu verbessern. Meine Änderungsvorschläge sind:"
+    },
     "usedByCount": "Von {{count}} Assistent(en) verwendet",
     "manageInHub": "Im Skills-Hub verwalten",
     "recommend": "Skills empfehlen",
@@ -105,7 +111,8 @@
     "officialSkillsEmpty": "Keine offiziellen Skills verfügbar.",
     "noSearchResults": "Keine passenden Skills.",
     "customHint": "Importiere einen Skill-Ordner, übergeordneten Ordner oder eine Zip-Datei; max. {{maxFileSize}} pro Datei und {{maxTotalSize}} pro Skill; ein gleichnamiger Import überschreibt den vorhandenen Skill.",
-    "officialHint": "Offizielle, mit POUNDING gebündelte Skills – sofort einsatzbereit, schreibgeschützt und mit jedem Release aktualisiert."
+    "officialHint": "Offizielle, mit POUNDING gebündelte Skills – sofort einsatzbereit, schreibgeschützt und mit jedem Release aktualisiert.",
+    "deleteAffectsNewOnlyHint": "Deleting only affects new conversations. Skills already selected in existing conversations keep working."
   },
   "authMethod": "Authentifizierung",
   "geminiApiKey": "Gemini-API-Schlüssel",
@@ -1155,7 +1162,9 @@
       "command_missing": "Install {{command}} and retry the connection test.",
       "managed_runtime_unavailable": "Repair or reinstall {{resource}}, then retry the connection test.",
       "auth_required": "The agent is reachable but requires sign-in. Log in via the CLI, or add the required API key under Environment Variables, then retry the connection test.",
-      "no_provider": "No model provider is configured. Add and enable a provider in Settings, then retry the connection test."
+      "no_provider": "No model provider is configured. Add and enable a provider in Settings, then retry the connection test.",
+      "version_drift_older": "Das installierte agy ist älter als die für diese Integration geprüfte Version; einzelne Funktionen fehlen möglicherweise. Ein Update wird empfohlen.",
+      "version_drift_newer": "Das installierte agy ist neuer als die für diese Integration geprüfte Version. Es sollte weiterhin funktionieren – melde bitte alles, was sich seltsam verhält."
     },
     "searchPlaceholder": "Agenten suchen...",
     "noSearchResults": "Keine passenden Agenten."
@@ -1221,6 +1230,7 @@
   "runtimeResource": {
     "node": "die verwaltete Node-Laufzeit",
     "acpTool": "das verwaltete ACP-Tool",
+    "codexAcp": "die Codex ACP-Laufzeitkomponente",
     "claudeAgentAcp": "die Claude ACP-Laufzeitkomponente"
   },
   "runtimeScope": {
@@ -1333,5 +1343,21 @@
       "diagnose": "Diagnose",
       "selectPath": "Select path"
     }
+  },
+  "hardwareAccelerationAutoDisabledTitle": "Hardwarebeschleunigung deaktiviert",
+  "hardwareAccelerationAutoDisabledNotice": "Wiederholte Grafikabstürze wurden erkannt, daher wurde die Hardwarebeschleunigung automatisch deaktiviert, um die App stabil zu halten. Sie können sie unter Einstellungen → System wieder aktivieren.",
+  "browserData": {
+    "title": "Integrierter Browser",
+    "agentControlLabel": "Agent darf den integrierten Browser bedienen",
+    "agentControlDesc": "Wenn aktiviert, kann der Agent im integrierten Browser Seiten öffnen, klicken und Formulare für Sie ausfüllen – etwa um etwas zu recherchieren oder einen Ablauf auf einer Website abzuschließen. Er kann ausschließlich diese eine Browseransicht steuern: die POUNDING-Oberfläche selbst bleibt unerreichbar, und es wird nie ein separates Chrome-Fenster geöffnet. Ist die Option aus, können Sie den Browser weiterhin selbst nutzen; nur der Agent verliert den Zugriff.",
+    "agentControlSaved": "Einstellung gespeichert",
+    "agentControlFailed": "Einstellung konnte nicht gespeichert werden",
+    "agentControlRestartRequired": "Diese Einstellung wird nach einem Neustart der App wirksam.",
+    "clearLabel": "Browserdaten löschen",
+    "clearDesc": "Meldet dich von allen Websites ab, bei denen der Browser angemeldet ist, und löscht den Cache. Offene Tabs wirken nach dem Neuladen.",
+    "clearConfirmTitle": "Browserdaten löschen?",
+    "clearConfirmContent": "Du wirst von allen Websites im integrierten Browser abgemeldet. Das kann nicht rückgängig gemacht werden.",
+    "clearSuccess": "Browserdaten gelöscht",
+    "clearFailed": "Browserdaten konnten nicht gelöscht werden"
   }
 }

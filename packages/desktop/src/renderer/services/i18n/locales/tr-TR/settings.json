@@ -39,6 +39,12 @@
     "detailUsedByTitle": "Kullananlar",
     "detailUsedByEmpty": "Bu beceriyi henüz hiçbir asistan kullanmıyor.",
     "detailBuiltinAssistant": "Yerleşik",
+    "detailFilesTitle": "Beceri dosyaları",
+    "detailFilesError": "Bu becerinin dosyaları yüklenemedi.",
+    "editViaChat": {
+      "buttonLabel": "Sohbetle düzenle",
+      "defaultPrompt": "Bu Skill'i geliştirmek istiyorum: {{skillName}}\n\nLütfen içeriğini inceleyip geliştirmeme yardımcı olun. Değişiklik önerilerim:"
+    },
     "usedByCount": "{{count}} asistan kullanıyor",
     "manageInHub": "Beceri Merkezinde Yönet",
     "recommend": "Akıllı Öneri",
@@ -105,7 +111,8 @@
     "officialSkillsEmpty": "Kullanılabilir resmi beceri yok.",
     "noSearchResults": "Eşleşen beceri yok.",
     "customHint": "Bir beceri klasörü, üst klasör veya zip içe aktarın; dosya başına en fazla {{maxFileSize}} ve beceri başına {{maxTotalSize}}; aynı adla içe aktarma mevcut beceriyi değiştirir.",
-    "officialHint": "POUNDING ile birlikte gelen resmi beceriler — kullanıma hazır, salt okunur ve her sürümde güncellenir."
+    "officialHint": "POUNDING ile birlikte gelen resmi beceriler — kullanıma hazır, salt okunur ve her sürümde güncellenir.",
+    "deleteAffectsNewOnlyHint": "Deleting only affects new conversations. Skills already selected in existing conversations keep working."
   },
   "authMethod": "Kimlik Doğrulama",
   "geminiApiKey": "Gemini API Anahtarı",
@@ -1146,7 +1153,9 @@
       "command_missing": "Install {{command}} and retry the connection test.",
       "managed_runtime_unavailable": "Repair or reinstall {{resource}}, then retry the connection test.",
       "auth_required": "Aracıya erişilebilir ancak oturum açılması gerekiyor. CLI üzerinden giriş yapın veya gerekli API anahtarını Ortam Değişkenleri altına ekleyin, ardından bağlantı testini yeniden deneyin.",
-      "no_provider": "Yapılandırılmış bir model sağlayıcısı yok. Ayarlar'da bir sağlayıcı ekleyip etkinleştirin, ardından bağlantı testini yeniden deneyin."
+      "no_provider": "Yapılandırılmış bir model sağlayıcısı yok. Ayarlar'da bir sağlayıcı ekleyip etkinleştirin, ardından bağlantı testini yeniden deneyin.",
+      "version_drift_older": "Kurulu agy sürümü, bu entegrasyonun doğrulandığı sürümden eski; bazı özellikler eksik olabilir. Güncellemeniz önerilir.",
+      "version_drift_newer": "Kurulu agy sürümü, bu entegrasyonun doğrulandığı sürümden yeni. Yine de çalışması beklenir; tuhaf davranışları bildirin."
     },
     "boundAssistantsTitle": "Bu ajanı kullanan asistanlar",
     "boundAssistantsCount": "{{count}} asistan",
@@ -1272,6 +1281,7 @@
   "runtimeResource": {
     "node": "the managed Node runtime",
     "acpTool": "the managed ACP tool",
+    "codexAcp": "the Codex ACP runtime component",
     "claudeAgentAcp": "the Claude ACP runtime component"
   },
   "updateReadyInstall": "{{version}} hazır, şimdi yükle",
@@ -1340,5 +1350,21 @@
       "diagnose": "Diagnose",
       "selectPath": "Select path"
     }
+  },
+  "hardwareAccelerationAutoDisabledTitle": "Donanım hızlandırma devre dışı bırakıldı",
+  "hardwareAccelerationAutoDisabledNotice": "Tekrarlanan grafik çökmeleri algılandı; uygulamayı kararlı tutmak için donanım hızlandırma otomatik olarak kapatıldı. Ayarlar → Sistem bölümünden yeniden etkinleştirebilirsiniz.",
+  "browserData": {
+    "title": "Uygulama içi tarayıcı",
+    "agentControlLabel": "Aracının uygulama içi tarayıcıyı kullanmasına izin ver",
+    "agentControlDesc": "Açık olduğunda aracı, uygulama içi tarayıcıda sizin adınıza sayfa açabilir, tıklayabilir ve form doldurabilir; örneğin bir şey araştırmak veya bir sitedeki işlemi tamamlamak için. Yalnızca bu tek tarayıcı görünümünü kullanabilir: POUNDING arayüzünün kendisine erişemez ve hiçbir zaman ayrı bir Chrome penceresi açmaz. Kapattığınızda tarayıcıyı kendiniz kullanmaya devam edebilirsiniz; erişimi yalnızca aracı kaybeder.",
+    "agentControlSaved": "Ayar kaydedildi",
+    "agentControlFailed": "Ayar kaydedilemedi",
+    "agentControlRestartRequired": "Bu ayar, uygulamayı yeniden başlattıktan sonra geçerli olur.",
+    "clearLabel": "Tarama verilerini temizle",
+    "clearDesc": "Tarayıcıda oturum açılmış tüm sitelerden çıkış yapar ve önbelleği temizler. Açık sekmelerde yenilemeden sonra geçerli olur.",
+    "clearConfirmTitle": "Tarama verileri temizlensin mi?",
+    "clearConfirmContent": "Uygulama içi tarayıcıdaki tüm sitelerden çıkış yapılacak. Bu işlem geri alınamaz.",
+    "clearSuccess": "Tarama verileri temizlendi",
+    "clearFailed": "Tarama verileri temizlenemedi"
   }
 }

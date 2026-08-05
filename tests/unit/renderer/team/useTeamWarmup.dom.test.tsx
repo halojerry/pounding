@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 POUNDING (aionui.com)
+ * Copyright 2025 AionUi (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -8,7 +8,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const ensureSessionMock = vi.fn();
-// 捕获 agentStatusChanged 的订阅回调，供测试手动推送逐个成员事件。
+// 捕获 agentRuntimeStatusChanged 的订阅回调，供测试手动推送逐个成员事件。
 let runtimeListener: ((event: unknown) => void) | undefined;
 let sessionStatusListener: ((event: unknown) => void) | undefined;
 const runtimeUnsub = vi.fn();
@@ -18,13 +18,13 @@ vi.mock('@/common', () => ({
   ipcBridge: {
     team: {
       ensureSession: { invoke: (...args: unknown[]) => ensureSessionMock(...args) },
-      agentStatusChanged: {
+      agentRuntimeStatusChanged: {
         on: (cb: (event: unknown) => void) => {
           runtimeListener = cb;
           return runtimeUnsub;
         },
       },
-      sessionChanged: {
+      sessionStatusChanged: {
         on: (cb: (event: unknown) => void) => {
           sessionStatusListener = cb;
           return sessionStatusUnsub;
@@ -68,7 +68,7 @@ describe('useTeamWarmup', () => {
     expect(ensureSessionMock).not.toHaveBeenCalled();
   });
 
-  it('tracks per-member runtime status from agentStatusChanged events', async () => {
+  it('tracks per-member runtime status from agentRuntimeStatusChanged events', async () => {
     // ensureSession 挂起，让 hook 停在 warming，便于观察逐个 runtime 信号。
     ensureSessionMock.mockReturnValue(new Promise(() => {}));
     const { result } = renderHook(() => useTeamWarmup('team-1'));

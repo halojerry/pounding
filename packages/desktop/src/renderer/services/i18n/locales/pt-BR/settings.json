@@ -39,6 +39,12 @@
     "detailUsedByTitle": "Usada por",
     "detailUsedByEmpty": "Nenhum assistente está usando esta habilidade ainda.",
     "detailBuiltinAssistant": "Integrado",
+    "detailFilesTitle": "Arquivos da habilidade",
+    "detailFilesError": "Não foi possível carregar os arquivos desta habilidade.",
+    "editViaChat": {
+      "buttonLabel": "Editar via chat",
+      "defaultPrompt": "Gostaria de melhorar esta Skill: {{skillName}}\n\nRevise o conteúdo e me ajude a aprimorá-lo. Minhas sugestões de alteração são:"
+    },
     "usedByCount": "Usada por {{count}} assistente(s)",
     "manageInHub": "Gerenciar na Central",
     "recommend": "Recomendar Habilidades",
@@ -105,7 +111,8 @@
     "officialSkillsEmpty": "Nenhuma habilidade oficial disponível.",
     "noSearchResults": "Nenhuma habilidade correspondente.",
     "customHint": "Importe uma pasta de habilidade, pasta principal ou zip; até {{maxFileSize}} por arquivo e {{maxTotalSize}} por habilidade; importar o mesmo nome substitui a habilidade existente.",
-    "officialHint": "Habilidades oficiais incluídas no POUNDING — prontas para uso, somente leitura e atualizadas a cada versão."
+    "officialHint": "Habilidades oficiais incluídas no POUNDING — prontas para uso, somente leitura e atualizadas a cada versão.",
+    "deleteAffectsNewOnlyHint": "Deleting only affects new conversations. Skills already selected in existing conversations keep working."
   },
   "authMethod": "Autenticação",
   "geminiApiKey": "Chave de API Gemini",
@@ -1159,7 +1166,9 @@
       "command_missing": "Install {{command}} and retry the connection test.",
       "managed_runtime_unavailable": "Repair or reinstall {{resource}}, then retry the connection test.",
       "auth_required": "O agente está acessível, mas requer login. Faça login pelo CLI ou adicione a chave de API necessária em Variáveis de Ambiente e tente o teste de conexão novamente.",
-      "no_provider": "Nenhum provedor de modelo está configurado. Adicione e ative um provedor nas Configurações e tente o teste de conexão novamente."
+      "no_provider": "Nenhum provedor de modelo está configurado. Adicione e ative um provedor nas Configurações e tente o teste de conexão novamente.",
+      "version_drift_older": "A versão instalada do agy é anterior à verificada nesta integração; alguns recursos podem estar ausentes. Considere atualizar.",
+      "version_drift_newer": "A versão instalada do agy é mais recente que a verificada nesta integração. Deve continuar funcionando; relate qualquer comportamento estranho."
     },
     "boundAssistantsTitle": "Assistentes que usam este agente",
     "boundAssistantsCount": "{{count}} assistente(s)",
@@ -1253,6 +1262,7 @@
   "runtimeResource": {
     "node": "o runtime Node gerenciado",
     "acpTool": "a ferramenta ACP gerenciada",
+    "codexAcp": "o componente de runtime Codex ACP",
     "claudeAgentAcp": "o componente de runtime Claude ACP"
   },
   "runtimeScope": {
@@ -1336,5 +1346,21 @@
       "diagnose": "Diagnose",
       "selectPath": "Select path"
     }
+  },
+  "hardwareAccelerationAutoDisabledTitle": "Aceleração de hardware desativada",
+  "hardwareAccelerationAutoDisabledNotice": "Foram detectadas falhas repetidas de renderização gráfica, então a aceleração de hardware foi desativada automaticamente para manter o aplicativo estável. Você pode reativá-la em Configurações → Sistema.",
+  "browserData": {
+    "title": "Navegador interno",
+    "agentControlLabel": "Permitir que o agente use o navegador integrado",
+    "agentControlDesc": "Quando ativado, o agente pode abrir páginas, clicar e preencher formulários para você no navegador integrado — por exemplo, para pesquisar algo ou concluir um processo em um site. Ele só controla essa única visualização do navegador: não alcança a interface do POUNDING e nunca abre uma janela do Chrome separada. Se desativado, o navegador continua disponível para você; apenas o agente perde o acesso.",
+    "agentControlSaved": "Configuração salva",
+    "agentControlFailed": "Falha ao salvar a configuração",
+    "agentControlRestartRequired": "Esta configuração passa a valer após reiniciar o aplicativo.",
+    "clearLabel": "Limpar dados de navegação",
+    "clearDesc": "Sai de todos os sites em que o navegador está conectado e limpa o cache. As abas abertas são afetadas após recarregar.",
+    "clearConfirmTitle": "Limpar dados de navegação?",
+    "clearConfirmContent": "Você sairá de todos os sites no navegador interno. Isso não pode ser desfeito.",
+    "clearSuccess": "Dados de navegação limpos",
+    "clearFailed": "Falha ao limpar dados de navegação"
   }
 }

@@ -74,7 +74,9 @@
     "removeProjectConfirm": "プロジェクト「{{name}}」を削除しますか？プロジェクト内の {{count}} 件の会話も削除されます。",
     "newConversationInProject": "このプロジェクト内で新しい会話",
     "deleting": "削除中...",
-    "reorderPinned": "ドラッグしてピン留め会話の順序を変更"
+    "reorderPinned": "ドラッグしてピン留め会話の順序を変更",
+    "forkedFrom": "「{{name}}」から分岐",
+    "forkedConversation": "分岐した会話"
   },
   "historySearch": {
     "tooltip": "メッセージを検索",
@@ -416,7 +418,8 @@
     "openWith": {
       "vscode": "VS Code",
       "terminal": "ターミナル",
-      "explorer": "エクスプローラー"
+      "explorer": "エクスプローラー",
+      "browser": "ブラウザ"
     }
   },
   "minimap": {
@@ -508,7 +511,15 @@
     }
   },
   "contextUsage": {
-    "contextUsed": "コンテキスト使用量"
+    "contextUsed": "コンテキスト使用量",
+    "tokensUsed": "{{tokens}} トークン使用済み",
+    "windowUnknown": "コンテキストウィンドウのサイズは不明",
+    "sessionCost": "セッションコスト",
+    "input": "入力",
+    "output": "出力",
+    "thought": "思考",
+    "cachedRead": "キャッシュ読み取り",
+    "cachedWrite": "キャッシュ書き込み"
   },
   "skill_generator": {
     "title": "Generate Skill/Rule",
@@ -555,7 +566,8 @@
     "sendboxHint": "実行環境を準備しています。初回起動は少し時間がかかる場合があります。"
   },
   "sendbox": {
-    "hint": "/ でコマンド、@ でファイルを参照、↑/↓ でメッセージ履歴"
+    "hint": "/ でコマンド、@ でファイルを参照、↑/↓ でメッセージ履歴",
+    "mediaPathFallback": "このエージェントはこのファイル形式をネイティブに扱えないため、ファイルパスとして送信されます。"
   },
   "agentTip": {
     "codes": {
@@ -563,7 +575,10 @@
         "body": "このリクエストでは、表示できる返信はありませんでした。"
       },
       "ACP_EMPTY_TURN_NEEDS_AUTH": {
-        "body": "このリクエストは可視的な応答を生成しませんでした。この Agent はまずサインインが必要かもしれません：{{hint}}。"
+        "body": "このリクエストは可視的な応答を生成しませんでした。すでにサインインしている場合は、バックエンドの一時的な問題や接続の問題の可能性があります。再試行するか、新しい会話を開始してください。まだサインインしていない場合は、サインインできます：{{hint}}。"
+      },
+      "ACP_EMPTY_TURN_TOKEN_LIMIT": {
+        "body": "このリクエストは可視的な応答を生成しませんでした。現在の会話がコンテキスト長の上限に近づいている可能性があります。再試行するか、新しい会話を開始してからもう一度お試しください。"
       },
       "ACP_EMPTY_TURN_MAX_TOKENS": {
         "body": "このリクエストは、表示できる返信が生成される前にモデルの出力トークン上限に達しました。"
@@ -573,8 +588,47 @@
       },
       "ACP_EMPTY_TURN_REFUSAL": {
         "body": "モデルは、表示できる返信を生成する前にこのリクエストを拒否しました。"
+      },
+      "ANTIGRAVITY_STEPS_FAILED": {
+        "body": "このターンで {{count}} 件のステップが失敗し、実行されませんでした。agy はこうしたターンも成功として終了するため、返答ではなく実際の結果を確認してください。"
+      },
+      "ANTIGRAVITY_VERSION_OLDER": {
+        "body": "インストールされている agy {{reported}} は、この統合が検証した {{verified}} より古いため、一部の機能が利用できない可能性があります。agy の更新をご検討ください。"
+      },
+      "ANTIGRAVITY_VERSION_NEWER": {
+        "body": "インストールされている agy {{reported}} は、この統合が検証した {{verified}} より新しいバージョンです。通常は問題なく動作しますが、異常があればご報告ください。"
       }
     }
   },
-  "notFound": "会話が存在しないか、削除されました"
+  "notFound": "会話が存在しないか、削除されました",
+  "explorer": {
+    "addFolder": "Add folder to project",
+    "removeFolder": "Remove from project",
+    "attachDuplicate": "This folder is already in the project",
+    "attachOverlap": "This folder overlaps a folder already in the project",
+    "attachFailed": "Couldn't add the folder",
+    "removeFailed": "Couldn't remove the folder",
+    "contextMenu": {
+      "rename": "名前を変更",
+      "addToChat": "チャットに追加"
+    },
+    "namePlaceholder": "名前",
+    "deleteConfirm": "「{{name}}」を削除しますか？この操作は取り消せません。",
+    "renameFailed": "名前の変更に失敗しました",
+    "tabs": {
+      "files": "ファイル",
+      "changes": "変更"
+    },
+    "changesPlaceholder": "ソース管理は別レーンで近日公開。",
+    "addedToChat": "{{name}} をチャットに追加しました",
+    "imported": "{{count}} 件のファイルをインポートしました",
+    "importPartialFailed": "{{copied}} 件コピー、{{failed}} 件失敗（名前の重複または非対応）",
+    "importFailed": "ファイルのインポートに失敗しました",
+    "search": {
+      "placeholder": "ファイル名で検索",
+      "searching": "検索中…",
+      "empty": "一致するファイルがありません",
+      "limitReached": "最初の {{count}} 件を表示 — 絞り込んでください"
+    }
+  }
 }

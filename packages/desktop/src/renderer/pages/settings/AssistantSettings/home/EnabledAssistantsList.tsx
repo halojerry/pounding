@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2026 AionUi (aionui.com)
+ * Copyright 2026 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -40,6 +40,7 @@ type EnabledAssistantsListProps = {
   onReorder: (activeId: string, overId: string) => void | Promise<void>;
   /** Jump to the runtime environment tab ("去安装" CTA). */
   onGoInstall?: () => void;
+  onStartChat: (assistant: AssistantListItem) => void;
 };
 
 type EnabledAssistantRowProps = {
@@ -49,6 +50,7 @@ type EnabledAssistantRowProps = {
   onOpenDetail: (assistant: AssistantListItem) => void;
   onToggleEnabled: (assistant: AssistantListItem, checked: boolean) => void;
   onGoInstall?: () => void;
+  onStartChat: (assistant: AssistantListItem) => void;
 };
 
 const EnabledAssistantRow: React.FC<EnabledAssistantRowProps> = ({
@@ -58,6 +60,7 @@ const EnabledAssistantRow: React.FC<EnabledAssistantRowProps> = ({
   onOpenDetail,
   onToggleEnabled,
   onGoInstall,
+  onStartChat,
 }) => {
   const { t } = useTranslation();
   const { attributes, listeners, setActivatorNodeRef, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -129,6 +132,17 @@ const EnabledAssistantRow: React.FC<EnabledAssistantRowProps> = ({
             {t('settings.runtimeEnvironment.goInstall', { defaultValue: 'Go install' })}
           </Button>
         )}
+        {assistant.enabled !== false ? (
+          <Button
+            type='text'
+            size='small'
+            data-testid={`btn-chat-${assistant.id}`}
+            className='!inline-flex !h-28px !items-center !justify-center !rounded-9px !bg-fill-2 !px-12px !leading-none !text-t-secondary !opacity-0 transition-all hover:!bg-primary-6 hover:!text-white group-hover:!opacity-100'
+            onClick={() => onStartChat(assistant)}
+          >
+            {t('settings.assistantGoChat', { defaultValue: 'Chat' })}
+          </Button>
+        ) : null}
         <span className='hidden min-w-0 shrink-0 sm:inline-flex'>
           <RuntimeBadge assistant={assistant} />
         </span>
@@ -152,6 +166,7 @@ const EnabledAssistantsList: React.FC<EnabledAssistantsListProps> = ({
   onToggleEnabled,
   onReorder,
   onGoInstall,
+  onStartChat,
 }) => {
   const { t } = useTranslation();
   const sensors = useSensors(
@@ -211,6 +226,7 @@ const EnabledAssistantsList: React.FC<EnabledAssistantsListProps> = ({
                   onOpenDetail={onOpenDetail}
                   onToggleEnabled={onToggleEnabled}
                   onGoInstall={onGoInstall}
+                  onStartChat={onStartChat}
                 />
               ))}
             </div>

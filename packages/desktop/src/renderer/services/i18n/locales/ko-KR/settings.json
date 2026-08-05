@@ -39,6 +39,12 @@
     "detailUsedByTitle": "사용 중인 어시스턴트",
     "detailUsedByEmpty": "아직 이 스킬을 사용하는 어시스턴트가 없습니다.",
     "detailBuiltinAssistant": "기본 제공",
+    "detailFilesTitle": "스킬 파일",
+    "detailFilesError": "이 스킬의 파일을 불러올 수 없습니다.",
+    "editViaChat": {
+      "buttonLabel": "대화로 편집",
+      "defaultPrompt": "이 Skill을 개선하고 싶습니다: {{skillName}}\n\n내용을 검토하고 개선할 수 있도록 도와주세요. 제 수정 제안은 다음과 같습니다:"
+    },
     "usedByCount": "{{count}}개의 어시스턴트가 사용 중",
     "manageInHub": "스킬 허브에서 관리",
     "recommend": "스마트 추천",
@@ -105,7 +111,8 @@
     "officialSkillsEmpty": "사용 가능한 공식 스킬이 없습니다.",
     "noSearchResults": "일치하는 스킬이 없습니다.",
     "customHint": "스킬 폴더, 상위 폴더 또는 zip을 가져올 수 있으며, 파일당 최대 {{maxFileSize}}, 스킬당 최대 {{maxTotalSize}}입니다. 같은 이름으로 가져오면 기존 스킬을 덮어씁니다.",
-    "officialHint": "POUNDING에 기본 제공되는 공식 스킬입니다. 바로 사용할 수 있고 읽기 전용이며 버전마다 업데이트됩니다."
+    "officialHint": "POUNDING에 기본 제공되는 공식 스킬입니다. 바로 사용할 수 있고 읽기 전용이며 버전마다 업데이트됩니다.",
+    "deleteAffectsNewOnlyHint": "Deleting only affects new conversations. Skills already selected in existing conversations keep working."
   },
   "authMethod": "인증",
   "geminiApiKey": "Gemini API 키",
@@ -1148,7 +1155,9 @@
       "command_missing": "Install {{command}} and retry the connection test.",
       "managed_runtime_unavailable": "Repair or reinstall {{resource}}, then retry the connection test.",
       "auth_required": "에이전트에 연결할 수 있지만 로그인이 필요합니다. CLI에서 로그인하거나 「환경 변수」에 필요한 API 키를 추가한 후 연결 테스트를 다시 시도하세요.",
-      "no_provider": "모델 제공자가 구성되지 않았습니다. 설정에서 제공자를 추가하고 활성화한 후 연결 테스트를 다시 시도하세요."
+      "no_provider": "모델 제공자가 구성되지 않았습니다. 설정에서 제공자를 추가하고 활성화한 후 연결 테스트를 다시 시도하세요.",
+      "version_drift_older": "설치된 agy가 이 통합이 검증한 버전보다 이전이라 일부 기능이 없을 수 있습니다. 업그레이드를 권장합니다.",
+      "version_drift_newer": "설치된 agy가 이 통합이 검증한 버전보다 최신입니다. 대개 정상 동작하지만, 이상이 있으면 알려주세요."
     },
     "boundAssistantsTitle": "이 에이전트를 사용하는 어시스턴트",
     "boundAssistantsCount": "어시스턴트 {{count}}개",
@@ -1274,6 +1283,7 @@
   "runtimeResource": {
     "node": "the managed Node runtime",
     "acpTool": "the managed ACP tool",
+    "codexAcp": "the Codex ACP runtime component",
     "claudeAgentAcp": "the Claude ACP runtime component"
   },
   "updateReadyInstall": "{{version}} 준비 완료, 지금 설치",
@@ -1342,5 +1352,21 @@
       "diagnose": "Diagnose",
       "selectPath": "Select path"
     }
+  },
+  "hardwareAccelerationAutoDisabledTitle": "하드웨어 가속이 비활성화됨",
+  "hardwareAccelerationAutoDisabledNotice": "그래픽 렌더링이 반복적으로 충돌하여 앱 안정성을 위해 하드웨어 가속을 자동으로 껐습니다. 설정 → 시스템에서 다시 켤 수 있습니다.",
+  "browserData": {
+    "title": "앱 내 브라우저",
+    "agentControlLabel": "앱 내 브라우저의 에이전트 조작 허용",
+    "agentControlDesc": "켜면 에이전트가 앱 내 브라우저에서 페이지를 열고 클릭하거나 양식을 채워 줍니다(자료 검색, 웹사이트 절차 완료 등). 조작 대상은 앱 내 브라우저 화면 하나뿐이며, POUNDING 인터페이스 자체에는 접근할 수 없고 별도의 Chrome 창도 열지 않습니다. 끄면 브라우저는 계속 직접 사용할 수 있고 에이전트만 조작할 수 없게 됩니다.",
+    "agentControlSaved": "설정이 저장되었습니다",
+    "agentControlFailed": "설정 저장에 실패했습니다",
+    "agentControlRestartRequired": "이 설정은 앱을 다시 시작한 후 적용됩니다.",
+    "clearLabel": "인터넷 사용 정보 삭제",
+    "clearDesc": "브라우저에 로그인된 모든 사이트에서 로그아웃하고 캐시를 삭제합니다. 열려 있는 탭은 새로 고침 후 적용됩니다.",
+    "clearConfirmTitle": "인터넷 사용 정보를 삭제할까요?",
+    "clearConfirmContent": "앱 내 브라우저의 모든 사이트에서 로그아웃됩니다. 되돌릴 수 없습니다.",
+    "clearSuccess": "인터넷 사용 정보를 삭제했습니다",
+    "clearFailed": "인터넷 사용 정보 삭제에 실패했습니다"
   }
 }

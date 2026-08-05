@@ -5,6 +5,7 @@
  */
 
 import { ipcBridge } from '@/common';
+import { type ChatFileRef, chatFileRefPath } from '@/common/types/chatFile';
 import type { IMcpServer, TProviderWithModel } from '@/common/config/storage';
 import { toSessionMcpServer } from '@/renderer/hooks/mcp/catalog';
 import { emitter } from '@/renderer/utils/emitter';
@@ -21,8 +22,8 @@ export type GuidSendDeps = {
   // Input state
   input: string;
   setInput: React.Dispatch<React.SetStateAction<string>>;
-  files: string[];
-  setFiles: React.Dispatch<React.SetStateAction<string[]>>;
+  files: ChatFileRef[];
+  setFiles: React.Dispatch<React.SetStateAction<ChatFileRef[]>>;
   dir: string;
   setDir: React.Dispatch<React.SetStateAction<string>>;
   setLoading: React.Dispatch<React.SetStateAction<boolean>>;
@@ -130,8 +131,23 @@ export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
     const selectedUserMcpServerIdsToSend = selectedUserMcpServerIds;
     const selectedSessionMcpServersToSend = selectedSessionMcpServers;
 
+    // `current_model` is the aionrs provider selection and means nothing to a
+    // CLI agent, which owns its own model list. Used as a blanket fallback it
+    // leaked into the FIRST turn of every CLI conversation: before the agent's
+    // catalog has been probed the two preceding options are empty, so a brand
+    // new Antigravity conversation started with e.g. `gemini-3.1-pro-preview`
+    // — a provider model agy has never heard of — and the turn failed with
+    // USER_LLM_PROVIDER_MODEL_NOT_FOUND. Once the catalog lands the second
+    // option wins, which is why it only ever reproduced on first use.
+    //
+    // Omitting it lets the agent start on its own default, which is what a user
+    // who has not picked a model means. The cron dialog already gates the same
+    // value this way (`resolvedBackend !== 'aionrs' → undefined`).
     const assistantOverrideModel =
-      selectedAcpModel || currentAcpCachedModelInfo?.current_model_id || current_model?.use_model || undefined;
+      selectedAcpModel ||
+      currentAcpCachedModelInfo?.current_model_id ||
+      (assistantBackend === 'aionrs' ? current_model?.use_model : undefined) ||
+      undefined;
     const assistantOverrides = {
       model: assistantOverrideModel,
       permission: selectedMode || undefined,
@@ -156,7 +172,7 @@ export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
             conversation_overrides: assistantOverrides,
           },
           extra: {
-            default_files: files,
+            default_files: files.map(chatFileRefPath),
             workspace: finalWorkspace,
             custom_workspace: isCustomWorkspace,
             selected_mcp_server_ids: selectedUserMcpServerIdsToSend,
@@ -208,10 +224,10 @@ export const useGuidSend = (deps: GuidSendDeps): GuidSendResult => {
         extra: {
           workspace: finalWorkspace,
           custom_workspace: isCustomWorkspace,
-          default_files: files,
+          default_files: files.map(chatFileRefPath),
           exclude_auto_inject_skills: excludeBuiltinSkills,
-          selected_mcp_server_ids: selectedUserMcpServerIds,
-          selected_session_mcp_servers: selectedSessionMcpServers,
+          selected_mcp_server_ids: selectedUserMcpServerIdsToSend,
+          selected_session_mcp_servers: selectedSessionMcpServersToSend,
           // Non-preset agents still forward user-selected custom skills via the
           // shared backend slot. For preset assistants this is already wired
           // through `preset_resources.enabled_skills` above.

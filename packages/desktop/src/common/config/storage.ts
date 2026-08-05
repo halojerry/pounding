@@ -198,17 +198,71 @@ interface IChatConversation<T, Extra> {
   channel_chat_id?: string;
   /** Explicit assistant identity for assistant-led conversations */
   assistant?: TConversationAssistantIdentity;
+  /**
+   * Owning Project id (top-level, from `ConversationResponse.project_id`, stage3
+   * contract). Drives Project-scoped Explorer mounting + preview isolation.
+   * Optional: absent until the backend that populates it ships / for
+   * conversations without a bound project.
+   */
+  project_id?: string;
+  /**
+   * Session-fork capability (from `ConversationResponse.fork_capability`).
+   * Filled ONLY on the single-conversation detail response (never on lists).
+   * Present = the fork entry point may be shown; `at_turn` = any message may
+   * be forked (codex), otherwise only the latest turn (claude / ACP HEAD fork).
+   */
+  fork_capability?: { at_turn: boolean };
+  /**
+   * Prompt media capability (from `ConversationResponse.prompt_capability`).
+   * Filled ONLY on the single-conversation detail response (never on lists).
+   * Absent = unknown/unsupported — media attachments are delivered to the
+   * agent as file paths instead of native image/audio content blocks.
+   */
+  prompt_capability?: { image: boolean; audio: boolean };
+}
+
+/**
+ * Fork lineage riding `extra.fork` on a forked conversation (server-minted by
+ * the fork API). Purely informational for the renderer: badge + jump link.
+ */
+export interface TConversationForkLineage {
+  parent_conversation_id: string;
+  parent_message_id: string;
+  /** Backend session snapshot/anchor fields — renderer never consumes these. */
+  parent_session_id?: string;
+  last_turn_id?: string;
 }
 
 // Token 使用统计数据类型
+export interface TokenUsageBreakdown {
+  input_tokens?: number;
+  output_tokens?: number;
+  thought_tokens?: number;
+  cached_read_tokens?: number;
+  cached_write_tokens?: number;
+}
+
+export interface TokenUsageCost {
+  amount: number;
+  /** ISO 4217 currency code, e.g. "USD" */
+  currency: string;
+}
+
 export interface TokenUsageData {
   total_tokens: number;
+  /** Per-turn token counters from the agent's end-of-turn usage report */
+  breakdown?: TokenUsageBreakdown;
+  /** Cumulative session cost as reported by the agent */
+  cost?: TokenUsageCost;
 }
 
 export type TChatConversation =
   | Omit<
       IChatConversation<
-        'acp',
+        // Antigravity (agy CLI) shares this shape exactly: the backend reports
+        // its own conversation type, but the renderer treats it as an ACP-family
+        // conversation because the extra payload and event stream are identical.
+        'acp' | 'antigravity',
         {
           workspace?: string;
           backend: string;
@@ -256,6 +310,8 @@ export type TChatConversation =
           is_health_check?: boolean;
           /** Cron job ID that spawned this conversation */
           cron_job_id?: string;
+          /** Fork lineage (present only on forked conversations). */
+          fork?: TConversationForkLineage;
         }
       >,
       'model'

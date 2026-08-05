@@ -38,10 +38,15 @@ import './utils/ui/runtimePatches';
 // Browser adapter setup
 import '@/common/adapter/browser';
 
+// WebUI only: serve `dialog.showOpen` with a server-side picker, since the
+// native Electron dialog channel has no provider outside the desktop app.
+import './components/workspace/registerWebFsPicker';
+
 // React and core dependencies
 import type { PropsWithChildren } from 'react';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { SWRConfig } from 'swr';
 import type { TFunction } from 'i18next';
 
 // Context providers
@@ -86,6 +91,9 @@ import { repairAllCronJobTimeZonesOnce } from '@renderer/pages/cron/repairCronJo
 import { bootstrapRendererConfig } from '@renderer/services/bootstrapRenderer';
 
 // Components and utilities
+import BackendStartingView from './components/layout/BackendStartingView';
+import BackendStartupGate from './components/layout/BackendStartupGate';
+import GpuAutoDisableNotice from './components/layout/GpuAutoDisableNotice';
 import Layout from './components/layout/Layout';
 import Router from './components/layout/Router';
 import Sider from './components/layout/Sider';
@@ -93,8 +101,6 @@ import { useAuth } from './hooks/context/AuthContext';
 import { ConversationHistoryProvider } from './hooks/context/ConversationHistoryContext';
 import HOC from './utils/ui/HOC';
 import type { BackendStartupFailureInfo } from '@/common/types/platform/electron';
-import BackendStartingSplash from './components/layout/BackendStartingSplash';
-import { resolveBootGateState } from './services/bootGate';
 import type { IRuntimeStatusEvent, RuntimeFailureKind } from '@/common/adapter/ipcBridge';
 import {
   InstallationIntegrityContent,
@@ -105,6 +111,7 @@ import {
   getRuntimeComponentInstallationDescription,
   showInstallationIntegrityModal,
 } from './components/layout/InstallationIntegrityDialog';
+import { createRuntimeInstallationReconciler } from './services/runtime/runtimeInstallationReconciler';
 
 // Patch Korean locale with missing properties from English locale
 const koKRComplete = {
@@ -197,67 +204,98 @@ function resolveRuntimeResourceLabel(event: IRuntimeStatusEvent, t: TFunction): 
 const RuntimeFailureDialogs: React.FC = () => {
   const { t } = useTranslation();
   const [modal, modalContextHolder] = Modal.useModal();
-  const shownFailuresRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
-    return ipcBridge.runtime.statusChanged.on((event: IRuntimeStatusEvent) => {
+    const reconciler = createRuntimeInstallationReconciler({
+      showDialog: (event) => {
+        const resource = resolveRuntimeResourceLabel(event, t);
+        const description = getRuntimeComponentInstallationDescription(t, resource);
+        const controller = showInstallationIntegrityModal(
+          modal,
+          t,
+          description,
+          buildRuntimeInstallationDiagnostics(event, description)
+        );
+        return { close: () => controller.close() };
+      },
+      report: (event) => captureRuntimeInstallationIntegrityFailure(event),
+    });
+
+    const offStatus = ipcBridge.runtime.statusChanged.on((event: IRuntimeStatusEvent) => {
+      // Reconcile install-integrity failures and node ready events (spec 8/13.4).
+      if (
+        (event.phase === 'failed' && isInstallationIntegrityFailure(event.failure_kind)) ||
+        (event.phase === 'ready' && event.resource === 'node')
+      ) {
+        reconciler.handleStatus(event);
+        return;
+      }
+
+      // Non-integrity failures keep the existing generic error modal (unchanged).
       if (event.phase !== 'failed') {
         return;
       }
-      const signature = [
-        event.resource,
-        event.resource_id ?? '',
-        event.scope.kind,
-        event.scope.id,
-        event.failure_kind ?? 'unknown',
-        event.message ?? '',
-      ].join('|');
-      if (shownFailuresRef.current.has(signature)) {
-        return;
-      }
-      shownFailuresRef.current.add(signature);
-
       const resource = resolveRuntimeResourceLabel(event, t);
-      const installationIntegrityFailure = isInstallationIntegrityFailure(event.failure_kind);
-      const description = installationIntegrityFailure
-        ? getRuntimeComponentInstallationDescription(t, resource)
-        : t('settings.runtimeStatus.failedUnknown', { resource });
-      if (installationIntegrityFailure) {
-        captureRuntimeInstallationIntegrityFailure(event);
-        showInstallationIntegrityModal(modal, t, description, buildRuntimeInstallationDiagnostics(event, description));
-        return;
-      }
-
       modal.error({
         title: t('common.error'),
-        content: <InstallationIntegrityContent description={description} />,
+        content: <InstallationIntegrityContent description={t('settings.runtimeStatus.failedUnknown', { resource })} />,
         okText: t('common.confirm'),
         closable: false,
         maskClosable: false,
       });
     });
+
+    const onBeforeUnload = () => reconciler.flushPending();
+    window.addEventListener('beforeunload', onBeforeUnload);
+
+    return () => {
+      window.removeEventListener('beforeunload', onBeforeUnload);
+      offStatus();
+      reconciler.flushPending();
+      reconciler.dispose();
+    };
   }, [modal, t]);
 
   return <>{modalContextHolder}</>;
 };
 
+// Global SWR default: do NOT revalidate every query on window focus. Focus
+// refetch (SWR's default) made the app re-hit /api/assistants, /api/skills,
+// /api/conversations, etc. on every window focus — often twice (same endpoint
+// under different SWR keys) — even though those are kept fresh by WebSocket
+// events (conversation.listChanged, team events, extensions.state-changed) or
+// in-app `mutate` after edits. Queries that genuinely need focus refresh (e.g.
+// Google auth/subscription status, which change in an external browser) opt back
+// in per-hook with `revalidateOnFocus: true`.
+const SWR_DEFAULTS = { revalidateOnFocus: false } as const;
+
 const AppProviders: React.FC<PropsWithChildren> = ({ children }) =>
   React.createElement(
-    AuthProvider,
-    null,
+    SWRConfig,
+    { value: SWR_DEFAULTS },
     React.createElement(
-      NewApiAccountProvider,
+      AuthProvider,
       null,
       React.createElement(
-        ThemeProvider,
+        NewApiAccountProvider,
         null,
         React.createElement(
-          PreviewProvider,
+          ThemeProvider,
           null,
           React.createElement(
-            FeedbackProvider,
+            PreviewProvider,
             null,
-            React.createElement(React.Fragment, null, React.createElement(RuntimeFailureDialogs, null), children)
+            React.createElement(
+              FeedbackProvider,
+              null,
+              React.createElement(
+                React.Fragment,
+                null,
+                React.createElement(RuntimeFailureDialogs, null),
+                React.createElement(GpuAutoDisableNotice, null),
+                children
+              )
+            )
           )
         )
       )
@@ -314,6 +352,9 @@ const BackendStartupFailureDialog: React.FC<{ failure: BackendStartupFailureInfo
   const isRecoverableDatabaseCorruption = failure.reason === 'backend_recoverable_database_corruption';
   const isTransientConcurrentStartup = failure.reason === 'backend_transient_concurrent_startup';
   const isStartupDirectoryFailure = failure.reason === 'backend_startup_directory_unavailable';
+  const isBackendExited = failure.reason === 'backend_startup_exited';
+  const isPortReportTimeout = failure.reason === 'backend_startup_port_report_timeout';
+  const isIncompleteInstallation = failure.reason === 'backend_incomplete_installation';
   const title = t('common.backendStartup.incompatibleRuntime.title');
   const description = isIncompatibleRuntime
     ? t('common.backendStartup.incompatibleRuntime.description')
@@ -333,7 +374,13 @@ const BackendStartupFailureDialog: React.FC<{ failure: BackendStartupFailureInfo
               ? t('common.backendStartup.startupDirectory.description')
               : isRecoverableDatabaseCorruption
                 ? t('common.backendStartup.recoverableDatabaseCorruption.description')
-                : getBackendStartupInstallationDescription(t);
+                : isBackendExited
+                  ? t('common.backendStartup.exited.description')
+                  : isPortReportTimeout
+                    ? t('common.backendStartup.portReportTimeout.description')
+                    : isIncompleteInstallation
+                      ? getBackendStartupInstallationDescription(t)
+                      : t('common.backendStartup.startupFailed.description');
   const requiredVersions = failure.requiredVersions?.map((version) => `GLIBC_${version}`).join(', ');
 
   if (!isIncompatibleRuntime && !isPackageArchitectureMismatch) {
@@ -352,7 +399,13 @@ const BackendStartupFailureDialog: React.FC<{ failure: BackendStartupFailureInfo
                     ? 'local_data_repair'
                     : isDataMigrationFailure
                       ? 'data_migration'
-                      : 'incomplete_installation'
+                      : isBackendExited
+                        ? 'backend_exited'
+                        : isPortReportTimeout
+                          ? 'port_report_timeout'
+                          : isIncompleteInstallation
+                            ? 'incomplete_installation'
+                            : 'startup_failed'
           }
           diagnostics={{
             source: 'backend_startup_failure',
@@ -399,47 +452,22 @@ const BackendStartupFailureDialog: React.FC<{ failure: BackendStartupFailureInfo
 void registerPwa();
 
 const root = createRoot(document.getElementById('root')!);
-const backendStartupFailure = window.__backendStartupFailure;
-// WebUI browser mode: no Electron preload, so `window.electronAPI` /
-// `__backendPort` / `__onBackendPortUpdate` are all absent. The backend is
-// already running (web-host serves the page and reverse-proxies /api + /ws to
-// it), so the boot gate must NOT sit on the splash spinner waiting for a
-// port-update broadcast that can never arrive — that left WebUI pages spinning
-// forever in v2.1.42 (the splash gate was added for Electron slow boots).
-const isWebUiBrowser =
-  typeof window !== 'undefined' &&
-  typeof document !== 'undefined' &&
-  !(window as { electronAPI?: unknown }).electronAPI;
-const bootGateState = isWebUiBrowser ? 'app' : resolveBootGateState(window.__backendPort ?? 0, backendStartupFailure);
-
-if (bootGateState === 'failure') {
-  root.render(
-    <Config>
-      <BackendStartupFailureDialog failure={backendStartupFailure!} />
-    </Config>
-  );
-} else if (bootGateState === 'splash') {
-  // Window was created before the backend reported ready (slow-machine fix).
-  // Wait for the main process to broadcast the backend port (or a startup
-  // failure), then reload so the preload injects the real values.
-  root.render(
-    <Config>
-      <BackendStartingSplash />
-    </Config>
-  );
-  const onStartupFailed = () => window.location.reload();
-  window.addEventListener('backend-startup-failed', onStartupFailed);
-  const unsubscribe = window.__onBackendPortUpdate?.((port: number) => {
-    if (port > 0) {
-      unsubscribe?.();
-      window.removeEventListener('backend-startup-failed', onStartupFailed);
-      window.location.reload();
-    }
-  });
-} else {
-  root.render(
-    <AppProviders>
-      <App />
-    </AppProviders>
-  );
-}
+root.render(
+  <BackendStartupGate
+    renderStarting={() => (
+      <Config>
+        <BackendStartingView />
+      </Config>
+    )}
+    renderFailure={(failure) => (
+      <Config>
+        <BackendStartupFailureDialog failure={failure} />
+      </Config>
+    )}
+    renderApp={() => (
+      <AppProviders>
+        <App />
+      </AppProviders>
+    )}
+  />
+);

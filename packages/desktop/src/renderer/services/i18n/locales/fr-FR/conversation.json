@@ -74,7 +74,9 @@
     "removeProjectConfirm": "Supprimer le projet \"{{name}}\" ? Sa ou ses conversations {{count}} seront également supprimées.",
     "newConversationInProject": "Nouveau chat dans ce projet",
     "deleting": "Suppression...",
-    "reorderPinned": "Faites glisser pour réorganiser la conversation épinglée"
+    "reorderPinned": "Faites glisser pour réorganiser la conversation épinglée",
+    "forkedFrom": "Bifurquée depuis « {{name}} »",
+    "forkedConversation": "Conversation bifurquée"
   },
   "historySearch": {
     "tooltip": "Rechercher des messages",
@@ -416,7 +418,8 @@
     "openWith": {
       "vscode": "VS Code",
       "terminal": "Terminal",
-      "explorer": "Explorateur de fichiers"
+      "explorer": "Explorateur de fichiers",
+      "browser": "Navigateur"
     }
   },
   "minimap": {
@@ -508,7 +511,15 @@
     }
   },
   "contextUsage": {
-    "contextUsed": "contexte utilisé"
+    "contextUsed": "contexte utilisé",
+    "tokensUsed": "{{tokens}} jetons utilisés",
+    "windowUnknown": "Taille de la fenêtre de contexte inconnue",
+    "sessionCost": "Coût de la session",
+    "input": "Entrée",
+    "output": "Sortie",
+    "thought": "Réflexion",
+    "cachedRead": "Lecture du cache",
+    "cachedWrite": "Écriture du cache"
   },
   "skill_generator": {
     "title": "Générer une compétence/règle",
@@ -554,7 +565,8 @@
     "sendboxHint": "Préparation de l'environnement d'exécution. Le premier démarrage peut prendre un peu plus de temps."
   },
   "sendbox": {
-    "hint": "Tapez / pour les commandes, @ pour référencer des fichiers, ↑/↓ pour l'historique des messages"
+    "hint": "Tapez / pour les commandes, @ pour référencer des fichiers, ↑/↓ pour l'historique des messages",
+    "mediaPathFallback": "Cet agent ne prend pas en charge nativement ce type de fichier ; il sera envoyé sous forme de chemin de fichier."
   },
   "agentTip": {
     "codes": {
@@ -562,7 +574,10 @@
         "body": "Cette demande n'a produit aucune réponse visible."
       },
       "ACP_EMPTY_TURN_NEEDS_AUTH": {
-        "body": "Cette requête n'a produit aucune réponse visible. L'agent doit peut-être d'abord vous connecter : {{hint}}."
+        "body": "Cette requête n'a produit aucune réponse visible. Si vous êtes déjà connecté, il peut s'agir d'un problème temporaire du backend ou de connexion — réessayez ou démarrez une nouvelle conversation. Si vous n'êtes pas encore connecté, vous pouvez vous connecter : {{hint}}."
+      },
+      "ACP_EMPTY_TURN_TOKEN_LIMIT": {
+        "body": "Cette requête n'a produit aucune réponse visible. La conversation actuelle approche peut-être de la limite de longueur de contexte — réessayez ou démarrez une nouvelle conversation, puis réessayez."
       },
       "ACP_EMPTY_TURN_MAX_TOKENS": {
         "body": "Cette requête a atteint la limite de jetons de sortie du modèle avant qu'une réponse visible ne soit produite."
@@ -572,8 +587,47 @@
       },
       "ACP_EMPTY_TURN_REFUSAL": {
         "body": "Le modèle a refusé cette demande avant de produire une réponse visible."
+      },
+      "ANTIGRAVITY_STEPS_FAILED": {
+        "body": "{{count}} étape(s) ont échoué et n'ont PAS pris effet. agy termine malgré tout ces tours comme réussis : vérifiez le résultat réel plutôt que la réponse."
+      },
+      "ANTIGRAVITY_VERSION_OLDER": {
+        "body": "La version installée d'agy {{reported}} est antérieure à la version {{verified}} validée pour cette intégration ; certaines fonctionnalités peuvent manquer. Une mise à jour est conseillée."
+      },
+      "ANTIGRAVITY_VERSION_NEWER": {
+        "body": "La version installée d'agy {{reported}} est postérieure à la version {{verified}} validée pour cette intégration. Elle devrait fonctionner ; signalez tout comportement anormal."
       }
     }
   },
-  "notFound": "Conversation introuvable ou supprimée"
+  "notFound": "Conversation introuvable ou supprimée",
+  "explorer": {
+    "addFolder": "Add folder to project",
+    "removeFolder": "Remove from project",
+    "attachDuplicate": "This folder is already in the project",
+    "attachOverlap": "This folder overlaps a folder already in the project",
+    "attachFailed": "Couldn't add the folder",
+    "removeFailed": "Couldn't remove the folder",
+    "contextMenu": {
+      "rename": "Renommer",
+      "addToChat": "Ajouter au chat"
+    },
+    "namePlaceholder": "Nom",
+    "deleteConfirm": "Supprimer « {{name}} » ? Cette action est irréversible.",
+    "renameFailed": "Échec du renommage",
+    "tabs": {
+      "files": "Fichiers",
+      "changes": "Modifications"
+    },
+    "changesPlaceholder": "Le contrôle de version arrive dans un onglet séparé — bientôt.",
+    "addedToChat": "{{name}} ajouté au chat",
+    "imported": "{{count}} fichier(s) importé(s)",
+    "importPartialFailed": "{{copied}} copié(s), {{failed}} échec(s) (conflits de noms ou non pris en charge)",
+    "importFailed": "Échec de l’import des fichiers",
+    "search": {
+      "placeholder": "Rechercher des fichiers par nom",
+      "searching": "Recherche…",
+      "empty": "Aucun fichier correspondant",
+      "limitReached": "Affichage des {{count}} premiers — affinez la recherche"
+    }
+  }
 }

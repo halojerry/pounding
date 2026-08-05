@@ -310,9 +310,9 @@ function verifyManagedCliFromContract(baseDir, runtimeKey, cli, checked, missing
  * is missing on disk. The CLI self-service model means the app ships without
  * bundled CLIs; missing files must never fail the build.
  */
-function warnIfMissingContractPath(baseDir, runtimeKey, cli, root, relativePath, checked, isDirectory = false) {
+function warnIfMissingContractPath(baseDir, runtimeKey, cli, root, relativePath, checked, expectDirectory = false) {
   const fullPath = joinContractPath(joinContractPath(baseDir, root), relativePath);
-  const exists = isDirectory ? isDirectory(fullPath) : isFile(fullPath);
+  const exists = expectDirectory ? isDirectory(fullPath) : isFile(fullPath);
   const bundledRelative = contractBundledPath(runtimeKey, root, relativePath);
   checked.push(bundledRelative);
   if (!exists) {

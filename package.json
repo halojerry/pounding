@@ -1,6 +1,6 @@
 {
   "name": "POUNDING",
-  "version": "2.1.42",
+  "version": "2.1.48",
   "description": "Transform your command-line AI agent into a modern, efficient AI Chat interface.",
   "keywords": [],
   "license": "Apache-2.0",
@@ -260,13 +260,13 @@
   "engines": {
     "node": ">=22 <25"
   },
-  "aioncoreVersion": "v0.1.51",
+  "aioncoreVersion": "v0.1.60",
   "electronRebuild": {
     "electronVersion": "^37.3.1"
   },
   "patchedDependencies": {
     "7zip-bin@5.2.0": "patches/7zip-bin@5.2.0.patch"
   },
-  "poundingcoreVersion": "v0.1.53",
+  "poundingcoreVersion": "v0.1.60",
   "productName": "POUNDING"
 }

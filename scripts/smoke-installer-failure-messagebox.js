@@ -65,7 +65,8 @@ const INSTALLER_ERROR_SCENARIOS = [
     code: 'E1030',
     message: 'POUNDING installed, but the bundled AionCore resources are incomplete.',
     action: 'Download a fresh installer and run it again.',
-    diagnostics: 'scenario=bundled-poundingcore-incomplete phase=verify-bundled-poundingcore runtime=win32-x64 result=1',
+    diagnostics:
+      'scenario=bundled-poundingcore-incomplete phase=verify-bundled-poundingcore runtime=win32-x64 result=1',
   },
   {
     id: 'core-app-files-incomplete',

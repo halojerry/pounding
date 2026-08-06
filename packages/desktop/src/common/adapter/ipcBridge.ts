@@ -41,11 +41,7 @@ import type {
   SetConfigOptionRequest,
   SetConfigOptionResponse,
 } from '../types/platform/acpTypes';
-import type {
-  NewApiAccountStatus,
-  NewApiLoginParams,
-  NewApiLoginResponse,
-} from '../types/newApiAccount';
+import type { NewApiAccountStatus, NewApiLoginParams, NewApiLoginResponse } from '../types/newApiAccount';
 import type {
   CreateProviderRequest,
   FetchModelsAnonymousRequest,

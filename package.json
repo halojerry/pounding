@@ -257,12 +257,12 @@
   "engines": {
     "node": ">=22 <25"
   },
-  "poundingcoreVersion": "v0.1.61",
   "electronRebuild": {
     "electronVersion": "^37.3.1"
   },
   "patchedDependencies": {
     "7zip-bin@5.2.0": "patches/7zip-bin@5.2.0.patch"
   },
+  "poundingcoreVersion": "v0.1.61",
   "productName": "POUNDING"
 }

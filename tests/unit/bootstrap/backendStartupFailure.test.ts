@@ -284,7 +284,10 @@ describe('classifyBackendStartupFailure', () => {
       missingHubDir: false,
       missingPetStatesDir: false,
       missingPwaDir: false,
-      missingResources: ['bundled-poundingcore/win32-x64/managed-resources/', 'bundled-poundingcore/win32-x64/poundingcore.exe'],
+      missingResources: [
+        'bundled-poundingcore/win32-x64/managed-resources/',
+        'bundled-poundingcore/win32-x64/poundingcore.exe',
+      ],
       missingRuntimeDir: false,
     });
   });

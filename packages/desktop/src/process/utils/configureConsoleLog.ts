@@ -59,7 +59,13 @@ function resolveMessageDate(message?: LogPathMessage): Date {
 // Daily log file: e.g. 2026/03/12/2026-03-12.log
 log.transports.file.fileName = buildDatedLogFileName();
 log.transports.file.resolvePathFn = (variables, message?: LogPathMessage) => {
-  const filePath = path.join(variables.libraryDefaultDir, buildDatedLogFileName(resolveMessageDate(message)));
+  // electron-log 5.x on macOS hardcodes ~/Library/Logs/<appName> via
+  // libraryDefaultDir and ignores app.setPath('logs'). Under the E2E sandbox
+  // (POUNDING_E2E_TEST=1, see configureChromium.ts) the standard path may be
+  // unwritable (EPERM on locked-down machines), so honour the redirected
+  // app.getPath('logs') instead. Production behaviour is unchanged.
+  const baseDir = process.env.POUNDING_E2E_TEST === '1' ? app.getPath('logs') : variables.libraryDefaultDir;
+  const filePath = path.join(baseDir, buildDatedLogFileName(resolveMessageDate(message)));
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   return filePath;
 };

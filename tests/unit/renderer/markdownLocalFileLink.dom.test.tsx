@@ -115,7 +115,9 @@ describe('MarkdownView local file links', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
-    expect(copyTextMock).toHaveBeenCalledWith('C:/Users/Administrator/AppData/Roaming/POUNDING/logs/2026-06-19.log:1421');
+    expect(copyTextMock).toHaveBeenCalledWith(
+      'C:/Users/Administrator/AppData/Roaming/POUNDING/logs/2026-06-19.log:1421'
+    );
   });
 
   it('renders line and column references as file chips and copies the full reference', () => {
@@ -173,7 +175,9 @@ describe('MarkdownView local file links', () => {
   });
 
   it('does not render a no-op open button when no local file handler is provided', () => {
-    render(<MarkdownView>{'[report.xlsx](/C:/Users/Administrator/AppData/Roaming/POUNDING/report.xlsx)'}</MarkdownView>);
+    render(
+      <MarkdownView>{'[report.xlsx](/C:/Users/Administrator/AppData/Roaming/POUNDING/report.xlsx)'}</MarkdownView>
+    );
 
     expect(screen.queryByRole('link')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'report.xlsx' })).not.toBeInTheDocument();

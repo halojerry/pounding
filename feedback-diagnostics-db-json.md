@@ -23,7 +23,7 @@
 | sentry_org           | iofficeai                                                                                        |
 | sentry_project       | electron                                                                                         |
 | query                | `is:unresolved firstSeen:-7d`（取 user-feedback 子集，culprit `app:///out/renderer/index.html`） |
-| release_filter       | 无（观测到 POUNDING@2.1.36 – 2.1.39）                                                              |
+| release_filter       | 无（观测到 POUNDING@2.1.36 – 2.1.39）                                                            |
 | feedback_type_filter | `type:user-feedback`（标题带分类前缀）                                                           |
 | resolved_scope       | 仅 unresolved                                                                                    |
 | attachment_filter    | screenshot + logs.gz + db-diagnostics.json.gz（每个反馈事件都带）                                |
@@ -41,7 +41,7 @@ Sentry **事件正文本身只有用户文字 + 设备/上下文标签**（`app.
 
 ## 版本链（观测到的 app 版本）
 
-| POUNDING app     | AionCore（`aioncoreVersion`） | aionrs（Cargo.lock tag） |
+| POUNDING app   | AionCore（`aioncoreVersion`） | aionrs（Cargo.lock tag） |
 | -------------- | ----------------------------- | ------------------------ |
 | 2.1.36         | v0.1.4x                       | v0.2.x                   |
 | 2.1.37         | v0.1.48                       | v0.2.6（`3cb928d4`）     |
@@ -138,7 +138,7 @@ Sentry **事件正文本身只有用户文字 + 设备/上下文标签**（`app.
 | ELECTRON-3M1                                      | [link](https://iofficeai.sentry.io/issues/ELECTRON-3M1) | archived-non-bug | 2026-07-20      | 2026-07-23  | —                                                                        | "这什么错误"（含糊）                                                                                                               |
 | ELECTRON-3M9                                      | [link](https://iofficeai.sentry.io/issues/ELECTRON-3M9) | archived-non-bug | 2026-07-20      | 2026-07-23  | —                                                                        | "adadad"（垃圾）                                                                                                                   |
 | ELECTRON-3S4                                      | [link](https://iofficeai.sentry.io/issues/136922682/)   | active           | 2026-07-28      | 2026-07-28  | 未修复(v2.1.41/aioncore v0.1.52)                                         | **增量(2.1.41)**：user-feedback「为什么我没有助手」根因=aioncore 启动失败(directory preparation)；见深挖 6                         |
-| ELECTRON-3RD                                      | [link](https://iofficeai.sentry.io/issues/136692046/)   | active           | 2026-07-27      | 2026-07-28  | 未修复(v2.1.41/aioncore v0.1.52)                                         | **增量(2.1.41)**：claude+DeepSeek(cc-switch) 充值换 key 后 POUNDING 内 claude 一直 Invalid API key；见深挖 7                         |
+| ELECTRON-3RD                                      | [link](https://iofficeai.sentry.io/issues/136692046/)   | active           | 2026-07-27      | 2026-07-28  | 未修复(v2.1.41/aioncore v0.1.52)                                         | **增量(2.1.41)**：claude+DeepSeek(cc-switch) 充值换 key 后 POUNDING 内 claude 一直 Invalid API key；见深挖 7                       |
 
 _说明：7d 窗口内的原生崩溃类 issue（RaiseException、HandleFatal、`__abort_with_payload`、`crash_reporter::DumpWithoutCrashing`、`partition_alloc::OnNoMemoryInternal`、Wayland/GL 崩溃、ENOSPC/SqliteError 磁盘满、installer-failure E10xx、BackendStartupError 各变体）**不属于本次用户反馈报告范围**，未逐个列出。_
 

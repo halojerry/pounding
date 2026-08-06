@@ -228,20 +228,21 @@ function extractMessage(data: unknown, fallback: string): string {
 }
 
 function extractToken(payload: unknown): string | undefined {
+  if (payload == null) return undefined;
+  if (typeof payload === 'string' && payload.trim()) return payload.trim();
   if (!isRecord(payload)) return undefined;
-  const candidates = [
-    payload.token,
-    payload.access_token,
-    payload.accessToken,
-    payload.key,
-    payload.value,
-  ];
-  return candidates.find((c): c is string => typeof c === 'string' && c.length > 0);
+  const candidates = [payload.token, payload.access_token, payload.accessToken, payload.key, payload.value];
+  const direct = candidates.find((c): c is string => typeof c === 'string' && c.length > 0);
+  if (direct) return direct;
+  // Recursion into `data` mirrors the proven pre-branding implementation:
+  // some responses nest the token under data (e.g. { data: { token } }).
+  if (payload.data) return extractToken(payload.data);
+  return undefined;
 }
 
 function isMaskedToken(token: string): boolean {
   const t = token.trim().toLowerCase();
-  return t.includes('***') || t.includes('****');
+  return t.includes('***') || t.includes('****') || t.includes('...');
 }
 
 function extractUserId(payload: unknown): string | undefined {
@@ -285,7 +286,9 @@ function normalizeModelList(payload: unknown): string[] {
   return Array.from(
     new Set(
       models
-        .map((m) => (typeof m === 'string' ? m : m && typeof m === 'object' ? (m as Record<string, unknown>).id : undefined))
+        .map((m) =>
+          typeof m === 'string' ? m : m && typeof m === 'object' ? (m as Record<string, unknown>).id : undefined
+        )
         .filter((m): m is string => isNonEmptyString(m))
     )
   );
@@ -399,7 +402,21 @@ async function fetchJson<T>(requestPath: string, options: NewApiRequestOptions =
         content = {} as T;
       }
       if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+          console.error(`[POUNDING] fetchJson: ${response.status} on ${requestPath} — check login/token chain`);
+        }
         throw new Error(extractMessage(content, `Request failed with status ${response.status}`));
+      }
+      // new-api style business failure: HTTP 200 but { success: false, message }.
+      // fetchJson would otherwise treat it as success and callers would fail
+      // confusingly later (e.g. "Failed to get access token from NewAPI").
+      if (isRecord(content) && content.success === false) {
+        const businessMsg =
+          typeof content.message === 'string' && content.message.trim()
+            ? content.message
+            : 'Request rejected by NewAPI';
+        console.error(`[POUNDING] fetchJson: business error on ${requestPath}: ${businessMsg}`);
+        throw new Error(businessMsg);
       }
 
       return { data: content, cookies };
@@ -783,6 +800,12 @@ export class NewApiDesktopAccountService {
       const cookies = loginResult.cookies;
       const loginPayload = loginResult.data?.data ?? loginResult.data;
       const loginToken = extractToken(loginPayload) ?? extractToken(loginResult.data);
+      // Diagnose the login/token chain: log whether the platform's login
+      // response carried a token (missing token ⇒ all later requests 401).
+      console.log('[POUNDING] login: response ok, token=', loginToken ? 'present' : 'MISSING', {
+        payloadKeys: Object.keys(loginPayload ?? {}),
+        dataKeys: isRecord(loginResult.data) ? Object.keys(loginResult.data) : [],
+      });
       // Try to resolve the user ID from the login payload or the login token (JWT fallback).
       // If neither provides it, use an empty string — fetchJson skips the New-Api-User
       // header when the value is empty, and the /api/user/self endpoint authenticates via

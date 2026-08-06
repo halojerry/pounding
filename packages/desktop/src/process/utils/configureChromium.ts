@@ -23,6 +23,10 @@ const e2eUserDataDir = process.env.POUNDING_E2E_TEST === '1' ? process.env.AIONU
 if (e2eUserDataDir && e2eUserDataDir.trim() !== '') {
   fs.mkdirSync(e2eUserDataDir, { recursive: true });
   app.setPath('userData', e2eUserDataDir);
+  // Logs follow the sandbox too: on locked-down machines (EPERM on the
+  // standard ~/Library paths) electron-log and the backend's --log-dir must
+  // land somewhere writable, or the backend exits before health check.
+  app.setPath('logs', path.join(e2eUserDataDir, 'logs'));
 }
 
 // ============ Environment Separation ============

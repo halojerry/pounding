@@ -54,7 +54,14 @@ vi.mock('@/renderer/components/layout/PwaPullToRefresh', () => ({ default: () =>
 vi.mock('@/renderer/components/layout/Titlebar', () => ({ default: () => null }));
 vi.mock('@/renderer/components/settings/UpdateModal', () => ({ default: () => null }));
 vi.mock('@renderer/hooks/context/NewApiAccountContext', () => ({
-  useNewApiAccount: () => ({ ready: true, isLoggedIn: false, status: undefined, login: vi.fn(), logout: vi.fn(), refresh: vi.fn() }),
+  useNewApiAccount: () => ({
+    ready: true,
+    isLoggedIn: false,
+    status: undefined,
+    login: vi.fn(),
+    logout: vi.fn(),
+    refresh: vi.fn(),
+  }),
 }));
 vi.mock('@renderer/hooks/system/useDeepLink', () => ({ useDeepLink: () => {} }));
 vi.mock('@renderer/hooks/system/notification/useNotificationClick', () => ({ useNotificationClick: () => {} }));

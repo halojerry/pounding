@@ -116,7 +116,8 @@ const Sider: React.FC<SiderProps> = ({ onSessionClick, collapsed = false }) => {
     void setTheme(theme === 'dark' ? 'light' : 'dark');
   };
 
-  const handleLogout = useCallback(async () => {    cleanupSiderTooltips();
+  const handleLogout = useCallback(async () => {
+    cleanupSiderTooltips();
     blurActiveElement();
     // Hide the panel now so the UI responds immediately; the tabs themselves are
     // discarded after logout resolves, below.

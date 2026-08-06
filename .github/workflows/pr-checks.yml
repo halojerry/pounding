@@ -482,7 +482,7 @@ jobs:
           hdiutil detach "$MOUNT_POINT"
 
           APP_PATH=$(ls -d "$APP_DIR"/*.app | head -n 1)
-          APP_BIN="$APP_PATH/Contents/MacOS/AionUi"
+          APP_BIN="$APP_PATH/Contents/MacOS/POUNDING"
 
           test -x "$APP_BIN"
           "$APP_BIN" --version || true

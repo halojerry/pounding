@@ -8,7 +8,9 @@ const {
   verifyModuleBinary,
   getModulesToRebuild,
 } = require('./rebuildNativeModules');
-const { verifyBundledPoundingcoreResources } = require('../packages/shared-scripts/src/verify-bundled-poundingcore-resources');
+const {
+  verifyBundledPoundingcoreResources,
+} = require('../packages/shared-scripts/src/verify-bundled-poundingcore-resources');
 
 /**
  * afterPack hook for electron-builder

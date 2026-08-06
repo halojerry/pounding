@@ -133,7 +133,9 @@ function seedRuntimeKey(
 ) {
   const managedResourcesDir = join(resourcesDir, 'bundled-poundingcore', runtimeKey, 'managed-resources');
   mkdirSync(join(resourcesDir, 'bundled-poundingcore', runtimeKey), { recursive: true });
-  writeFile(join(resourcesDir, 'bundled-poundingcore', runtimeKey, platform === 'win32' ? 'poundingcore.exe' : 'poundingcore'));
+  writeFile(
+    join(resourcesDir, 'bundled-poundingcore', runtimeKey, platform === 'win32' ? 'poundingcore.exe' : 'poundingcore')
+  );
   writeJson(join(resourcesDir, 'bundled-poundingcore', runtimeKey, 'manifest.json'), { platform, arch });
   writeFile(join(managedResourcesDir, ...nodeRoot.split('/'), ...nodeExecutable.split('/')));
   createManagedCliFixture({ managedResourcesDir, name: 'claude', version: CLAUDE_VERSION, runtimeKey });
@@ -363,7 +365,9 @@ describe('verifyBundledPoundingcoreResources', () => {
         reason: 'duplicate_cli_name',
       })
     );
-    expect(result.missing).toContain('bundled-poundingcore/win32-x64/managed-resources/manifest.json<contract_failure>');
+    expect(result.missing).toContain(
+      'bundled-poundingcore/win32-x64/managed-resources/manifest.json<contract_failure>'
+    );
   });
 
   it('fails when a required CLI is missing from the contract', () => {

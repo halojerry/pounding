@@ -1,6 +1,6 @@
-# Package OfficeCLI Skill as AionUi Assistant
+# Package OfficeCLI Skill as POUNDING Assistant
 
-Convert an OfficeCLI skill into a fully wired AionUi assistant preset, or update an existing one.
+Convert an OfficeCLI skill into a fully wired POUNDING assistant preset, or update an existing one.
 
 ## Usage
 
@@ -34,7 +34,7 @@ Before doing anything, check whether this skill has already been packaged:
 1. Read all files from `officecli/skills/<skill-name>/` (SKILL.md, creating.md, editing.md, reference/, etc.)
 2. Create target directory at `aionui/src/process/resources/skills/<skill-name>/` — **directory name must be identical** to the officecli source directory name (both repos use the same `officecli-xxx` naming convention)
 3. Copy all files, but apply these transformations to SKILL.md:
-   - **Remove version comments**: Delete any `# officecli: vX.X.X` line from inside the frontmatter. AionUi's frontmatter parser (`/^---\s*\n([\s\S]*?)\n---/`) requires clean YAML — version tracking comments break parsing and skills won't appear in the Skills Center.
+   - **Remove version comments**: Delete any `# officecli: vX.X.X` line from inside the frontmatter. POUNDING's frontmatter parser (`/^---\s*\n([\s\S]*?)\n---/`) requires clean YAML — version tracking comments break parsing and skills won't appear in the Skills Center.
    - **Verify `name` field matches directory name**: The `name` field in SKILL.md frontmatter **MUST match the skill directory name exactly**. Both officecli and aionui use the same directory name (e.g. `officecli-docx`), so the `name` field should already be correct. If not, fix it. Mismatches cause: `params/name must be equal to one of the allowed values`.
    - **Keep frontmatter fields**: `name` and `description` must stay intact
    - **Keep BEFORE YOU START section**: The officecli install/update check section must be preserved — it's critical for users who don't have officecli installed
@@ -78,7 +78,7 @@ Follow the `officecli-<skill-name>` skill exactly. It contains the complete work
 
 Before work starts, proactively remind the user once:
 
-> After the file appears in the workspace, you can preview it directly in AionUi. However, please do not click "Open with system app" while I'm still working, as this may lock the file and cause the operation to fail.
+> After the file appears in the workspace, you can preview it directly in POUNDING. However, please do not click "Open with system app" while I'm still working, as this may lock the file and cause the operation to fail.
 
 After work completes, explicitly tell the user:
 

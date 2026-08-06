@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -97,7 +97,7 @@ function hasBackendStartupFailed(): boolean {
 }
 
 function isBackendStartupFailureEvent(event: { tags?: Record<string, unknown> }): boolean {
-  return event.tags?.['aionui.failure'] === 'backend_startup';
+  return event.tags?.['pounding.failure'] === 'backend_startup';
 }
 
 function isUserFeedbackEvent(event: { tags?: Record<string, unknown> }): boolean {
@@ -250,7 +250,7 @@ export async function captureBackendStartupFailure(error: unknown): Promise<void
   });
   const autoUpdateDiagnostics = readAutoUpdateDiagnostics(app.getPath('userData'));
   Sentry.withScope((scope) => {
-    scope.setTag('aionui.failure', 'backend_startup');
+    scope.setTag('pounding.failure', 'backend_startup');
     scope.setTag('aionui.backend_startup.reason', failureInfo.reason);
     if (failureInfo.runtime) {
       scope.setTag('aionui.backend_startup.runtime', failureInfo.runtime);

@@ -61,7 +61,7 @@ describe('submitFeedbackReport', () => {
         },
       },
       module: 'installation-integrity',
-      moduleLabel: 'AionUi installation is incomplete',
+      moduleLabel: 'POUNDING installation is incomplete',
       tags: {
         'aionui.installation_integrity.report_source': 'backend_startup_failure',
       },
@@ -77,7 +77,7 @@ describe('submitFeedbackReport', () => {
     expect(sentryMocks.captureEvent).toHaveBeenCalledWith(
       {
         level: 'info',
-        message: 'AionUi installation is incomplete: AionCore cannot start',
+        message: 'POUNDING installation is incomplete: AionCore cannot start',
         extra: {
           description: 'AionCore cannot start',
           installation_integrity: {
@@ -115,7 +115,7 @@ describe('submitFeedbackReport', () => {
       collectLogs: true,
       description: 'No logs available',
       module: 'installation-integrity',
-      moduleLabel: 'AionUi installation is incomplete',
+      moduleLabel: 'POUNDING installation is incomplete',
     });
 
     expect(sentryMocks.captureEvent).toHaveBeenCalledWith(
@@ -234,7 +234,7 @@ describe('submitFeedbackReport', () => {
       description: 'Flush me',
       flushTimeoutMs: 2000,
       module: 'installation-integrity',
-      moduleLabel: 'AionUi installation is incomplete',
+      moduleLabel: 'POUNDING installation is incomplete',
     });
 
     expect(sentryMocks.captureEvent).toHaveBeenCalledOnce();
@@ -257,7 +257,7 @@ describe('submitFeedbackReport', () => {
         description: 'Flush me',
         flushTimeoutMs: 2000,
         module: 'installation-integrity',
-        moduleLabel: 'AionUi installation is incomplete',
+        moduleLabel: 'POUNDING installation is incomplete',
       })
     ).rejects.toThrow('Failed to flush feedback report (event-id)');
     expect(logFeedbackEvent).toHaveBeenCalledOnce();
@@ -278,7 +278,7 @@ describe('submitFeedbackReport', () => {
         description: 'Flush me',
         flushTimeoutMs: 2000,
         module: 'installation-integrity',
-        moduleLabel: 'AionUi installation is incomplete',
+        moduleLabel: 'POUNDING installation is incomplete',
       })
     ).rejects.toThrow('Sentry is not initialized');
   });

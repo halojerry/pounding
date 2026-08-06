@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2026 AionUi (aionui.com)
+ * Copyright 2026 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -85,13 +85,13 @@ afterAll(() => {
 
 const SAMPLE_YML = `version: 2.1.45
 files:
-  - url: AionUi-2.1.45-mac-arm64.zip
+  - url: POUNDING-2.1.45-mac-arm64.zip
     sha512: abc==
     size: 474779381
-  - url: AionUi-2.1.45-mac-arm64.dmg
+  - url: POUNDING-2.1.45-mac-arm64.dmg
     sha512: def==
     size: 469685641
-path: AionUi-2.1.45-mac-arm64.zip
+path: POUNDING-2.1.45-mac-arm64.zip
 sha512: abc==
 releaseDate: '2026-07-31T14:45:19.381Z'
 `;
@@ -115,7 +115,7 @@ describe('parseCdnManifest', () => {
     expect(manifest).not.toBeNull();
     expect(manifest?.version).toBe('2.1.45');
     expect(manifest?.files).toHaveLength(2);
-    expect(manifest?.files[0]).toMatchObject({ url: 'AionUi-2.1.45-mac-arm64.zip', size: 474779381 });
+    expect(manifest?.files[0]).toMatchObject({ url: 'POUNDING-2.1.45-mac-arm64.zip', size: 474779381 });
     expect(manifest?.releaseDate).toBe('2026-07-31T14:45:19.381Z');
   });
 
@@ -130,16 +130,18 @@ describe('mapCdnManifestToRelease', () => {
   it('maps files to CDN-primary assets with GitHub fallback URLs', () => {
     const manifest = parseCdnManifest(SAMPLE_YML);
     if (!manifest) throw new Error('manifest should parse');
-    const release = mapCdnManifestToRelease(manifest, 'iOfficeAI/AionUi');
+    const release = mapCdnManifestToRelease(manifest, 'halojerry/pounding');
     expect(release).not.toBeNull();
     expect(release?.version).toBe('2.1.45');
     expect(release?.tagName).toBe('v2.1.45');
     expect(release?.htmlUrl).toBe('');
     expect(release?.publishedAt).toBe('2026-07-31T14:45:19.381Z');
     const dmg = release?.assets.find((a) => a.name.endsWith('.dmg'));
-    expect(dmg?.url).toBe('https://static.aionui.com/releases/2.1.45/AionUi-2.1.45-mac-arm64.dmg');
+    expect(dmg?.url).toBe(
+      'https://yss-1256275613.cos.ap-guangzhou.myqcloud.com/pounding/releases/latest/POUNDING-2.1.45-mac-arm64.dmg'
+    );
     expect(dmg?.fallbackUrl).toBe(
-      'https://github.com/iOfficeAI/AionUi/releases/download/v2.1.45/AionUi-2.1.45-mac-arm64.dmg'
+      'https://github.com/halojerry/pounding/releases/download/v2.1.45/POUNDING-2.1.45-mac-arm64.dmg'
     );
     expect(dmg?.size).toBe(469685641);
     expect(release?.recommendedAsset).toBeDefined();
@@ -148,7 +150,7 @@ describe('mapCdnManifestToRelease', () => {
   it('returns null when version is not valid semver', () => {
     const release = mapCdnManifestToRelease(
       { version: 'not-a-version', files: [{ url: 'a.dmg' }] },
-      'iOfficeAI/AionUi'
+      'halojerry/pounding'
     );
     expect(release).toBeNull();
   });

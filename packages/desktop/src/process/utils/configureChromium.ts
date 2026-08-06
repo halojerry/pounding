@@ -1,10 +1,10 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { app } from 'electron';
+import { app, dialog } from 'electron';
 import http from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -17,9 +17,9 @@ import { applyGpuRecoveryFlags } from './gpuRecovery';
 // BEFORE any getPath() call so the whole data tree (config, aioncore DB, logs)
 // lives in a disposable directory. This keeps tests off the developer's real
 // database — critical because AionCore refuses to boot when a shared DB fails
-// migration. Guarded by AIONUI_E2E_TEST so it never affects dev/production.
+// migration. Guarded by POUNDING_E2E_TEST so it never affects dev/production.
 // 仅 E2E：把 userData 指向一次性沙箱目录，避免测试读写真实数据库。
-const e2eUserDataDir = process.env.AIONUI_E2E_TEST === '1' ? process.env.AIONUI_E2E_USER_DATA_DIR : undefined;
+const e2eUserDataDir = process.env.POUNDING_E2E_TEST === '1' ? process.env.AIONUI_E2E_USER_DATA_DIR : undefined;
 if (e2eUserDataDir && e2eUserDataDir.trim() !== '') {
   fs.mkdirSync(e2eUserDataDir, { recursive: true });
   app.setPath('userData', e2eUserDataDir);
@@ -27,17 +27,115 @@ if (e2eUserDataDir && e2eUserDataDir.trim() !== '') {
 
 // ============ Environment Separation ============
 // Set app name before any getPath() call so userData is isolated from production.
-// Note: getPlatformServices() auto-registration also applies this as a safety net
-// in case Rollup loads initStorage's chunk before this module runs.
-// 开发模式下设置独立 app 名称，userData 目录将与正式版隔离，允许同时运行
-// E2E 沙箱已显式设置 userData 时跳过，避免被 dev app 名覆盖。
-if (!app.isPackaged && !e2eUserDataDir) {
-  const devAppName = getDevAppName();
-  app.setName(devAppName);
-  // In Electron 28+, setName alone no longer updates userData path on macOS.
-  // Explicitly override userData to the dev directory.
-  const appSupportDir = path.dirname(app.getPath('userData'));
-  app.setPath('userData', path.join(appSupportDir, devAppName));
+
+// Portable mode: detected via PORTABLE marker file next to the executable.
+// On first launch the user chooses where to store data:
+//   - USB  drive → ./data/   (portable, takes data anywhere)
+//   - This computer → system default AppData
+// Choice is persisted in data-location next to PORTABLE.
+export let portableChoicePending: { exeDir: string; choiceFile: string } | null = null;
+
+if (!e2eUserDataDir) {
+  if (!app.isPackaged) {
+    const devAppName = getDevAppName();
+    app.setName(devAppName);
+    const appSupportDir = path.dirname(app.getPath('userData'));
+    app.setPath('userData', path.join(appSupportDir, devAppName));
+  } else {
+    let exeDir = path.dirname(app.getPath('exe'));
+    if (process.platform === 'darwin' && exeDir.endsWith('Contents/MacOS')) {
+      exeDir = path.dirname(path.dirname(path.dirname(exeDir)));
+    }
+    const portableMarker = path.join(exeDir, 'PORTABLE');
+    if (fs.existsSync(portableMarker)) {
+      const choiceFile = path.join(exeDir, 'data-location');
+      const useUSB = (() => {
+        if (fs.existsSync(choiceFile)) {
+          try {
+            const choice = JSON.parse(fs.readFileSync(choiceFile, 'utf-8'));
+            return choice.location !== 'computer';
+          } catch {
+            /* corrupt → ask again */
+          }
+        }
+        // No choice yet → default to USB, ask on first launch
+        return true;
+      })();
+
+      if (useUSB) {
+        const portableDataDir = path.join(exeDir, 'data');
+        if (!fs.existsSync(portableDataDir)) {
+          fs.mkdirSync(portableDataDir, { recursive: true });
+        }
+        const portableLogsDir = path.join(portableDataDir, 'logs');
+        if (!fs.existsSync(portableLogsDir)) {
+          fs.mkdirSync(portableLogsDir, { recursive: true });
+        }
+        app.setPath('userData', portableDataDir);
+        app.setPath('logs', portableLogsDir);
+      }
+
+      // Defer storage choice dialog until app is ready
+      if (!fs.existsSync(choiceFile)) {
+        portableChoicePending = { exeDir, choiceFile };
+      }
+    }
+  }
+}
+
+export async function showPortableStorageChoice(): Promise<void> {
+  if (!portableChoicePending) return;
+  const { exeDir, choiceFile } = portableChoicePending;
+  portableChoicePending = null;
+
+  const zh = app.getLocale().startsWith('zh');
+
+  const { response } = await dialog.showMessageBox({
+    type: 'question',
+    title: 'POUNDING',
+    message: zh ? '请选择数据存储位置' : 'Where would you like to store your data?',
+    detail: zh ? '包含聊天记录、设置、缓存等' : 'Includes chat history, settings, and cache.',
+    buttons: zh ? ['这台电脑', 'U盘'] : ['This Computer', 'USB Drive'],
+    defaultId: 1,
+    cancelId: 0,
+  });
+
+  const choice = response === 1 ? 'usb' : 'computer';
+  fs.writeFileSync(choiceFile, JSON.stringify({ location: choice }), 'utf-8');
+
+  if (choice === 'computer') {
+    dialog.showMessageBox({
+      type: 'info',
+      title: 'POUNDING',
+      message: zh ? '下次启动生效' : 'The change will take effect on the next launch.',
+      buttons: ['OK'],
+    });
+  }
+}
+
+/**
+ * Whether this is the first time the app has been launched in this data directory.
+ * Used to trigger the CLI auto-installation on first login instead of waiting for
+ * manual intervention.
+ */
+export function isFirstRun(): boolean {
+  try {
+    const userData = app.getPath('userData');
+    const marker = path.join(userData, '.first-run-done');
+    return !fs.existsSync(marker);
+  } catch {
+    return false;
+  }
+}
+
+export function markFirstRunDone(): void {
+  try {
+    const userData = app.getPath('userData');
+    const marker = path.join(userData, '.first-run-done');
+    fs.writeFileSync(marker, new Date().toISOString(), 'utf8');
+  } catch {
+    /* best-effort */
+  }
 }
 
 // app.disableHardwareAcceleration() must run before app is ready.

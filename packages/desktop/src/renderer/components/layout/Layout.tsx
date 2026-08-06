@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -8,6 +8,8 @@ import { ipcBridge } from '@/common';
 import { TEAM_MODE_ENABLED } from '@/common/config/constants';
 import PwaPullToRefresh from '@/renderer/components/layout/PwaPullToRefresh';
 import Titlebar from '@/renderer/components/layout/Titlebar';
+import DesktopLoginGate from '@renderer/components/layout/DesktopLoginGate';
+import { useNewApiAccount } from '@renderer/hooks/context/NewApiAccountContext';
 import { Layout as ArcoLayout, Tooltip } from '@arco-design/web-react';
 import classNames from 'classnames';
 import React, { Suspense, useCallback, useEffect, useRef, useState } from 'react';
@@ -125,6 +127,7 @@ const Layout: React.FC<{
     typeof window === 'undefined' ? 390 : window.innerWidth
   );
   const { onClick } = useDebug();
+  const { ready: newApiReady, isLoggedIn: isNewApiLoggedIn } = useNewApiAccount();
   useDeepLink();
   useNotificationClick();
   useBrowserNotification();
@@ -144,7 +147,7 @@ const Layout: React.FC<{
     return () => setGlobalNavigate(null);
   }, [navigate]);
   const { t } = useTranslation();
-  // The "AionUi" wordmark acts as Home / Back-to-Chat, but only from settings routes.
+  // The "POUNDING" wordmark acts as Home / Back-to-Chat, but only from settings routes.
   // In non-settings routes the user is already "home", so it is a no-op (and not actionable).
   const isSettingsRoute = location.pathname.startsWith('/settings');
   // Only wired to the wordmark in the isSettingsRoute branch below, so the
@@ -387,6 +390,8 @@ const Layout: React.FC<{
     };
   }, []);
 
+  const shouldShowDesktopGate = isElectronDesktop() && newApiReady && !isNewApiLoggedIn;
+
   const siderStyle = isMobile
     ? {
         position: 'fixed' as const,
@@ -474,11 +479,11 @@ const Layout: React.FC<{
                         }
                       }}
                     >
-                      AionUi
+                      POUNDING
                     </div>
                   </Tooltip>
                 ) : (
-                  <div className='text-16px text-t-primary collapsed-hidden font-semibold'>AionUi</div>
+                  <div className='text-16px text-t-primary collapsed-hidden font-semibold'>POUNDING</div>
                 )}
                 {isMobile && !collapsed && (
                   <button
@@ -535,7 +540,14 @@ const Layout: React.FC<{
                     : undefined
                 }
               >
-                <Outlet />
+                {shouldShowDesktopGate ? <DesktopLoginGate /> : null}
+                {/* Keep <Outlet /> always mounted (hidden when gate is visible) so that
+                    React.lazy() Suspense boundaries are never torn down during auth
+                    transitions. Tearing down a Suspense resets the lazy import state
+                    and can cause a permanent spinner if the dynamic import() hangs. */}
+                <div style={{ display: shouldShowDesktopGate ? 'none' : undefined, flex: 1, minHeight: 0 }}>
+                  <Outlet />
+                </div>
                 <PwaPullToRefresh />
                 <Suspense fallback={null}>
                   <UpdateModal />

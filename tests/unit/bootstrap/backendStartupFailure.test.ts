@@ -11,8 +11,8 @@ describe('classifyBackendStartupFailure', () => {
     error.details = {
       stage: 'early_exit',
       stderrTail:
-        "/opt/AionUi/resources/bundled-aioncore/linux-x64/aioncore.bin: /lib/x86_64-linux-gnu/libc.so.6: version `GLIBC_2.34' not found\n" +
-        "/opt/AionUi/resources/bundled-aioncore/linux-x64/aioncore.bin: /lib/x86_64-linux-gnu/libc.so.6: version `GLIBC_2.32' not found",
+        "/opt/POUNDING/resources/bundled-poundingcore/linux-x64/aioncore.bin: /lib/x86_64-linux-gnu/libc.so.6: version `GLIBC_2.34' not found\n" +
+        "/opt/POUNDING/resources/bundled-poundingcore/linux-x64/aioncore.bin: /lib/x86_64-linux-gnu/libc.so.6: version `GLIBC_2.32' not found",
     };
 
     expect(classifyBackendStartupFailure(error)).toEqual({
@@ -74,8 +74,8 @@ describe('classifyBackendStartupFailure', () => {
     };
     error.details = {
       stage: 'spawn_error',
-      binaryPath: 'D:\\apps\\AionUi\\resources\\bundled-aioncore\\win32-x64\\aioncore.exe',
-      causeMessage: 'spawn D:\\apps\\AionUi\\resources\\bundled-aioncore\\win32-x64\\aioncore.exe ENOENT',
+      binaryPath: 'D:\\apps\\POUNDING\\resources\\bundled-poundingcore\\win32-x64\\poundingcore.exe',
+      causeMessage: 'spawn D:\\apps\\POUNDING\\resources\\bundled-poundingcore\\win32-x64\\poundingcore.exe ENOENT',
     };
 
     expect(classifyBackendStartupFailure(error)).toEqual({
@@ -222,7 +222,7 @@ describe('classifyBackendStartupFailure', () => {
       stage: 'resolve_binary',
       isPackaged: true,
       runtimeKey: 'win32-x64',
-      binaryName: 'aioncore.exe',
+      binaryName: 'poundingcore.exe',
       bundledDirExists: false,
       runtimeDirExists: false,
       resourcesDirEntries: [
@@ -244,7 +244,7 @@ describe('classifyBackendStartupFailure', () => {
       missingHubDir: true,
       missingPetStatesDir: true,
       missingPwaDir: true,
-      missingResources: ['bundled-aioncore/', 'bundled-aioncore/win32-x64/'],
+      missingResources: ['bundled-poundingcore/', 'bundled-poundingcore/win32-x64/'],
       missingRuntimeDir: true,
     });
   });
@@ -257,7 +257,7 @@ describe('classifyBackendStartupFailure', () => {
       stage: 'resolve_binary',
       isPackaged: true,
       runtimeKey: 'win32-x64',
-      binaryName: 'aioncore.exe',
+      binaryName: 'poundingcore.exe',
       bundledDirExists: true,
       runtimeDirExists: true,
       resourcesDirEntries: [
@@ -265,7 +265,7 @@ describe('classifyBackendStartupFailure', () => {
         'app.asar',
         'app.asar.unpacked/',
         'app.png',
-        'bundled-aioncore/',
+        'bundled-poundingcore/',
         'elevate.exe',
         'hub/',
         'manifest.webmanifest',
@@ -284,7 +284,7 @@ describe('classifyBackendStartupFailure', () => {
       missingHubDir: false,
       missingPetStatesDir: false,
       missingPwaDir: false,
-      missingResources: ['bundled-aioncore/win32-x64/managed-resources/', 'bundled-aioncore/win32-x64/aioncore.exe'],
+      missingResources: ['bundled-poundingcore/win32-x64/managed-resources/', 'bundled-poundingcore/win32-x64/poundingcore.exe'],
       missingRuntimeDir: false,
     });
   });

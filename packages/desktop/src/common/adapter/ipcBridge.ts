@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -8,7 +8,7 @@
  * IPC Bridge → HTTP/WS adapter.
  *
  * This file replaces the original IPC bridge calls with HTTP REST and WebSocket
- * calls routed to aioncore. Electron-native operations (window controls,
+ * calls routed to poundingcore. Electron-native operations (window controls,
  * native dialogs, auto-update, devtools, zoom, CDP, deep links) remain as IPC.
  */
 
@@ -41,6 +41,11 @@ import type {
   SetConfigOptionRequest,
   SetConfigOptionResponse,
 } from '../types/platform/acpTypes';
+import type {
+  NewApiAccountStatus,
+  NewApiLoginParams,
+  NewApiLoginResponse,
+} from '../types/newApiAccount';
 import type {
   CreateProviderRequest,
   FetchModelsAnonymousRequest,
@@ -598,7 +603,16 @@ export const application = {
     'app.log-stream'
   ),
   devToolsStateChanged: bridge.buildEmitter<{ isOpen: boolean }>('app.devtools-state-changed'),
+  getDealerConfig: bridge.buildProvider<IBridgeResponse<DealerConfig | null>, void>('app.get-dealer-config'),
 };
+
+// ---------------------------------------------------------------------------
+// Dealer configuration (USB portable version)
+// ---------------------------------------------------------------------------
+export interface DealerConfig {
+  /** Dealer affiliate code, appended as ?aff=xxx to the sign-up URL */
+  aff: string;
+}
 
 // ---------------------------------------------------------------------------
 // Update — stays IPC (Electron-native auto-updater)
@@ -1435,6 +1449,17 @@ export const webui = {
   })),
   resetPassword: httpPost<{ new_password: string }, void>('/api/webui/reset-password'),
   generateQRToken: httpPost<{ token: string; expires_at_ms: number }, void>('/api/webui/generate-qr-token'),
+};
+
+// ---------------------------------------------------------------------------
+// New API Account — stays IPC (Electron-native desktop account management)
+// ---------------------------------------------------------------------------
+
+export const newApiAccount = {
+  getStatus: bridge.buildProvider<IBridgeResponse<NewApiAccountStatus>, void>('new-api-account.get-status'),
+  refreshStatus: bridge.buildProvider<IBridgeResponse<NewApiAccountStatus>, void>('new-api-account.refresh-status'),
+  login: bridge.buildProvider<IBridgeResponse<NewApiLoginResponse>, NewApiLoginParams>('new-api-account.login'),
+  logout: bridge.buildProvider<IBridgeResponse, void>('new-api-account.logout'),
 };
 
 // ---------------------------------------------------------------------------

@@ -369,9 +369,9 @@ jobs:
 
       - name: Prepare aioncore binary
         shell: bash
-        run: node scripts/prepareAioncore.js
+        run: node scripts/preparePoundingcore.js
         env:
-          # Version is pinned in repo-root package.json (aioncoreVersion).
+          # Version is pinned in repo-root package.json (poundingcoreVersion).
           # Set AIONUI_BACKEND_VERSION here only to override for ad-hoc builds.
           AIONUI_BACKEND_RUN_ID: ${{ inputs.aioncore_run_id }}
           AIONUI_BACKEND_ARCH: ${{ matrix.arch }}

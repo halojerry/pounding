@@ -11,7 +11,7 @@
 - **preview:** add agent-controllable in-app browser over a single-target CDP bridge (#3826)
 - **preview:** pdf via stream URL + office ChatFileRef + drop fs/resolve (#3837)
 - **preview:** migrate content I/O to ChatFileRef /content endpoints (#3825)
-- **update:** discontinue AionUi in-app updates and guide migration to the official website (#3730)
+- **update:** discontinue POUNDING in-app updates and guide migration to the official website (#3730)
 
 #### Bug Fixes
 
@@ -130,7 +130,7 @@
 
 #### Bug Fixes
 
-- **auth:** make AionUi->AionPro data adoption a one-shot event (#716)
+- **auth:** make POUNDING->AionPro data adoption a one-shot event (#716)
 - **db:** pre-migration repair for migration-030 startup-blocking CHECK failures (#724)
 - prevent silent encryption-key rotation on migration upgrade (ELECTRON-3T0) (#722)
 - **project:** add temporary fs/resolve command for preview file paths (#723)
@@ -248,7 +248,7 @@
 
 #### Features
 
-- **session-port:** AionUi frontend support for the direct-CLI claude/codex session path (#3572)
+- **session-port:** POUNDING frontend support for the direct-CLI claude/codex session path (#3572)
 - **assistants:** support reordering enabled assistants (#3696)
 - **permissions:** redesign request panel (#3676)
 - **team:** dormant teammate UI with lazy warmup and per-member retry-start (#3712)
@@ -659,7 +659,7 @@
 - **runtime:** harden managed Node command resolution (#565)
 - **runtime:** protect active ACP tasks from idle cleanup (#561)
 - **skill:** raise import size limits (#564)
-- **skills:** correct AionUi Butler skill drift against current backend (#557)
+- **skills:** correct POUNDING Butler skill drift against current backend (#557)
 
 ---
 
@@ -762,7 +762,7 @@
 - **agent:** expose runtime catalogs from metadata (#523)
 - **assistant:** expose auto-inject skills and preserve assistant rules (#525)
 - repair invalid UTF-8 agent metadata cache fields (#526)
-- **skills:** sync AionUi Butler skills + rule with current backend (#520)
+- **skills:** sync POUNDING Butler skills + rule with current backend (#520)
 
 ---
 
@@ -899,8 +899,8 @@
 
 #### Features
 
-- **assistant:** add built-in AionUi self-management assistant ([#474](https://github.com/iOfficeAI/AionCore/issues/474))
-- **assistant:** expand AionUi assistant into a butler with remote-access ([#481](https://github.com/iOfficeAI/AionCore/issues/481))
+- **assistant:** add built-in POUNDING self-management assistant ([#474](https://github.com/iOfficeAI/AionCore/issues/474))
+- **assistant:** expand POUNDING assistant into a butler with remote-access ([#481](https://github.com/iOfficeAI/AionCore/issues/481))
 - enforce TeamRun ownership for agent turns ([#483](https://github.com/iOfficeAI/AionCore/issues/483))
 - **team:** support queued team_send_message semantics ([#479](https://github.com/iOfficeAI/AionCore/issues/479))
 

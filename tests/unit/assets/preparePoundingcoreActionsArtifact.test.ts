@@ -6,8 +6,8 @@ import { delimiter, dirname, join } from 'node:path';
 const {
   getActionsArtifactName,
   getActionsArtifactMissingMessage,
-  prepareAioncore,
-} = require('../../../packages/shared-scripts/src/prepare-aioncore');
+  preparePoundingcore,
+} = require('../../../packages/shared-scripts/src/prepare-poundingcore');
 
 const posixFakeToolchainIt = process.platform === 'win32' ? it.skip : it;
 
@@ -52,7 +52,7 @@ printf 'archive' > "$out"
     join(binDir, 'gh'),
     `#!/usr/bin/env bash
 cat <<'JSON'
-{"artifacts":[{"id":123,"name":"aioncore-manual-linux-x64","archive_download_url":"https://example.invalid/artifact.zip"}]}
+{"artifacts":[{"id":123,"name":"poundingcore-manual-linux-x64","archive_download_url":"https://example.invalid/artifact.zip"}]}
 JSON
 `
   );
@@ -69,7 +69,7 @@ while [[ $# -gt 0 ]]; do
   shift || true
 done
 mkdir -p "$out"
-printf 'archive' > "$out/aioncore-v0.1.46-x86_64-unknown-linux-gnu.tar.gz"
+printf 'archive' > "$out/poundingcore-v0.1.46-x86_64-unknown-linux-gnu.tar.gz"
 `
   );
   writeExecutable(
@@ -85,11 +85,11 @@ while [[ $# -gt 0 ]]; do
   shift || true
 done
 mkdir -p "$out"
-cat > "$out/aioncore" <<'SH'
+cat > "$out/poundingcore" <<'SH'
 #!/usr/bin/env bash
 exit 0
 SH
-chmod +x "$out/aioncore"
+chmod +x "$out/poundingcore"
 `
   );
 
@@ -99,36 +99,36 @@ chmod +x "$out/aioncore"
 afterEach(() => {
   delete process.env.AIONUI_BACKEND_RUN_ID;
   delete process.env.AIONUI_BACKEND_LOCAL_BINARY;
-  rmSync(join(tmpdir(), 'aioncore-prepare', 'v0.1.46'), { recursive: true, force: true });
-  rmSync(join(tmpdir(), 'aioncore-prepare-actions', '123'), { recursive: true, force: true });
+  rmSync(join(tmpdir(), 'poundingcore-prepare', 'v0.1.46'), { recursive: true, force: true });
+  rmSync(join(tmpdir(), 'poundingcore-prepare-actions', '123'), { recursive: true, force: true });
 });
 
-describe('prepare-aioncore GitHub Actions artifact resolver', () => {
+describe('prepare-poundingcore GitHub Actions artifact resolver', () => {
   it.each([
-    ['win32', 'x64', 'aioncore-manual-windows-x64'],
-    ['win32', 'arm64', 'aioncore-manual-windows-arm64'],
-    ['darwin', 'x64', 'aioncore-manual-macos-x64'],
-    ['darwin', 'arm64', 'aioncore-manual-macos-arm64'],
-    ['linux', 'x64', 'aioncore-manual-linux-x64'],
-    ['linux', 'arm64', 'aioncore-manual-linux-arm64'],
+    ['win32', 'x64', 'poundingcore-manual-windows-x64'],
+    ['win32', 'arm64', 'poundingcore-manual-windows-arm64'],
+    ['darwin', 'x64', 'poundingcore-manual-macos-x64'],
+    ['darwin', 'arm64', 'poundingcore-manual-macos-arm64'],
+    ['linux', 'x64', 'poundingcore-manual-linux-x64'],
+    ['linux', 'arm64', 'poundingcore-manual-linux-arm64'],
   ])('maps %s-%s to %s', (platform, arch, artifactName) => {
     expect(getActionsArtifactName(platform, arch)).toBe(artifactName);
   });
 
-  it('explains which AionCore manual artifact is missing for the requested platform', () => {
+  it('explains which poundingcore manual artifact is missing for the requested platform', () => {
     expect(
       getActionsArtifactMissingMessage({
         runId: '27319522909',
         platform: 'win32',
         arch: 'x64',
-        expectedArtifactName: 'aioncore-manual-windows-x64',
-        availableArtifactNames: ['aioncore-manual-macos-arm64', 'aioncore-manual-linux-x64'],
+        expectedArtifactName: 'poundingcore-manual-windows-x64',
+        availableArtifactNames: ['poundingcore-manual-macos-arm64', 'poundingcore-manual-linux-x64'],
       })
     ).toBe(
       [
-        'AionCore run 27319522909 does not contain artifact [ aioncore-manual-windows-x64 ] required for [ win32-x64 ].',
-        'Available artifacts: aioncore-manual-macos-arm64, aioncore-manual-linux-x64.',
-        'Re-run AionCore Manual Build with platform [ windows-x64 ] or all.',
+        'poundingcore run 27319522909 does not contain artifact [ poundingcore-manual-windows-x64 ] required for [ win32-x64 ].',
+        'Available artifacts: poundingcore-manual-macos-arm64, poundingcore-manual-linux-x64.',
+        'Re-run poundingcore Manual Build with platform [ windows-x64 ] or all.',
       ].join(' ')
     );
   });
@@ -144,7 +144,7 @@ describe('prepare-aioncore GitHub Actions artifact resolver', () => {
 
     try {
       expect(() =>
-        prepareAioncore({
+        preparePoundingcore({
           projectRoot: join(tmp, 'project'),
           platform: 'linux',
           arch: 'x64',
@@ -166,7 +166,7 @@ describe('prepare-aioncore GitHub Actions artifact resolver', () => {
 
     try {
       expect(() =>
-        prepareAioncore({
+        preparePoundingcore({
           projectRoot: join(tmp, 'project'),
           platform: 'linux',
           arch: 'x64',
@@ -182,7 +182,7 @@ describe('prepare-aioncore GitHub Actions artifact resolver', () => {
 
   posixFakeToolchainIt('hard fails local binary fallback when prepared managed resources lack contract', () => {
     const tmp = mkdtempSync(join(tmpdir(), 'aionui-local-binary-gate-'));
-    const localBinary = join(tmp, 'aioncore');
+    const localBinary = join(tmp, 'poundingcore');
     writeExecutable(localBinary, '#!/usr/bin/env bash\nexit 0\n');
     const fakeBin = createFakeToolchain(tmp, { curlFails: true });
     const previousPath = process.env.PATH;
@@ -191,7 +191,7 @@ describe('prepare-aioncore GitHub Actions artifact resolver', () => {
 
     try {
       expect(() =>
-        prepareAioncore({
+        preparePoundingcore({
           projectRoot: join(tmp, 'project'),
           platform: 'linux',
           arch: 'x64',

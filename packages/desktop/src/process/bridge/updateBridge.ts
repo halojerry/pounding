@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -60,17 +60,23 @@ interface AutoUpdateCheckParams {
   includePrerelease?: boolean;
 }
 
-const DEFAULT_REPO = 'iOfficeAI/AionUi';
-const DEFAULT_USER_AGENT = 'AionUi';
+const DEFAULT_REPO = 'halojerry/pounding';
+const DEFAULT_USER_AGENT = 'POUNDING';
 const ALLOWED_ASSET_EXTS = new Set(['.exe', '.msi', '.dmg', '.zip', '.deb', '.rpm']);
-const CDN_HOST = 'static.aionui.com';
-const CDN_BASE_URL = `https://${CDN_HOST}/releases`;
+// 国内 CDN 下载源：POUNDING 只维护 releases/latest/ 平铺目录（官网 + 自动更新 +
+// 手动更新共用）。手动更新弹窗优先走 COS latest/ 直链，失败时降级到 GitHub fallbackUrl。
+const CDN_HOST = 'yss-1256275613.cos.ap-guangzhou.myqcloud.com';
+const CDN_BASE_URL = `https://${CDN_HOST}/pounding/releases/latest`;
+// NOTE: entries must be hostnames (compared against URL.hostname). The POUNDING
+// release CDN lives under github.com/halojerry/pounding, which is covered by
+// the github.com entry; static.aionui.com stays allowed for upstream CDN URLs.
 const ALLOWED_DOWNLOAD_HOSTS = new Set<string>([
-  CDN_HOST,
+  'static.aionui.com',
   'github.com',
   'objects.githubusercontent.com',
   'github-releases.githubusercontent.com',
   'release-assets.githubusercontent.com',
+  'yss-1256275613.cos.ap-guangzhou.myqcloud.com',
 ]);
 const MAX_REDIRECTS = 8;
 
@@ -88,12 +94,12 @@ const normalizeTagToSemver = (tag: string): string | null => {
 };
 
 /**
- * Rewrite a GitHub release asset URL to the CDN URL for faster download.
- * The CDN path follows the fixed convention `{base}/{version}/{original-filename}`,
- * matching electron-builder's artifactName output, so no name conversion is needed.
+ * Rewrite a GitHub release asset URL to the COS CDN URL for faster download.
+ * latest/ 是平铺目录，资产名自带版本号（如 POUNDING-2.1.48-mac-arm64.dmg），
+ * 不需要再做名称转换。
  */
-const rewriteAssetUrlToCDN = (assetName: string, version: string): string => {
-  return `${CDN_BASE_URL}/${version}/${assetName}`;
+const rewriteAssetUrlToCDN = (assetName: string): string => {
+  return `${CDN_BASE_URL}/${assetName}`;
 };
 
 type RuntimePlatformInfo = {
@@ -244,7 +250,7 @@ export const mapCdnManifestToRelease = (manifest: CdnLatestManifest, repo: strin
     if (!name || !isAllowedAssetName(name)) continue;
     assets.push({
       name,
-      url: rewriteAssetUrlToCDN(name, version),
+      url: rewriteAssetUrlToCDN(name),
       fallbackUrl: `https://github.com/${repo}/releases/download/v${version}/${name}`,
       size: file.size ?? 0,
     });
@@ -262,7 +268,7 @@ export const mapCdnManifestToRelease = (manifest: CdnLatestManifest, repo: strin
 };
 
 const resolveRepo = (requestRepo?: string): string => {
-  const envRepo = process.env.AIONUI_GITHUB_REPO?.trim();
+  const envRepo = process.env.POUNDING_GITHUB_REPO?.trim();
   const repo = (requestRepo || envRepo || DEFAULT_REPO).trim();
   return repo || DEFAULT_REPO;
 };
@@ -431,7 +437,7 @@ const sanitizeFileName = (name: string): string => {
   // Keep only base name and trim weird whitespace.
   const base = path.basename(name).trim();
   // Avoid empty names.
-  return base || `AionUi-update-${Date.now()}`;
+  return base || `POUNDING-update-${Date.now()}`;
 };
 
 const ensureUniquePath = (target: string): string => {

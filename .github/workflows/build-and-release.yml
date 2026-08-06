@@ -312,3 +312,75 @@ jobs:
           prerelease: ${{ steps.version.outputs.is_dev == 'true' || contains(steps.version.outputs.tag_name, 'beta') || contains(steps.version.outputs.tag_name, 'alpha') || contains(steps.version.outputs.tag_name, 'rc') }}
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
+
+      - name: Validate COS configuration
+        env:
+          TENCENT_COS_BUCKET: ${{ secrets.TENCENT_COS_BUCKET }}
+          TENCENT_COS_REGION: ${{ secrets.TENCENT_COS_REGION }}
+          TENCENT_COS_SECRET_ID: ${{ secrets.TENCENT_COS_SECRET_ID }}
+          TENCENT_COS_SECRET_KEY: ${{ secrets.TENCENT_COS_SECRET_KEY }}
+        run: |
+          test -n "$TENCENT_COS_BUCKET" || { echo "::error::Missing repository secret TENCENT_COS_BUCKET"; exit 1; }
+          test -n "$TENCENT_COS_REGION" || { echo "::error::Missing repository secret TENCENT_COS_REGION"; exit 1; }
+          test -n "$TENCENT_COS_SECRET_ID" || { echo "::error::Missing repository secret TENCENT_COS_SECRET_ID"; exit 1; }
+          test -n "$TENCENT_COS_SECRET_KEY" || { echo "::error::Missing repository secret TENCENT_COS_SECRET_KEY"; exit 1; }
+
+      - name: Install COSCLI
+        run: |
+          curl -L --fail --retry 3 --retry-delay 2 \
+            -o coscli \
+            https://cosbrowser.cloud.tencent.com/software/coscli/coscli-linux-amd64
+          # NOTE: This checksum pins a specific coscli binary version from Tencent COS.
+          # Update if Tencent releases a new coscli version or the binary changes.
+          echo '7165f2ae16c5f7ac495864c963ca574a76e04ec72680d7bc8a8eee3234d8cf91  coscli' | sha256sum -c -
+          chmod 755 coscli
+          ./coscli --version
+
+      - name: Mirror release assets to COS (latest)
+        timeout-minutes: 120
+        # 保险：仅 release 流程上传（tag / 手动发布 / release 分支 create-tag 成功）。
+        if: ${{ always() && (github.event_name == 'workflow_dispatch' || needs.create-tag.result == 'success' || (startsWith(github.ref, 'refs/tags/') && !contains(github.ref, '-dev-'))) }}
+        shell: bash
+        env:
+          COS_BUCKET: ${{ secrets.TENCENT_COS_BUCKET }}
+          COS_REGION: ${{ secrets.TENCENT_COS_REGION }}
+          COS_SECRET_ID: ${{ secrets.TENCENT_COS_SECRET_ID }}
+          COS_SECRET_KEY: ${{ secrets.TENCENT_COS_SECRET_KEY }}
+        run: |
+          set -euo pipefail
+
+          # Use the public global-acceleration endpoint (cross-border friendly
+          # from GitHub US runners). The *internal* acceleration domain
+          # (cos-internal.*.tencentcos.cn) is unreachable outside Tencent Cloud.
+          coscli_cmd() {
+            ./coscli "$@" \
+              -e "cos.accelerate.myqcloud.com" \
+              -i "$COS_SECRET_ID" \
+              -k "$COS_SECRET_KEY" \
+              --init-skip=true \
+              --disable-log=true
+          }
+
+          # Upload from local assets (accelerated + concurrent). Server-side
+          # cos->cos recursive copy is unreliable on this coscli version
+          # (all objects fail with zero transfer), so upload locally instead.
+          coscli_cmd rm -r -f "cos://${COS_BUCKET}/pounding/releases/latest/" || true
+          coscli_cmd cp -r --routines 8 --thread-num 16 release-assets/ "cos://${COS_BUCKET}/pounding/releases/latest/"
+
+          find release-assets -maxdepth 1 -type f \( -name '*.yml' -o -name '*.blockmap' \) | sort | while read -r file; do
+            name="$(basename "$file")"
+            coscli_cmd cp \
+              "$file" \
+              "cos://${COS_BUCKET}/pounding/releases/latest/${name}" \
+              --meta 'Cache-Control:no-cache,max-age=0'
+          done
+
+          # 硬校验：官网 + 自动更新都依赖 latest/latest.yml，失败即 fail release，
+          # 避免 COS 同步静默失败后发布仍算成功。
+          LATEST_YML="https://${COS_BUCKET}.cos.${COS_REGION}.myqcloud.com/pounding/releases/latest/latest.yml"
+          HTTP_CODE="$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$LATEST_YML" || true)"
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::COS latest/latest.yml not reachable (HTTP ${HTTP_CODE}): ${LATEST_YML}"
+            exit 1
+          fi
+          echo "OK: COS latest/latest.yml reachable (HTTP ${HTTP_CODE})"

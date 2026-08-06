@@ -203,7 +203,7 @@ worktrees/
 .superpowers/
 docs/superpowers/
 resources/bundled-bun
-resources/bundled-aioncore
+resources/bundled-poundingcore
 resources/hub
 /resources/windows/support/_sentry-dsn.generated.nsh
 

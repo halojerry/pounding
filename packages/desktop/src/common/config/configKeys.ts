@@ -1,5 +1,6 @@
 import type { ICssTheme } from '@/common/config/storage';
 import type { Theme } from '@/common/theme/types';
+import type { NewApiAccountStatus } from '@/common/types/newApiAccount';
 
 export type ConfigKeyMap = {
   language: string;
@@ -32,6 +33,7 @@ export type ConfigKeyMap = {
   'pet.size': number | undefined;
   'pet.dnd': boolean | undefined;
   'pet.confirmEnabled': boolean | undefined;
+  'newApi.desktop.account': NewApiAccountStatus | undefined;
   // Removed: 'system.autoPreviewOfficeFiles'. It gated "auto-open a preview tab
   // when an Office file appears in the workspace", a behaviour that was dropped
   // along with its hook — leaving the toggle would have been a switch the user

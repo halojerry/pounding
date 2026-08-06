@@ -1,0 +1,106 @@
+# Patch 001: POUNDING Branding (text-only)
+# Binary files (icons, logos) are maintained directly in the POUNDING repo.
+# This patch covers all text-based branding changes.
+# Maintained by scripts/apply-branding.sh
+
+packages/desktop/electron-builder.yml
+packages/desktop/package.json
+packages/desktop/electron.vite.config.ts
+packages/desktop/src/common/config/constants.ts
+packages/desktop/src/common/config/appEnv.ts
+packages/desktop/src/process/utils/tray.ts
+packages/desktop/src/process/utils/deepLink.ts
+packages/desktop/src/process/utils/initStorage.ts
+packages/desktop/src/process/utils/configureConsoleLog.ts
+packages/desktop/src/process/utils/ensureAdminUser.ts
+packages/desktop/src/process/backend/binaryResolver.ts
+packages/desktop/src/process/backend/binaryResolver.test.ts
+packages/desktop/src/process/startup/backendStartup.ts
+packages/desktop/src/process/startup/backendStartupFailure.ts
+packages/desktop/src/process/startup/quitCleanup.ts
+# autoUpdaterService.ts → owned by Patch 002 (COS update)
+# webuiConfig.ts → owned by Patch 003 (NewApi login)
+# ipcBridge.ts → owned by Patch 003 (NewApi channels)
+# index.ts → owned by Patch 003 (CodexProxy + PATH startup)
+# sentry.ts → owned by Patch 002 (Sentry DSN)
+# backend-launcher.ts → owned by Patch 003 (listening prefix)
+# AboutModalContent.tsx → owned by Patch 002 (Feishu URLs)
+packages/desktop/src/renderer/services/i18n/locales/en-US/common.json
+packages/desktop/src/renderer/services/i18n/locales/en-US/conversation.json
+packages/desktop/src/renderer/services/i18n/locales/en-US/cron.json
+packages/desktop/src/renderer/services/i18n/locales/en-US/login.json
+packages/desktop/src/renderer/services/i18n/locales/en-US/settings.json
+packages/desktop/src/renderer/services/i18n/locales/ja-JP/common.json
+packages/desktop/src/renderer/services/i18n/locales/ja-JP/conversation.json
+packages/desktop/src/renderer/services/i18n/locales/ja-JP/cron.json
+packages/desktop/src/renderer/services/i18n/locales/ja-JP/login.json
+packages/desktop/src/renderer/services/i18n/locales/ja-JP/settings.json
+packages/desktop/src/renderer/services/i18n/locales/ko-KR/common.json
+packages/desktop/src/renderer/services/i18n/locales/ko-KR/conversation.json
+packages/desktop/src/renderer/services/i18n/locales/ko-KR/cron.json
+packages/desktop/src/renderer/services/i18n/locales/ko-KR/login.json
+packages/desktop/src/renderer/services/i18n/locales/ko-KR/settings.json
+packages/desktop/src/renderer/services/i18n/locales/pt-BR/common.json
+packages/desktop/src/renderer/services/i18n/locales/pt-BR/conversation.json
+packages/desktop/src/renderer/services/i18n/locales/pt-BR/cron.json
+packages/desktop/src/renderer/services/i18n/locales/pt-BR/login.json
+packages/desktop/src/renderer/services/i18n/locales/pt-BR/settings.json
+packages/desktop/src/renderer/services/i18n/locales/ru-RU/common.json
+packages/desktop/src/renderer/services/i18n/locales/ru-RU/conversation.json
+packages/desktop/src/renderer/services/i18n/locales/ru-RU/cron.json
+packages/desktop/src/renderer/services/i18n/locales/ru-RU/login.json
+packages/desktop/src/renderer/services/i18n/locales/ru-RU/settings.json
+packages/desktop/src/renderer/services/i18n/locales/tr-TR/common.json
+packages/desktop/src/renderer/services/i18n/locales/tr-TR/conversation.json
+packages/desktop/src/renderer/services/i18n/locales/tr-TR/cron.json
+packages/desktop/src/renderer/services/i18n/locales/tr-TR/login.json
+packages/desktop/src/renderer/services/i18n/locales/tr-TR/settings.json
+packages/desktop/src/renderer/services/i18n/locales/uk-UA/common.json
+packages/desktop/src/renderer/services/i18n/locales/uk-UA/conversation.json
+packages/desktop/src/renderer/services/i18n/locales/uk-UA/cron.json
+packages/desktop/src/renderer/services/i18n/locales/uk-UA/login.json
+packages/desktop/src/renderer/services/i18n/locales/uk-UA/settings.json
+packages/desktop/src/renderer/services/i18n/locales/zh-CN/common.json
+packages/desktop/src/renderer/services/i18n/locales/zh-CN/conversation.json
+packages/desktop/src/renderer/services/i18n/locales/zh-CN/cron.json
+packages/desktop/src/renderer/services/i18n/locales/zh-CN/login.json
+packages/desktop/src/renderer/services/i18n/locales/zh-CN/messages.json
+packages/desktop/src/renderer/services/i18n/locales/zh-CN/settings.json
+packages/desktop/src/renderer/services/i18n/locales/zh-TW/common.json
+packages/desktop/src/renderer/services/i18n/locales/zh-TW/conversation.json
+packages/desktop/src/renderer/services/i18n/locales/zh-TW/cron.json
+packages/desktop/src/renderer/services/i18n/locales/zh-TW/login.json
+packages/desktop/src/renderer/services/i18n/locales/zh-TW/settings.json
+packages/desktop/src/renderer/services/i18n/locales/de-DE/login.json
+packages/desktop/src/renderer/services/i18n/locales/es-ES/login.json
+packages/desktop/src/renderer/services/i18n/locales/fa-IR/login.json
+packages/desktop/src/renderer/services/i18n/locales/fr-FR/login.json
+packages/desktop/src/renderer/services/i18n/i18n-keys.d.ts
+packages/desktop/src/renderer/styles/arco-override.css
+packages/desktop/src/renderer/styles/layout.css
+packages/desktop/src/renderer/pages/settings/AppearanceSettings/presets/discourse-horizon.css
+packages/desktop/src/renderer/components/layout/Titlebar/index.tsx
+packages/desktop/src/renderer/index.html
+packages/desktop/src/common/platform/index.ts
+packages/desktop/src/common/platform/NodePlatformServices.ts
+packages/desktop/src/common/config/storageKeys.ts
+packages/web-cli/package.json
+packages/web-cli/bin/pounding-web.js
+public/manifest.webmanifest
+resources/windows-installer-arm64.nsh
+resources/windows-installer-x64.nsh
+AGENTS.md
+CICD_SETUP.md
+readme.md
+docs/readme/readme_ch.md
+docs/readme/readme_es.md
+docs/readme/readme_jp.md
+docs/readme/readme_ko.md
+docs/readme/readme_pt.md
+docs/readme/readme_ru.md
+docs/readme/readme_tr.md
+docs/readme/readme_tw.md
+mobile/src/i18n/locales/en-US.json
+mobile/src/i18n/locales/ru-RU.json
+mobile/src/i18n/locales/uk-UA.json
+mobile/src/i18n/locales/zh-CN.json

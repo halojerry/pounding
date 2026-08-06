@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -52,6 +52,7 @@ import type { TFunction } from 'i18next';
 // Context providers
 import { AuthProvider } from './hooks/context/AuthContext';
 import { FeedbackProvider } from './hooks/context/FeedbackContext';
+import { NewApiAccountProvider } from './hooks/context/NewApiAccountContext';
 import { ThemeProvider } from './hooks/context/ThemeContext';
 import { PreviewProvider } from './pages/conversation/Preview/context/PreviewContext';
 
@@ -276,20 +277,24 @@ const AppProviders: React.FC<PropsWithChildren> = ({ children }) =>
       AuthProvider,
       null,
       React.createElement(
-        ThemeProvider,
+        NewApiAccountProvider,
         null,
         React.createElement(
-          PreviewProvider,
+          ThemeProvider,
           null,
           React.createElement(
-            FeedbackProvider,
+            PreviewProvider,
             null,
             React.createElement(
-              React.Fragment,
+              FeedbackProvider,
               null,
-              React.createElement(RuntimeFailureDialogs, null),
-              React.createElement(GpuAutoDisableNotice, null),
-              children
+              React.createElement(
+                React.Fragment,
+                null,
+                React.createElement(RuntimeFailureDialogs, null),
+                React.createElement(GpuAutoDisableNotice, null),
+                children
+              )
             )
           )
         )

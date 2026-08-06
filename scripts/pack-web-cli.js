@@ -3,8 +3,8 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { execSync } = require('child_process');
-const { prepareAioncore } = require('../packages/shared-scripts/src/prepare-aioncore.js');
-const { resolveAioncoreVersion } = require('./resolveAioncoreVersion.js');
+const { preparePoundingcore } = require('../packages/shared-scripts/src/prepare-poundingcore.js');
+const { resolvePoundingcoreVersion } = require('./resolvePoundingcoreVersion.js');
 
 const projectRoot = path.resolve(__dirname, '..');
 const platform = process.env.PACK_PLATFORM || process.platform;
@@ -17,7 +17,7 @@ const archMap = { arm64: 'arm64', x64: 'x86_64', ia32: 'x86' };
 const normalizedPlatform = platformMap[platform] || platform;
 const normalizedArch = archMap[arch] || arch;
 
-const tarballName = `aionui-web-${version}-${normalizedPlatform}-${normalizedArch}.tar.gz`;
+const tarballName = `pounding-web-${version}-${normalizedPlatform}-${normalizedArch}.tar.gz`;
 const distDir = path.join(projectRoot, 'dist-web-cli');
 const tarballPath = path.join(distDir, tarballName);
 
@@ -25,11 +25,11 @@ console.log(`Packing web-cli for ${platform}-${arch}...`);
 
 // 1. Prepare bundled-aioncore
 console.log('1. Preparing aioncore...');
-prepareAioncore({
+preparePoundingcore({
   projectRoot,
   platform,
   arch,
-  version: resolveAioncoreVersion(projectRoot),
+  version: resolvePoundingcoreVersion(projectRoot),
 });
 
 // 2. Create staging dir
@@ -38,7 +38,7 @@ const stagingDir = path.join(distDir, 'staging');
 fs.rmSync(stagingDir, { recursive: true, force: true });
 fs.mkdirSync(stagingDir, { recursive: true });
 
-const tarballContentDir = path.join(stagingDir, 'aionui-web');
+const tarballContentDir = path.join(stagingDir, 'pounding-web');
 fs.mkdirSync(tarballContentDir, { recursive: true });
 
 // 4. Compile web-cli into a standalone executable with bun
@@ -49,7 +49,7 @@ console.log('4. Compiling web-cli into standalone executable...');
 const bunTargetPlatform = { darwin: 'darwin', linux: 'linux', win32: 'windows' }[platform] || platform;
 const bunTargetArch = { arm64: 'arm64', x64: 'x64', ia32: 'x64' }[arch] || arch;
 const bunTarget = `bun-${bunTargetPlatform}-${bunTargetArch}`;
-const executableName = platform === 'win32' ? 'aionui-web.exe' : 'aionui-web';
+const executableName = platform === 'win32' ? 'pounding-web.exe' : 'pounding-web';
 const executablePath = path.join(tarballContentDir, executableName);
 const webCliEntry = path.join(projectRoot, 'packages/web-cli/src/index.ts');
 execSync(`bun build --compile --target=${bunTarget} --outfile="${executablePath}" "${webCliEntry}"`, {
@@ -61,7 +61,7 @@ console.log(`  → ${executablePath}`);
 // 5. Copy package.json with repo-root version stamped in (for runtime lookup)
 // The source packages/web-cli/package.json is pinned to "0.0.0" as a workspace
 // package and never gets bumped; stamping the real repo version here lets
-// `aionui-web version` match the tarball filename.
+// `pounding-web version` match the tarball filename.
 const srcPkg = JSON.parse(fs.readFileSync(path.join(projectRoot, 'packages/web-cli/package.json'), 'utf8'));
 srcPkg.version = version;
 fs.writeFileSync(path.join(tarballContentDir, 'package.json'), JSON.stringify(srcPkg, null, 2) + '\n');
@@ -81,14 +81,14 @@ if (fs.existsSync(rendererOutDir)) {
 const backendSrc = path.join(projectRoot, 'resources/bundled-aioncore', `${platform}-${arch}`);
 const backendDest = path.join(tarballContentDir, 'bundled-aioncore', `${platform}-${arch}`);
 if (!fs.existsSync(backendSrc)) {
-  throw new Error(`Backend bundle dir missing at ${backendSrc}. Ensure prepareAioncore succeeded.`);
+  throw new Error(`Backend bundle dir missing at ${backendSrc}. Ensure preparePoundingcore succeeded.`);
 }
 fs.mkdirSync(path.dirname(backendDest), { recursive: true });
 fs.cpSync(backendSrc, backendDest, { recursive: true });
 
 // 8. Create tarball
 fs.mkdirSync(distDir, { recursive: true });
-execSync(`tar -czf ${path.basename(tarballPath)} -C ${stagingDir} aionui-web`, {
+execSync(`tar -czf ${path.basename(tarballPath)} -C ${stagingDir} pounding-web`, {
   cwd: path.dirname(tarballPath),
   stdio: 'inherit',
 });

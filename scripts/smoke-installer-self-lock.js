@@ -88,39 +88,39 @@ function main() {
 
   const nsi = `
 Unicode true
-Name "AionUi Installer Self Lock Smoke"
+Name "POUNDING Installer Self Lock Smoke"
 OutFile "${nsisQuote(exePath)}"
 RequestExecutionLevel user
 SilentInstall silent
 !define VERSION "self-lock-smoke"
 !define AIONUI_TARGET_ARCH "x64"
 !define AIONUI_FALLBACK_LOG "aionui-installer-self-lock-fallback.log"
-!define AIONUI_APP_EXECUTABLE_FILENAME "AionUi.exe"
-!define UNINSTALL_FILENAME "Uninstall AionUi.exe"
+!define AIONUI_APP_EXECUTABLE_FILENAME "POUNDING.exe"
+!define UNINSTALL_FILENAME "Uninstall POUNDING.exe"
 !define PROJECT_DIR "${nsisQuote(repoRoot)}"
 !include LogicLib.nsh
 !include "${nsisQuote(processControlPath)}"
 
-Var AionUiSessionId
-Var AionUiIsUpdated
-Var AionUiSessionLogPath
+Var POUNDINGSessionId
+Var POUNDINGIsUpdated
+Var POUNDINGSessionLogPath
 Var ResultFile
 
 Section
   StrCpy $INSTDIR "${nsisQuote(installDir)}"
-  StrCpy $AionUiSessionId "selflock"
-  StrCpy $AionUiIsUpdated "1"
-  StrCpy $AionUiSessionLogPath "${nsisQuote(logPath)}"
+  StrCpy $POUNDINGSessionId "selflock"
+  StrCpy $POUNDINGIsUpdated "1"
+  StrCpy $POUNDINGSessionLogPath "${nsisQuote(logPath)}"
   StrCpy $ResultFile "${nsisQuote(resultPath)}"
   InitPluginsDir
   SetOutPath $INSTDIR
-  StrCpy $AionUiCurrentOutDir "$INSTDIR"
-  !insertmacro AIONUI_QUERY_LOCKERS "$INSTDIR" $AionUiLockerResult
+  StrCpy $POUNDINGCurrentOutDir "$INSTDIR"
+  !insertmacro AIONUI_QUERY_LOCKERS "$INSTDIR" $POUNDINGLockerResult
   FileOpen $0 "$ResultFile" w
-  FileWrite $0 "$AionUiLockerResult"
-  FileWrite $0 "|$AionUiCurrentOutDir|$AionUiSessionLogPath"
+  FileWrite $0 "$POUNDINGLockerResult"
+  FileWrite $0 "|$POUNDINGCurrentOutDir|$POUNDINGSessionLogPath"
   FileClose $0
-  \${If} $AionUiLockerResult != 0
+  \${If} $POUNDINGLockerResult != 0
     SetErrorLevel 10
     Quit
   \${EndIf}
@@ -159,8 +159,8 @@ SectionEnd
       throw new Error(`expected currentOutDir ${installDir}, got ${lockers.currentOutDir}`);
     }
     const blocking = lockers.blockingProcesses || [];
-    if (!blocking.some((process) => process.name === 'AionUi installer' && Number(process.pid) > 0)) {
-      throw new Error(`expected AionUi installer blocker, got ${JSON.stringify(blocking)}`);
+    if (!blocking.some((process) => process.name === 'POUNDING installer' && Number(process.pid) > 0)) {
+      throw new Error(`expected POUNDING installer blocker, got ${JSON.stringify(blocking)}`);
     }
 
     console.log(`[self-lock] ok: ${logPath}`);

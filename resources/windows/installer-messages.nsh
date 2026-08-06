@@ -37,7 +37,7 @@
 
 !define AIONUI_MSG_ARCH_MISMATCH_EN "Installation package architecture mismatch."
 !define AIONUI_MSG_ARCH_MISMATCH_ZH "安装包架构不匹配。"
-!define AIONUI_MSG_ARCH_MISMATCH_ACTION_EN "Download the AionUi installer that matches this Windows architecture, then run it again."
+!define AIONUI_MSG_ARCH_MISMATCH_ACTION_EN "Download the POUNDING installer that matches this Windows architecture, then run it again."
 !define AIONUI_MSG_ARCH_MISMATCH_ACTION_ZH "请下载与当前 Windows 架构匹配的 AionUi 安装器，然后再次运行。"
 
 !define AIONUI_MSG_UNINSTALLER_COPY_LOCKED_EN "AionUi could not overwrite the installed uninstaller because it is locked."
@@ -46,7 +46,7 @@
 !define AIONUI_MSG_UNINSTALLER_REBUILD_FAILED_ZH "AionUi 无法重建缺失的已安装卸载器。"
 !define AIONUI_MSG_UNINSTALLER_REBUILD_MISSING_EN "AionUi rebuilt the uninstaller, but the rebuilt file is still missing."
 !define AIONUI_MSG_UNINSTALLER_REBUILD_MISSING_ZH "AionUi 已尝试重建卸载器，但重建后的文件仍然缺失。"
-!define AIONUI_MSG_UNINSTALLER_REPAIR_ACTION_EN "Close AionUi, restart Windows if needed, then run this installer again."
+!define AIONUI_MSG_UNINSTALLER_REPAIR_ACTION_EN "Close POUNDING, restart Windows if needed, then run this installer again."
 !define AIONUI_MSG_UNINSTALLER_REPAIR_ACTION_ZH "请关闭 AionUi，必要时重启 Windows，然后再次运行此安装器。"
 
 !define AIONUI_MSG_OLD_UNINSTALL_FAILED_EN "The previous AionUi uninstaller returned an error."

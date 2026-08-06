@@ -1,11 +1,13 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
 import type { BrowserWindow } from 'electron';
 import { app, session } from 'electron';
+import fs from 'node:fs';
+import path from 'node:path';
 import { ipcBridge } from '@/common';
 import { BROWSER_SESSION_PARTITION } from '@/common/config/constants';
 import { ProcessConfig } from '@process/utils/initStorage';
@@ -280,6 +282,55 @@ export function initApplicationBridge(): void {
       return { success: true, data: setGpuUserOverride(override) };
     } catch (e) {
       return { success: false, msg: e.message || e.toString() };
+    }
+  });
+
+  // Dealer config for portable/USB distribution mode.
+  // Reads dealer-config.json next to the executable (same dir as PORTABLE marker).
+  ipcBridge.application.getDealerConfig.provider(async () => {
+    try {
+      // Build candidate paths: dev mode uses project root, packaged uses exe dir
+      const candidatePaths: string[] = [];
+      if (!app.isPackaged) {
+        // Dev mode: look in project root (where developer runs `bun run dev`)
+        candidatePaths.push(path.join(process.cwd(), 'dealer-config.json'));
+      }
+      // Packaged mode: match configureChromium.ts path calculation
+      let exeDir = path.dirname(app.getPath('exe'));
+      if (process.platform === 'darwin' && exeDir.endsWith('Contents/MacOS')) {
+        exeDir = path.dirname(path.dirname(path.dirname(exeDir)));
+      }
+      candidatePaths.push(path.join(exeDir, 'dealer-config.json'));
+
+      let configPath = '';
+      for (const p of candidatePaths) {
+        if (fs.existsSync(p)) {
+          configPath = p;
+          break;
+        }
+      }
+
+      console.log('[DealerConfig] Candidate paths:', candidatePaths);
+      console.log('[DealerConfig] Using config path:', configPath || '(not found)');
+
+      if (!configPath) {
+        console.log('[DealerConfig] No dealer-config.json found in any location');
+        return { success: true };
+      }
+
+      const raw = fs.readFileSync(configPath, 'utf-8');
+      console.log('[DealerConfig] File content:', raw);
+      const config = JSON.parse(raw);
+      console.log('[DealerConfig] Parsed config:', config);
+      if (config && typeof config.aff === 'string' && config.aff.trim()) {
+        console.log('[DealerConfig] Found aff code:', config.aff.trim());
+        return { success: true, data: { aff: config.aff.trim() } };
+      }
+      console.log('[DealerConfig] No valid aff code found');
+      return { success: true };
+    } catch (e) {
+      console.error('[DealerConfig] Error:', e);
+      return { success: false, msg: e.message || String(e) };
     }
   });
 }

@@ -1,11 +1,12 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
 import type { SpeechToTextConfig } from '@/common/types/provider/speech';
 import type { Theme } from '@/common/theme/types';
+import type { NewApiAccountStatus } from '@/common/types/newApiAccount';
 import { buildStorage } from '@/common/platform/storage';
 
 // 系统配置存储
@@ -105,6 +106,7 @@ export interface ILegacyConfigStorageRefer extends IConfigStorageRefer {
   };
   'tools.speechToText'?: SpeechToTextConfig;
   'model.config'?: unknown;
+  'newApi.desktop.account'?: NewApiAccountStatus;
 }
 
 export interface IEnvStorageRefer {
@@ -618,7 +620,7 @@ export interface IMcpServer {
   created_at: number;
   updated_at: number;
   original_json: string; // 存储原始JSON配置，用于编辑时的准确显示
-  /** Built-in MCP server managed by AionUi (hide edit/delete in UI) */
+  /** Built-in MCP server managed by POUNDING (hide edit/delete in UI) */
   builtin?: boolean;
 }
 
@@ -636,7 +638,7 @@ export interface IConversationMcpStatus {
 /** Stable ID for the built-in image generation MCP server */
 export const BUILTIN_IMAGE_GEN_ID = 'builtin-image-gen';
 export const BUILTIN_IMAGE_GEN_NAME = 'aionui-image-generation';
-export const BUILTIN_IMAGE_GEN_LEGACY_NAMES = ['AionUi Image Generation', BUILTIN_IMAGE_GEN_ID] as const;
+export const BUILTIN_IMAGE_GEN_LEGACY_NAMES = ['POUNDING Image Generation', BUILTIN_IMAGE_GEN_ID] as const;
 
 export interface IMcpTool {
   name: string;

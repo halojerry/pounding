@@ -78,7 +78,7 @@ Var /GLOBAL AionUiCurrentOutDir
     $$instDir = [System.IO.Path]::GetFullPath('$INSTDIR'); \
     $$targetPath = '${_TARGET_PATH}'; \
     $$currentOutDir = '$AionUiCurrentOutDir'; \
-    $$lockerListPath = '$PLUGINSDIR\aionui-rm-lockers.txt'; \
+    $$lockerListPath = '$PLUGINSDIR\pounding-rm-lockers.txt'; \
     [System.IO.File]::WriteAllText($$lockerListPath, '', (New-Object System.Text.UTF8Encoding $$false)); \
     try { \
     function Test-AionUiSamePath($$left, $$right) { \
@@ -114,9 +114,9 @@ Var /GLOBAL AionUiCurrentOutDir
         Add-Content -LiteralPath $$log -Encoding UTF8 -Value ($$payload | ConvertTo-Json -Compress -Depth 8); \
         if ($$resources.Count -eq 0) { \
           if ($$installerSelfLock -and $$installerPid -gt 0) { \
-            $$lockerText = 'AionUi installer(' + $$installerPid + ')'; \
+            $$lockerText = 'POUNDING installer(' + $$installerPid + ')'; \
             [System.IO.File]::WriteAllText($$lockerListPath, $$lockerText, (New-Object System.Text.UTF8Encoding $$false)); \
-            $$selfLockers = @([pscustomobject]@{ name = 'AionUi installer'; pid = [int]$$installerPid }); \
+            $$selfLockers = @([pscustomobject]@{ name = 'POUNDING installer'; pid = [int]$$installerPid }); \
             $$payload = [ordered]@{ schemaVersion = 1; ts = (Get-Date -Format o); session = '$AionUiSessionId'; version = '${VERSION}'; arch = '${AIONUI_TARGET_ARCH}'; updated = ('$AionUiIsUpdated' -eq '1'); instDir = '$INSTDIR'; event = 'rm-lockers'; target = $$targetPath; resources = 0; count = 1; blockingProcesses = @($$selfLockers); fallbackReason = 'installer-self-lock'; message = 'The installer process is using the install directory as its current output directory.'; outerInstallerPid = $$installerPid; currentOutDir = $$currentOutDir; installerSelfLock = $$true }; \
             Add-Content -LiteralPath $$log -Encoding UTF8 -Value ($$payload | ConvertTo-Json -Compress -Depth 10); \
             exit 0 \
@@ -156,7 +156,7 @@ Var /GLOBAL AionUiCurrentOutDir
             [pscustomobject]@{ name = $$name; pid = [int]$$_.Process.dwProcessId } \
           }); \
         } \
-        if ($$lockers.Count -eq 0 -and $$installerSelfLock -and $$installerPid -gt 0) { $$lockers = @([pscustomobject]@{ name = 'AionUi installer'; pid = [int]$$installerPid }) }; \
+        if ($$lockers.Count -eq 0 -and $$installerSelfLock -and $$installerPid -gt 0) { $$lockers = @([pscustomobject]@{ name = 'POUNDING installer'; pid = [int]$$installerPid }) }; \
         $$lockerText = @($$lockers | ForEach-Object { $$_.name + '(' + $$_.pid + ')' }) -join ', '; \
         [System.IO.File]::WriteAllText($$lockerListPath, $$lockerText, (New-Object System.Text.UTF8Encoding $$false)); \
         $$payload = [ordered]@{ schemaVersion = 1; ts = (Get-Date -Format o); session = '$AionUiSessionId'; version = '${VERSION}'; arch = '${AIONUI_TARGET_ARCH}'; updated = ('$AionUiIsUpdated' -eq '1'); instDir = '$INSTDIR'; event = 'rm-lockers'; target = $$targetPath; resources = $$resources.Count; count = $$needed; blockingProcesses = @($$lockers); fallbackReason = ''; message = ''; outerInstallerPid = $$installerPid; currentOutDir = $$currentOutDir; installerSelfLock = $$installerSelfLock }; \
@@ -175,8 +175,8 @@ Var /GLOBAL AionUiCurrentOutDir
 
 !macro AIONUI_QUERY_LOCKERS _TARGET_PATH _RETURN
   InitPluginsDir
-  File /oname=$PLUGINSDIR\aionui-query-lockers.ps1 "${PROJECT_DIR}\resources\windows\support\query-lockers.ps1"
-  nsExec::Exec `"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "$PLUGINSDIR\aionui-query-lockers.ps1" -LogPath "$AionUiSessionLogPath" -InstDir "$INSTDIR" -TargetPath "${_TARGET_PATH}" -LockerListPath "$PLUGINSDIR\aionui-rm-lockers.txt" -Session "$AionUiSessionId" -Version "${VERSION}" -Arch "${AIONUI_TARGET_ARCH}" -Updated "$AionUiIsUpdated" -CurrentOutDir "$AionUiCurrentOutDir"`
+  File /oname=$PLUGINSDIR\pounding-query-lockers.ps1 "${PROJECT_DIR}\resources\windows\support\query-lockers.ps1"
+  nsExec::Exec `"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "$PLUGINSDIR\pounding-query-lockers.ps1" -LogPath "$AionUiSessionLogPath" -InstDir "$INSTDIR" -TargetPath "${_TARGET_PATH}" -LockerListPath "$PLUGINSDIR\pounding-rm-lockers.txt" -Session "$AionUiSessionId" -Version "${VERSION}" -Arch "${AIONUI_TARGET_ARCH}" -Updated "$AionUiIsUpdated" -CurrentOutDir "$AionUiCurrentOutDir"`
   Pop ${_RETURN}
 !macroend
 
@@ -185,7 +185,7 @@ Var /GLOBAL AionUiCurrentOutDir
   StrCpy $AionUiLockerList ""
   ClearErrors
   SetDetailsPrint none
-  FileOpen $AionUiLockerListFile "$PLUGINSDIR\aionui-rm-lockers.txt" r
+  FileOpen $AionUiLockerListFile "$PLUGINSDIR\pounding-rm-lockers.txt" r
   ${IfNot} ${Errors}
     FileRead $AionUiLockerListFile $AionUiLockerList
     FileClose $AionUiLockerListFile

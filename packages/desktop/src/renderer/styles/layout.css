@@ -136,6 +136,23 @@
   transform: translateX(-8px);
 }
 
+.pounding-logo__svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.pounding-logo__eyes-track {
+  transition: transform 140ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pounding-logo__eyes-track {
+    transition: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .chat-history,
   .chat-history__item,

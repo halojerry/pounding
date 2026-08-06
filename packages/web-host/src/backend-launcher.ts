@@ -238,12 +238,12 @@ const FETCH_FORBIDDEN_PORTS = new Set([
 ]);
 
 const FETCH_COMPATIBLE_PORT_MAX_ATTEMPTS = 50;
-const AIONCORE_LISTENING_PREFIX = 'AIONCORE_LISTENING ';
+const POUNDINGCORE_LISTENING_PREFIX = 'POUNDINGCORE_LISTENING ';
 // Bare, payload-less readiness marker emitted by aioncore once `axum::serve`
 // actually begins serving (see AionCore cmd_server.rs). Authoritative "ready"
 // signal — matched by exact whole-line equality. The port is already known from
-// the earlier AIONCORE_LISTENING line, so this marker carries no payload.
-const AIONCORE_READY_MARKER = 'AIONCORE_READY';
+// the earlier POUNDINGCORE_LISTENING line, so this marker carries no payload.
+const POUNDINGCORE_READY_MARKER = 'POUNDINGCORE_READY';
 const BACKEND_PORT_REPORT_TIMEOUT_MS = 60_000;
 
 // Benign boundary code emitted by an aioncore instance that yielded the
@@ -374,13 +374,13 @@ function clearHealthCheckErrorDiagnostics(diagnostics: HealthCheckDiagnostics): 
 }
 
 function isAioncoreReadyLine(line: string): boolean {
-  return line === AIONCORE_READY_MARKER;
+  return line === POUNDINGCORE_READY_MARKER;
 }
 
 function parseAioncoreListeningPort(line: string): number | undefined {
-  if (!line.startsWith(AIONCORE_LISTENING_PREFIX)) return undefined;
+  if (!line.startsWith(POUNDINGCORE_LISTENING_PREFIX)) return undefined;
   try {
-    const parsed = JSON.parse(line.slice(AIONCORE_LISTENING_PREFIX.length)) as { port?: unknown };
+    const parsed = JSON.parse(line.slice(POUNDINGCORE_LISTENING_PREFIX.length)) as { port?: unknown };
     if (typeof parsed.port !== 'number' || !Number.isInteger(parsed.port)) return undefined;
     if (parsed.port <= 0 || parsed.port > 65535) return undefined;
     return parsed.port;
@@ -616,7 +616,7 @@ export class BackendLifecycleManager {
     let serverListeningLine: string | undefined;
     let serverReadyObserved = false;
     let resolveReady: () => void = () => {};
-    // Authoritative readiness signal fed by the AIONCORE_READY stdout marker.
+    // Authoritative readiness signal fed by the POUNDINGCORE_READY stdout marker.
     // Raced against /health polling; whichever fires first wins.
     const readySignal = new Promise<void>((resolve) => {
       resolveReady = resolve;
@@ -844,7 +844,7 @@ export class BackendLifecycleManager {
       throw error;
     }
     // Foreground readiness: whichever of /health polling or the authoritative
-    // AIONCORE_READY marker arrives first wins. A winning ready signal is
+    // POUNDINGCORE_READY marker arrives first wins. A winning ready signal is
     // treated exactly like health.ok === true and skips the health-timeout path.
     const healthOrReady = await Promise.race([
       this.waitForHealth(port).then((health) => ({ kind: 'health' as const, health })),
@@ -985,7 +985,7 @@ export class BackendLifecycleManager {
   ): void {
     void (async () => {
       // Race the (unbounded) background /health poll against a late-arriving
-      // AIONCORE_READY marker so either can deterministically resolve the
+      // POUNDINGCORE_READY marker so either can deterministically resolve the
       // pending "still starting" state.
       const outcome = await Promise.race([
         this.waitForHealth(

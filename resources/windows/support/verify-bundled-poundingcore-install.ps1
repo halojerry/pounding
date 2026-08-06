@@ -22,7 +22,7 @@ function Write-VerifyLog {
     arch = $RuntimeKey
     updated = $false
     instDir = $InstallDir
-    event = 'verify-bundled-aioncore'
+    event = 'verify-bundled-poundingcore'
     message = $Message
   }
   Add-Content -LiteralPath $LogPath -Encoding UTF8 -Value ($payload | ConvertTo-Json -Compress -Depth 8)
@@ -342,13 +342,13 @@ function Test-BundledResourcesOnce {
   $expectedPlatform = $runtimeParts[0]
   $expectedArch = $runtimeParts[1]
   $resourcesDir = Join-Path $InstallDir 'resources'
-  $baseDir = Join-Path $resourcesDir "bundled-aioncore\$RuntimeKey"
+  $baseDir = Join-Path $resourcesDir "bundled-poundingcore\$RuntimeKey"
 
   if (-not (Test-Directory $failures 'aioncore' '' $baseDir)) {
     return $failures
   }
 
-  Test-NonEmptyFile $failures 'aioncore' '' (Join-Path $baseDir 'aioncore.exe') $true $baseDir | Out-Null
+  Test-NonEmptyFile $failures 'aioncore' '' (Join-Path $baseDir 'poundingcore.exe') $true $baseDir | Out-Null
 
   $bundleManifestPath = Join-Path $baseDir 'manifest.json'
   if (Test-NonEmptyFile $failures 'aioncore-manifest' '' $bundleManifestPath $false $baseDir) {
@@ -376,16 +376,16 @@ function Test-BundledResourcesOnce {
 for ($attempt = 1; $attempt -le 5; $attempt++) {
   $failures = @(Test-BundledResourcesOnce)
   if ($failures.Count -eq 0) {
-    Write-VerifyLog "verify-bundled-aioncore result=ok runtime=$RuntimeKey attempts=$attempt"
+    Write-VerifyLog "verify-bundled-poundingcore result=ok runtime=$RuntimeKey attempts=$attempt"
     exit 0
   }
 
   $summary = ($failures | ConvertTo-Json -Compress -Depth 5)
   if ($attempt -lt 5) {
-    Write-VerifyLog "verify-bundled-aioncore result=retry classification=resource_pending_landing runtime=$RuntimeKey attempt=$attempt failures=$summary"
+    Write-VerifyLog "verify-bundled-poundingcore result=retry classification=resource_pending_landing runtime=$RuntimeKey attempt=$attempt failures=$summary"
     Start-Sleep -Milliseconds 500
   } else {
-    Write-VerifyLog "verify-bundled-aioncore result=fail runtime=$RuntimeKey failures=$summary"
+    Write-VerifyLog "verify-bundled-poundingcore result=fail runtime=$RuntimeKey failures=$summary"
   }
 }
 

@@ -1,12 +1,12 @@
-appId: com.aionui.app
-productName: AionUi
-executableName: AionUi
-copyright: Copyright © 2024 AionUi
+appId: com.pounding.app
+productName: POUNDING
+executableName: POUNDING
+copyright: Copyright © 2024 POUNDING
 
 protocols:
-  - name: AionUi Protocol
+  - name: POUNDING Protocol
     schemes:
-      - aionui
+      - pounding
 
 asar:
   smartUnpack: true
@@ -217,8 +217,14 @@ electronDownload:
   cache: ${env.ELECTRON_CACHE}
 
 publish:
-  provider: github
-  owner: iOfficeAI
-  repo: AionUi
-  publishAutoUpdate: true
-  releaseType: release
+  - provider: generic
+    url: https://yss-1256275613.cos.ap-guangzhou.myqcloud.com/pounding/releases/latest
+    useMultipleRangeRequest: false
+    channel: latest
+  - provider: github
+    owner: halojerry
+    repo: pounding
+    publishAutoUpdate: true
+    releaseType: release
+    channel: latest
+detectUpdateChannel: false

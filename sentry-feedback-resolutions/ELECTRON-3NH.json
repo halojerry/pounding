@@ -21,7 +21,7 @@
     "aionrs_main": ["same lines 57/121/182 unchanged -> still present"]
   },
   "fix_implemented": "Added Utf8StreamDecoder (byte-level carry buffer) in aion-providers/src/framing.rs; replaced per-chunk String::from_utf8_lossy(&chunk) with decoder.push(&chunk) at all 3 SSE paths in stream_process.rs (openai/openai-responses/anthropic) + a decoder.flush() pass after each loop. Bedrock path untouched (already byte-buffered).",
-  "fix_direction": "Review branch, commit, open PR against aionrs main, bump aioncore aionrs pin, then ship in a new AionUi release; verify no U+FFFD on CJK streaming.",
+  "fix_direction": "Review branch, commit, open PR against aionrs main, bump aioncore aionrs pin, then ship in a new POUNDING release; verify no U+FFFD on CJK streaming.",
   "diagnostics_changed": false,
   "report_path": "feedback-diagnostics-db-json.md",
   "ledger_sidecar": "feedback-diagnostics-db-json.ledger.json",

@@ -94,7 +94,7 @@ function makeFakeTaskkillChild(): ChildProcess {
 }
 
 function emitListening(child: ChildProcess, port: number): void {
-  child.stdout?.emit('data', Buffer.from(`AIONCORE_LISTENING {"host":"127.0.0.1","port":${port}}\n`));
+  child.stdout?.emit('data', Buffer.from(`POUNDINGCORE_LISTENING {"host":"127.0.0.1","port":${port}}\n`));
 }
 
 function makeFakeSocket(): Socket {
@@ -328,7 +328,7 @@ describe('BackendLifecycleManager.start (success path)', () => {
     });
 
     await Promise.resolve();
-    child.stdout?.emit('data', Buffer.from('AIONCORE_LISTENING {"host":"127.0.0.1","port":55555}\n'));
+    child.stdout?.emit('data', Buffer.from('POUNDINGCORE_LISTENING {"host":"127.0.0.1","port":55555}\n'));
 
     const port = await startPromise;
 
@@ -717,7 +717,7 @@ describe('BackendLifecycleManager.start (health timeout)', () => {
         healthCheckLastError: 'fetch failed',
         serverListeningObserved: true,
         serverListeningObservedAfterMs: expect.any(Number),
-        serverListeningLine: expect.stringContaining('AIONCORE_LISTENING'),
+        serverListeningLine: expect.stringContaining('POUNDINGCORE_LISTENING'),
       }),
     });
 
@@ -959,8 +959,8 @@ describe('BackendLifecycleManager.start (health timeout)', () => {
   }, 15_000);
 });
 
-describe('BackendLifecycleManager.start (AIONCORE_READY consumption)', () => {
-  it('AC-7: treats an AIONCORE_READY marker as ready without /health passing', async () => {
+describe('BackendLifecycleManager.start (POUNDINGCORE_READY consumption)', () => {
+  it('AC-7: treats an POUNDINGCORE_READY marker as ready without /health passing', async () => {
     vi.useFakeTimers();
     vi.mocked(createServer).mockImplementation(
       () => makeSyncFakeServer(33343) as unknown as ReturnType<typeof createServer>
@@ -979,17 +979,17 @@ describe('BackendLifecycleManager.start (AIONCORE_READY consumption)', () => {
     await Promise.resolve();
     emitListening(child, 33343);
     await Promise.resolve();
-    child.stdout?.emit('data', Buffer.from('AIONCORE_READY\n'));
+    child.stdout?.emit('data', Buffer.from('POUNDINGCORE_READY\n'));
 
     await expect(startPromise).resolves.toBe(33343);
     expect(mgr.status).toBe('running');
     // /health was polled but never returned ok; readiness came from the marker.
-    expect(fetchSpy).not.toHaveBeenCalledWith(expect.stringContaining('AIONCORE_READY'));
+    expect(fetchSpy).not.toHaveBeenCalledWith(expect.stringContaining('POUNDINGCORE_READY'));
 
     fetchSpy.mockRestore();
   }, 15_000);
 
-  it('AC-7: a late AIONCORE_READY marker resolves the pending state and fires onReady', async () => {
+  it('AC-7: a late POUNDINGCORE_READY marker resolves the pending state and fires onReady', async () => {
     vi.useFakeTimers();
     vi.mocked(createServer).mockImplementation(
       () => makeSyncFakeServer(33344) as unknown as ReturnType<typeof createServer>
@@ -1017,7 +1017,7 @@ describe('BackendLifecycleManager.start (AIONCORE_READY consumption)', () => {
     expect(onHealthTimeout).toHaveBeenCalled();
 
     // A late readiness marker deterministically resolves the pending state.
-    child.stdout?.emit('data', Buffer.from('AIONCORE_READY\n'));
+    child.stdout?.emit('data', Buffer.from('POUNDINGCORE_READY\n'));
     await vi.advanceTimersByTimeAsync(0);
     await Promise.resolve();
 

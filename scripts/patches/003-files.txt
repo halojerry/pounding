@@ -1,0 +1,91 @@
+# Patch 003: POUNDING NewApi Desktop Login + Auto Model Config
+# Complete POUNDING-unique login chain. Upstream has no desktop login at all.
+# Shared files (ipcBridge.ts, configKeys.ts, storage.ts, SiderFooter.tsx)
+# are entirely in this patch because NewApi is the "heavier" category.
+
+# Types
+packages/desktop/src/common/types/newApiAccount.ts
+packages/desktop/src/common/types/agent/managedRuntimeCli.ts
+packages/desktop/src/common/types/agent/managedCliCapabilities.ts
+packages/desktop/src/common/types/agent/managedCliInstaller.ts
+packages/desktop/src/common/types/codex/codexModels.ts
+packages/desktop/src/common/types/codex/codexModes.ts
+
+# IPC + Config + Storage (shared files, owned by this patch)
+packages/desktop/src/common/adapter/ipcBridge.ts
+packages/desktop/src/common/config/configKeys.ts
+packages/desktop/src/common/config/storage.ts
+
+# Main process services
+packages/desktop/src/process/bridge/services/NewApiDesktopAccountService.ts
+packages/desktop/src/process/bridge/newApiAccountBridge.ts
+packages/desktop/src/process/bridge/managedCliInstallerBridge.ts
+packages/desktop/src/process/bridge/services/managedCliConfigVerifier.ts
+packages/desktop/src/process/services/CodexProxyManager.ts
+packages/desktop/src/process/services/DoctorService.ts
+packages/desktop/src/process/services/OpenClawGatewayManager.ts
+packages/desktop/src/process/codexApiProxy.mjs
+packages/desktop/src/process/bridge/index.ts
+packages/desktop/src/process/index.ts
+packages/desktop/src/index.ts
+packages/desktop/src/preload/main.ts
+
+# Renderer - Login + Account
+packages/desktop/src/renderer/main.tsx
+packages/desktop/src/renderer/hooks/context/NewApiAccountContext.tsx
+packages/desktop/src/renderer/components/layout/DesktopLoginGate.tsx
+
+# Renderer - Sider (login UI + balance/subscription)
+packages/desktop/src/renderer/components/layout/Sider/SiderFooter.tsx
+packages/desktop/src/renderer/components/layout/Sider/BalanceCard.tsx
+packages/desktop/src/renderer/components/layout/Sider/SubscriptionCard.tsx
+packages/desktop/src/renderer/utils/quotaUtils.ts
+
+# Renderer - Layout + Router
+packages/desktop/src/renderer/components/layout/Layout.tsx
+packages/desktop/src/renderer/components/layout/Router.tsx
+packages/desktop/src/renderer/components/layout/RouteErrorBoundary.tsx
+
+# CLI Prep wizard
+packages/desktop/src/renderer/pages/cli-prep/index.tsx
+
+# POUNDING CLI Settings
+packages/desktop/src/renderer/pages/settings/AionrsSettings.tsx
+
+# Model/Mode/Config
+packages/desktop/src/renderer/pages/guid/GuidPage.tsx
+packages/desktop/src/renderer/pages/guid/components/GuidModelSelector.tsx
+packages/desktop/src/renderer/pages/guid/hooks/agentSelectionUtils.ts
+packages/desktop/src/renderer/pages/guid/hooks/useGuidAgentSelection.ts
+packages/desktop/src/common/utils/buildAgentConversationParams.ts
+
+# Conversation
+packages/desktop/src/renderer/pages/conversation/platforms/acp/AcpSendBox.tsx
+packages/desktop/src/renderer/pages/conversation/platforms/aionrs/AionrsSendBox.tsx
+packages/desktop/src/renderer/components/agent/AcpThoughtLevelSelector.tsx
+packages/desktop/src/renderer/pages/conversation/utils/createConversationParams.ts
+packages/desktop/src/renderer/pages/conversation/hooks/usePreviewAutoCollapse.ts
+
+# Team
+packages/desktop/src/renderer/pages/team/hooks/useTeamSession.ts
+packages/desktop/src/renderer/pages/team/hooks/useTeamWarmup.ts
+
+# WebUI
+packages/desktop/src/process/utils/webuiConfig.ts
+packages/web-host/src/backend-launcher.ts
+
+# Logo (PNG assets are binary — copy from POUNDING repo separately)
+packages/desktop/src/renderer/components/layout/PoundingInteractiveLogo.tsx
+
+# Misc
+packages/desktop/src/renderer/pages/login/index.tsx
+packages/desktop/src/renderer/components/settings/SettingsModal/index.tsx
+packages/desktop/src/renderer/components/settings/SettingsModal/contents/WebuiModalContent.tsx
+packages/desktop/src/renderer/components/settings/SettingsModal/contents/channels/ChannelModalContent.tsx
+packages/desktop/src/renderer/components/settings/SettingsModal/contents/ModelModalContent.tsx
+packages/desktop/src/renderer/components/settings/SettingsModal/contents/ToolsModalContent.tsx
+packages/desktop/src/renderer/utils/model/modelPlatforms.ts
+packages/desktop/src/renderer/utils/model/agentModes.ts
+packages/desktop/src/renderer/utils/theme/themeCssSync.ts
+packages/desktop/src/renderer/components/Markdown/index.tsx
+packages/desktop/src/renderer/components/base/ModalWrapper.tsx

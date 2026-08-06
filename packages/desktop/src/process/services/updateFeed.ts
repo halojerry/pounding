@@ -1,13 +1,13 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
 import { CdnGenericProvider } from './cdnGenericProvider';
 import type { CdnGenericProviderConfiguration } from './cdnGenericProvider';
 
-export const CDN_UPDATE_BASE_URL = 'https://static.aionui.com/releases';
+export const CDN_UPDATE_BASE_URL = 'https://yss-1256275613.cos.ap-guangzhou.myqcloud.com/pounding/releases/latest';
 
 export type CdnFeedOptions = CdnGenericProviderConfiguration & {
   updateProvider: typeof CdnGenericProvider;

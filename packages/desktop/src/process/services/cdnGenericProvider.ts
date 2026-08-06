@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -65,11 +65,8 @@ export class CdnGenericProvider extends GenericProvider {
   }
 
   override resolveFiles(updateInfo: UpdateInfo): ReturnType<GenericProvider['resolveFiles']> {
-    const resolved = resolveProviderFiles(
-      updateInfo,
-      this._cdnBaseUrl,
-      (filePath) => `${updateInfo.version}/${filePath}`
-    );
+    // latest/ 为平铺目录：安装包与 yml 同层，文件名自带版本号，不再拼版本子目录。
+    const resolved = resolveProviderFiles(updateInfo, this._cdnBaseUrl, (filePath) => filePath);
     log.info('[auto-update] Update download URL(s) resolved:', {
       version: updateInfo.version,
       files: resolved.map((file) => file.url.href),

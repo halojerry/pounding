@@ -1,5 +1,5 @@
 /**
- * Prepare aioncore binary for packaging.
+ * Prepare poundingcore binary for packaging.
  *
  * Resolution order:
  *  1. GitHub Actions artifact download when AIONUI_BACKEND_RUN_ID is set
@@ -7,46 +7,46 @@
  *  3. Complete local bundle from AIONUI_BACKEND_LOCAL_BUNDLE_DIR
  *  4. Local binary fallback from AIONUI_BACKEND_LOCAL_BINARY
  *
- * Output: {projectRoot}/resources/bundled-aioncore/{platform}-{arch}/
- *   - aioncore[.exe]
+ * Output: {projectRoot}/resources/bundled-poundingcore/{platform}-{arch}/
+ *   - poundingcore[.exe]
  *   - manifest.json
  *   - managed-resources/...
  *
- * @module prepare-aioncore
+ * @module prepare-poundingcore
  */
 
 const { execSync, execFileSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { verifyBundledAioncoreResources } = require('./verify-bundled-aioncore-resources');
+const { verifyBundledPoundingcoreResources } = require('./verify-bundled-poundingcore-resources');
 
-const GITHUB_OWNER = 'iOfficeAI';
-const GITHUB_REPO = 'AionCore';
+const GITHUB_OWNER = 'halojerry';
+const GITHUB_REPO = 'poundingcore';
 
 const ACTIONS_ARTIFACT_TARGETS = {
   'darwin-arm64': {
-    artifactName: 'aioncore-manual-macos-arm64',
+    artifactName: 'poundingcore-manual-macos-arm64',
     manualPlatform: 'macos-arm64',
   },
   'darwin-x64': {
-    artifactName: 'aioncore-manual-macos-x64',
+    artifactName: 'poundingcore-manual-macos-x64',
     manualPlatform: 'macos-x64',
   },
   'linux-arm64': {
-    artifactName: 'aioncore-manual-linux-arm64',
+    artifactName: 'poundingcore-manual-linux-arm64',
     manualPlatform: 'linux-arm64',
   },
   'linux-x64': {
-    artifactName: 'aioncore-manual-linux-x64',
+    artifactName: 'poundingcore-manual-linux-x64',
     manualPlatform: 'linux-x64',
   },
   'win32-arm64': {
-    artifactName: 'aioncore-manual-windows-arm64',
+    artifactName: 'poundingcore-manual-windows-arm64',
     manualPlatform: 'windows-arm64',
   },
   'win32-x64': {
-    artifactName: 'aioncore-manual-windows-x64',
+    artifactName: 'poundingcore-manual-windows-x64',
     manualPlatform: 'windows-x64',
   },
 };
@@ -87,7 +87,7 @@ function writeJson(filePath, payload) {
 }
 
 function getBinaryName(platform) {
-  return platform === 'win32' ? 'aioncore.exe' : 'aioncore';
+  return platform === 'win32' ? 'poundingcore.exe' : 'poundingcore';
 }
 
 function getActionsTarget(platform, arch) {
@@ -108,9 +108,9 @@ function getActionsArtifactMissingMessage({ runId, platform, arch, expectedArtif
       ? availableArtifactNames.join(', ')
       : '(none)';
   return [
-    `AionCore run ${runId} does not contain artifact [ ${expectedArtifactName} ] required for [ ${platform}-${arch} ].`,
+    `poundingcore run ${runId} does not contain artifact [ ${expectedArtifactName} ] required for [ ${platform}-${arch} ].`,
     `Available artifacts: ${available}.`,
-    `Re-run AionCore Manual Build with platform [ ${getActionsManualPlatform(platform, arch)} ] or all.`,
+    `Re-run poundingcore Manual Build with platform [ ${getActionsManualPlatform(platform, arch)} ] or all.`,
   ].join(' ');
 }
 
@@ -137,14 +137,14 @@ function prepareManagedResources(binaryPath, targetDir) {
 }
 
 function verifyPreparedAioncoreBundle(projectRoot, platform, arch) {
-  const result = verifyBundledAioncoreResources({
+  const result = verifyBundledPoundingcoreResources({
     resourcesDir: path.join(projectRoot, 'resources'),
     electronPlatformName: platform,
     targetArch: arch,
   });
   if (result.missing.length > 0 || result.failures.length > 0) {
     const summary = result.missing.length > 0 ? result.missing.join(', ') : JSON.stringify(result.failures);
-    throw new Error(`Prepared aioncore bundle is missing required bundled resource(s): ${summary}`);
+    throw new Error(`Prepared poundingcore bundle is missing required bundled resource(s): ${summary}`);
   }
   return result;
 }
@@ -190,7 +190,7 @@ function resolveLatestTag() {
  * Build the release asset filename for the given platform/arch/tag.
  *
  * Expected asset naming convention:
- *   aioncore-v0.1.0-aarch64-apple-darwin.tar.gz
+ *   poundingcore-v0.1.0-aarch64-apple-darwin.tar.gz
  */
 function getAssetName(platform, arch, tag) {
   const archMap = { x64: 'x86_64', arm64: 'aarch64' };
@@ -259,7 +259,7 @@ function findAioncoreArchiveInDir(dir) {
     const fullPath = path.join(dir, entry.name);
     if (
       entry.isFile() &&
-      entry.name.startsWith('aioncore-') &&
+      entry.name.startsWith('poundingcore-') &&
       (entry.name.endsWith('.zip') || entry.name.endsWith('.tar.gz'))
     ) {
       return fullPath;
@@ -374,13 +374,13 @@ function downloadAndExtractActionsArtifact(platform, arch, runId) {
   const downloadUrl =
     artifact.archive_download_url ||
     `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/actions/artifacts/${artifact.id}/zip`;
-  console.log(`  Downloading aioncore from AionCore run ${runId} artifact ${expectedArtifactName}`);
+  console.log(`  Downloading aioncore from poundingcore run ${runId} artifact ${expectedArtifactName}`);
   downloadFileWithAuth(downloadUrl, artifactZipPath);
   extractArchive(artifactZipPath, artifactExtractDir, platform);
 
   const archivePath = findAioncoreArchiveInDir(artifactExtractDir);
   if (!archivePath) {
-    throw new Error(`AionCore artifact ${expectedArtifactName} from run ${runId} does not contain an aioncore archive`);
+    throw new Error(`poundingcore artifact ${expectedArtifactName} from run ${runId} does not contain an aioncore archive`);
   }
 
   extractArchive(archivePath, binaryExtractDir, platform);
@@ -388,7 +388,7 @@ function downloadAndExtractActionsArtifact(platform, arch, runId) {
   const binaryName = getBinaryName(platform);
   const binaryPath = findBinaryInDir(binaryExtractDir, binaryName);
   if (!binaryPath) {
-    throw new Error(`Binary ${binaryName} not found in AionCore artifact ${expectedArtifactName} from run ${runId}`);
+    throw new Error(`Binary ${binaryName} not found in poundingcore artifact ${expectedArtifactName} from run ${runId}`);
   }
 
   return {
@@ -431,7 +431,7 @@ function downloadAndExtract(platform, arch, tag) {
 // ---------------------------------------------------------------------------
 
 /**
- * Prepare aioncore binary for packaging.
+ * Prepare poundingcore binary for packaging.
  *
  * @param {object} options - Configuration options
  * @param {string} options.projectRoot - Project root directory
@@ -440,7 +440,7 @@ function downloadAndExtract(platform, arch, tag) {
  * @param {string} options.version - Backend version (default: 'latest')
  * @returns {{ prepared: true; dir: string; sourceType: string }}
  */
-function prepareAioncore(options) {
+function preparePoundingcore(options) {
   const { projectRoot, platform, arch, version = 'latest' } = options;
   const runtimeKey = `${platform}-${arch}`;
   const actionsRunId = (process.env.AIONUI_BACKEND_RUN_ID || '').trim();
@@ -460,7 +460,7 @@ function prepareAioncore(options) {
     }
   }
 
-  const targetDir = path.join(projectRoot, 'resources', 'bundled-aioncore', runtimeKey);
+  const targetDir = path.join(projectRoot, 'resources', 'bundled-poundingcore', runtimeKey);
   const binaryName = getBinaryName(platform);
   const targetBinaryPath = path.join(targetDir, binaryName);
 
@@ -545,7 +545,7 @@ function prepareAioncore(options) {
         sourceDetail = { path: resolvedLocalBinary };
         console.log(`  Using local aioncore binary: ${resolvedLocalBinary}`);
       } else {
-        console.warn(`  Local aioncore binary not found: ${resolvedLocalBinary}`);
+        console.warn(`  Local poundingcore binary not found: ${resolvedLocalBinary}`);
       }
     }
   }
@@ -572,7 +572,7 @@ function prepareAioncore(options) {
     writeJson(path.join(targetDir, 'manifest.json'), manifest);
     verifyPreparedAioncoreBundle(projectRoot, platform, arch);
     console.log(
-      `  Bundled aioncore prepared: resources/bundled-aioncore/${runtimeKey}/${binaryName} [source=${sourceType}]`
+      `  Bundled poundingcore prepared: resources/bundled-poundingcore/${runtimeKey}/${binaryName} [source=${sourceType}]`
     );
     console.log(`  Bundled managed resources prepared: ${bundledManagedResourcesDir}`);
 
@@ -580,12 +580,12 @@ function prepareAioncore(options) {
     return { prepared: true, dir: targetDir, sourceType };
   }
 
-  throw new Error(`aioncore binary not found for ${runtimeKey} (tag: ${tag})`);
+  throw new Error(`poundingcore binary not found for ${runtimeKey} (tag: ${tag})`);
 }
 
 module.exports = {
   getActionsArtifactMissingMessage,
   getActionsArtifactName,
-  prepareAioncore,
+  preparePoundingcore,
   verifyPreparedAioncoreBundle,
 };

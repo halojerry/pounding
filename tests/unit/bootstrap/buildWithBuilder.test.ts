@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -136,7 +136,7 @@ childProcess.execSync = function mockedExecSync(command) {
     const queryScript = readFileSync(resolve(repoRoot, 'resources/windows/support/query-lockers.ps1'), 'utf8');
     const captureMacro = script.match(/!macro AIONUI_CAPTURE_FAILED_PATH_LOCKERS[\s\S]*?!macroend/)?.[0];
 
-    expect(script).toContain('aionui-query-lockers.ps1');
+    expect(script).toContain('pounding-query-lockers.ps1');
     expect(captureMacro).toContain('AIONUI_QUERY_LOCKERS');
     expect(captureMacro).not.toContain('AIONUI_QUERY_LOCKERS_INLINE_LEGACY');
     expect(queryScript).toContain('$CurrentOutDir');
@@ -144,7 +144,7 @@ childProcess.execSync = function mockedExecSync(command) {
     expect(queryScript).toContain("'installer-self-lock'");
     expect(queryScript).toContain('outerInstallerPid');
     expect(queryScript).toContain('currentOutDir');
-    expect(queryScript).toContain("name = 'AionUi installer'");
+    expect(queryScript).toContain("name = 'POUNDING installer'");
   });
 
   it('continues with the bundled uninstaller when installed-uninstaller repair remains locked', () => {
@@ -157,7 +157,7 @@ childProcess.execSync = function mockedExecSync(command) {
 
     expect(retryFailureBranch).toBeTruthy();
     expect(retryFailureBranch).toContain('copy-failed-using-bundled');
-    expect(retryFailureBranch).toContain('$AionUiBundledUninstaller');
+    expect(retryFailureBranch).toContain('$POUNDINGBundledUninstaller');
     expect(retryFailureBranch).not.toContain('MessageBox');
     expect(retryFailureBranch).not.toContain('AIONUI_MSG_UNINSTALLER_LOCKED');
     expect(messages).not.toContain('existing uninstaller is locked');
@@ -268,8 +268,8 @@ childProcess.execSync = function mockedExecSync(command) {
       args: ['auto', '--mac', '--x64'],
       expectedArch: 'x64',
     },
-  ])('prepares bundled AionCore for $expectedArch with args $args', ({ args, expectedArch }) => {
-    const tempDir = mkdtempSync(join(tmpdir(), 'aionui-build-test-'));
+  ])('prepares bundled poundingcore for $expectedArch with args $args', ({ args, expectedArch }) => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'pounding-build-test-'));
     const hookPath = join(tempDir, 'hook.cjs');
     const callsPath = join(tempDir, 'prepare-calls.json');
     const outDir = resolve(repoRoot, 'out');
@@ -290,20 +290,20 @@ function recordPrepareCall(options) {
   const calls = fs.existsSync(callsPath) ? JSON.parse(fs.readFileSync(callsPath, 'utf8')) : [];
   calls.push(options ?? null);
   fs.writeFileSync(callsPath, JSON.stringify(calls));
-  return { prepared: true, dir: 'mock-bundled-aioncore', sourceType: 'mock' };
+  return { prepared: true, dir: 'mock-bundled-poundingcore', sourceType: 'mock' };
 }
 
 Module._load = function patchedLoad(request, parent, isMain) {
-  if (request === './prepareAioncore' || request.endsWith('/prepareAioncore')) {
+  if (request === './preparePoundingcore' || request.endsWith('/preparePoundingcore')) {
     return recordPrepareCall;
   }
 
-  if (request.endsWith('packages/shared-scripts/src/prepare-aioncore.js')) {
-    return { prepareAioncore: recordPrepareCall };
+  if (request.endsWith('packages/shared-scripts/src/prepare-poundingcore.js')) {
+    return { preparePoundingcore: recordPrepareCall };
   }
 
-  if (request === './resolveAioncoreVersion.js' || request.endsWith('/resolveAioncoreVersion.js')) {
-    return { resolveAioncoreVersion: () => 'v-test' };
+  if (request === './resolvePoundingcoreVersion.js' || request.endsWith('/resolvePoundingcoreVersion.js')) {
+    return { resolvePoundingcoreVersion: () => 'v-test' };
   }
 
   return originalLoad.call(this, request, parent, isMain);
@@ -362,9 +362,9 @@ childProcess.execSync = function mockedExecSync(command) {
 
       if (args.includes('--win')) {
         const installUtil = readFileSync(resolveAppBuilderInstallUtil(), 'utf8');
-        expect(installUtil).toContain('AionUi-bundled-uninstaller override source');
-        expect(installUtil).toContain('$PLUGINSDIR\\AionUi-fixed-uninstaller.exe');
-        expect(installUtil.match(/AionUi-bundled-uninstaller override source/g)).toHaveLength(1);
+        expect(installUtil).toContain('POUNDING-bundled-uninstaller override source');
+        expect(installUtil).toContain('$PLUGINSDIR\\POUNDING-fixed-uninstaller.exe');
+        expect(installUtil.match(/POUNDING-bundled-uninstaller override source/g)).toHaveLength(1);
       }
 
       const calls = JSON.parse(readFileSync(callsPath, 'utf8')) as Array<{ arch?: string } | null>;

@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2025 AionUi (aionui.com)
+ * Copyright 2025 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -71,28 +71,29 @@ const makeGitHubReleaseResponse = () => [
     tag_name: 'v1.9.22',
     name: 'v1.9.22',
     body: 'release notes',
-    html_url: 'https://github.com/iOfficeAI/AionUi/releases/tag/v1.9.22',
+    html_url: 'https://github.com/halojerry/pounding/releases/tag/v1.9.22',
     published_at: '2026-04-29T00:00:00Z',
     prerelease: false,
     draft: false,
     assets: [
       {
-        name: 'AionUi-1.9.22-mac-arm64.dmg',
+        name: 'POUNDING-1.9.22-mac-arm64.dmg',
         browser_download_url:
-          'https://github.com/iOfficeAI/AionUi/releases/download/v1.9.22/AionUi-1.9.22-mac-arm64.dmg',
+          'https://github.com/halojerry/pounding/releases/download/v1.9.22/POUNDING-1.9.22-mac-arm64.dmg',
         size: 123,
         content_type: 'application/x-apple-diskimage',
       },
       {
-        name: 'AionUi-1.9.22-win-x64.exe',
-        browser_download_url: 'https://github.com/iOfficeAI/AionUi/releases/download/v1.9.22/AionUi-1.9.22-win-x64.exe',
+        name: 'POUNDING-1.9.22-win-x64.exe',
+        browser_download_url:
+          'https://github.com/halojerry/pounding/releases/download/v1.9.22/POUNDING-1.9.22-win-x64.exe',
         size: 456,
         content_type: 'application/vnd.microsoft.portable-executable',
       },
       {
-        name: 'AionUi-1.9.22-linux-amd64.deb',
+        name: 'POUNDING-1.9.22-linux-amd64.deb',
         browser_download_url:
-          'https://github.com/iOfficeAI/AionUi/releases/download/v1.9.22/AionUi-1.9.22-linux-amd64.deb',
+          'https://github.com/halojerry/pounding/releases/download/v1.9.22/POUNDING-1.9.22-linux-amd64.deb',
         size: 789,
       },
     ],
@@ -134,75 +135,89 @@ const makeDeferred = () => {
   return { promise, resolve, reject };
 };
 
-// The check flow is CDN-first: the channel yml is the authoritative source of
-// version + assets, GitHub only enriches release notes. Serve both hosts.
-const CDN_CHANNEL_YML = `version: 1.9.22
-files:
-  - url: AionUi-1.9.22-mac-arm64.dmg
-    size: 123
-  - url: AionUi-1.9.22-win-x64.exe
-    size: 456
-  - url: AionUi-1.9.22-linux-amd64.deb
-    size: 789
-path: AionUi-1.9.22-mac-arm64.dmg
-releaseDate: '2026-04-29T00:00:00Z'
-`;
-
-const stubCdnAndGitHubFetch = () => {
-  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-    const url = String(input);
-    if (url.startsWith('https://static.aionui.com/releases/latest')) {
-      return new Response(CDN_CHANNEL_YML, { status: 200 });
-    }
-    if (url.startsWith('https://api.github.com/')) {
-      return new Response(JSON.stringify(makeGitHubReleaseResponse()), { status: 200 });
-    }
-    throw new Error(`unexpected fetch: ${url}`);
-  });
-  vi.stubGlobal('fetch', fetchMock);
-  return fetchMock;
-};
-
 describe('updateBridge CDN URL rewriting', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
   it('rewrites asset.url to the CDN path and keeps GitHub URL in fallbackUrl', async () => {
-    const fetchMock = stubCdnAndGitHubFetch();
+    const CDN_YML = `version: 1.9.22
+files:
+  - url: POUNDING-1.9.22-mac-arm64.dmg
+    size: 123
+  - url: POUNDING-1.9.22-win-x64.exe
+    size: 456
+  - url: POUNDING-1.9.22-linux-amd64.deb
+    size: 789
+path: POUNDING-1.9.22-mac-arm64.dmg
+releaseDate: '2026-04-29T00:00:00.000Z'
+`;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith('https://yss-1256275613.cos.ap-guangzhou.myqcloud.com/pounding/releases/latest')) {
+        return new Response(CDN_YML, { status: 200 });
+      }
+      if (url.startsWith('https://api.github.com/')) {
+        return new Response(JSON.stringify(makeGitHubReleaseResponse()), { status: 200 });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
 
     try {
       const handler = await getCheckHandler();
-      const result = await handler({ repo: 'iOfficeAI/AionUi' });
+      const result = await handler({ repo: 'halojerry/pounding' });
 
       expect(result.success).toBe(true);
       expect(result.data?.currentVersion).toBe('1.0.0');
       const assets = result.data?.latest?.assets ?? [];
       expect(assets.length).toBe(3);
 
-      const macAsset = assets.find((a: { name: string }) => a.name === 'AionUi-1.9.22-mac-arm64.dmg');
+      const macAsset = assets.find((a: { name: string }) => a.name === 'POUNDING-1.9.22-mac-arm64.dmg');
       expect(macAsset).toBeDefined();
-      expect(macAsset?.url).toBe('https://static.aionui.com/releases/1.9.22/AionUi-1.9.22-mac-arm64.dmg');
+      expect(macAsset?.url).toBe(
+        'https://yss-1256275613.cos.ap-guangzhou.myqcloud.com/pounding/releases/latest/POUNDING-1.9.22-mac-arm64.dmg'
+      );
       expect(macAsset?.fallbackUrl).toBe(
-        'https://github.com/iOfficeAI/AionUi/releases/download/v1.9.22/AionUi-1.9.22-mac-arm64.dmg'
+        'https://github.com/halojerry/pounding/releases/download/v1.9.22/POUNDING-1.9.22-mac-arm64.dmg'
       );
 
-      const linuxAsset = assets.find((a: { name: string }) => a.name === 'AionUi-1.9.22-linux-amd64.deb');
-      expect(linuxAsset?.url).toBe('https://static.aionui.com/releases/1.9.22/AionUi-1.9.22-linux-amd64.deb');
-      expect(fetchMock).toHaveBeenCalled();
+      const linuxAsset = assets.find((a: { name: string }) => a.name === 'POUNDING-1.9.22-linux-amd64.deb');
+      expect(linuxAsset?.url).toBe(
+        'https://yss-1256275613.cos.ap-guangzhou.myqcloud.com/pounding/releases/latest/POUNDING-1.9.22-linux-amd64.deb'
+      );
     } finally {
       vi.unstubAllGlobals();
     }
   });
 
   it('uses the normalized version (no v prefix) in the CDN path', async () => {
-    stubCdnAndGitHubFetch();
+    const CDN_YML = `version: 1.9.22
+files:
+  - url: POUNDING-1.9.22-mac-arm64.dmg
+    size: 123
+path: POUNDING-1.9.22-mac-arm64.dmg
+releaseDate: '2026-04-29T00:00:00.000Z'
+`;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith('https://yss-1256275613.cos.ap-guangzhou.myqcloud.com/pounding/releases/latest')) {
+        return new Response(CDN_YML, { status: 200 });
+      }
+      if (url.startsWith('https://api.github.com/')) {
+        return new Response('[]', { status: 200 });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
 
     try {
       const handler = await getCheckHandler();
-      const result = await handler({ repo: 'iOfficeAI/AionUi' });
+      const result = await handler({ repo: 'halojerry/pounding' });
       const asset = result.data?.latest?.assets?.[0];
-      expect(asset?.url).toMatch(/^https:\/\/static\.aionui\.com\/releases\/1\.9\.22\//);
+      expect(asset?.url).toMatch(
+        /^https:\/\/yss-1256275613\.cos\.ap-guangzhou\.myqcloud\.com\/pounding\/releases\/latest\//
+      );
       expect(asset?.url).not.toMatch(/\/v1\.9\.22\//);
     } finally {
       vi.unstubAllGlobals();
@@ -211,7 +226,7 @@ describe('updateBridge CDN URL rewriting', () => {
 });
 
 describe('updateBridge allowlist includes CDN host', () => {
-  it('accepts static.aionui.com URLs for download', async () => {
+  it('accepts github.com/halojerry/pounding CDN URLs for download', async () => {
     vi.resetModules();
     vi.clearAllMocks();
 
@@ -239,8 +254,8 @@ describe('updateBridge allowlist includes CDN host', () => {
 
       const result = await handler({
         downloadId: 'manual-download-1',
-        url: 'https://static.aionui.com/releases/1.9.22/AionUi-1.9.22-mac-arm64.dmg',
-        file_name: 'AionUi-1.9.22-mac-arm64.dmg',
+        url: 'https://static.aionui.com/releases/1.9.22/POUNDING-1.9.22-mac-arm64.dmg',
+        file_name: 'POUNDING-1.9.22-mac-arm64.dmg',
       });
 
       expect(result.success).toBe(true);

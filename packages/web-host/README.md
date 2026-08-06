@@ -1,6 +1,6 @@
 # @aionui/web-host
 
-WebUI host package for AionUi - zero Electron dependency.
+WebUI host package for POUNDING - zero Electron dependency.
 
 ## Responsibilities
 

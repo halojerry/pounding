@@ -7,6 +7,8 @@ import { useAuth } from '@renderer/hooks/context/AuthContext';
 import { useLayoutContext } from '@renderer/hooks/context/LayoutContext';
 import { blurActiveElement } from '@renderer/utils/ui/focus';
 import { useThemeContext } from '@renderer/hooks/context/ThemeContext';
+import { useNewApiAccount } from '@renderer/hooks/context/NewApiAccountContext';
+import { isElectronDesktop, openExternalUrl } from '@renderer/utils/platform';
 import { SiderToolbar, SiderSearchEntry, SiderScheduledEntry, SiderAssistantEntry } from './SiderNav';
 import SiderFooter from './SiderFooter';
 import TeamSiderSection from './TeamSiderSection';
@@ -30,6 +32,7 @@ const Sider: React.FC<SiderProps> = ({ onSessionClick, collapsed = false }) => {
   const { closePreview, clearPreviewForScope } = usePreviewContext();
   const { logout, status } = useAuth();
   const { theme, setTheme } = useThemeContext();
+  const { status: newApiStatus, isLoggedIn: isNewApiLoggedIn, logout: logoutNewApi, refresh } = useNewApiAccount();
   const [isBatchMode, setIsBatchMode] = useState(false);
   const isSettings = pathname.startsWith('/settings');
   const lastNonSettingsPathRef = useRef('/guid');
@@ -113,8 +116,7 @@ const Sider: React.FC<SiderProps> = ({ onSessionClick, collapsed = false }) => {
     void setTheme(theme === 'dark' ? 'light' : 'dark');
   };
 
-  const handleLogout = useCallback(async () => {
-    cleanupSiderTooltips();
+  const handleLogout = useCallback(async () => {    cleanupSiderTooltips();
     blurActiveElement();
     // Hide the panel now so the UI responds immediately; the tabs themselves are
     // discarded after logout resolves, below.
@@ -143,6 +145,20 @@ const Sider: React.FC<SiderProps> = ({ onSessionClick, collapsed = false }) => {
       onSessionClick();
     }
   }, [closePreview, clearPreviewForScope, logout, onSessionClick]);
+
+  const handleDesktopNewApiLogout = useCallback(async () => {
+    cleanupSiderTooltips();
+    blurActiveElement();
+    closePreview();
+    await logoutNewApi();
+    if (onSessionClick) {
+      onSessionClick();
+    }
+  }, [closePreview, logoutNewApi, onSessionClick]);
+
+  const handleHelpCenterClick = useCallback(() => {
+    void openExternalUrl('https://wcnb2ddshm1z.feishu.cn/wiki/Zsr9wqyHHi3e5IkQYtwcQu6Knab');
+  }, []);
 
   useEffect(() => {
     if (!showLogout) return;
@@ -255,6 +271,12 @@ const Sider: React.FC<SiderProps> = ({ onSessionClick, collapsed = false }) => {
         onThemeToggle={handleQuickThemeToggle}
         showLogout={showLogout}
         onLogoutClick={handleLogout}
+        showDesktopAccount={isElectronDesktop()}
+        desktopAccountLoggedIn={isNewApiLoggedIn}
+        desktopAccountStatus={newApiStatus}
+        onDesktopHelpCenterClick={handleHelpCenterClick}
+        onDesktopLogoutClick={handleDesktopNewApiLogout}
+        onAccountPanelOpen={refresh}
       />
     </div>
   );

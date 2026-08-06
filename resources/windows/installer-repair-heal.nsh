@@ -9,11 +9,11 @@ Var /GLOBAL AionUiInnerFailureReadResult
 !macro AIONUI_READ_LAST_INNER_FAILURE
   InitPluginsDir
   StrCpy $AionUiInnerRootCode ""
-  StrCpy $AionUiInnerFailureSummary "No specific locking process was identified. Close AionUi, terminals, editors, and file managers opened in the install folder."
+  StrCpy $AionUiInnerFailureSummary "No specific locking process was identified. Close POUNDING, terminals, editors, and file managers opened in the install folder."
   nsExec::ExecToStack `"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -Command "& { \
     $$ErrorActionPreference = 'SilentlyContinue'; \
     $$logPath = '$AionUiSessionLogPath'; \
-    $$summary = 'No specific locking process was identified. Close AionUi, terminals, editors, and file managers opened in the install folder.'; \
+    $$summary = 'No specific locking process was identified. Close POUNDING, terminals, editors, and file managers opened in the install folder.'; \
     $$code = ''; \
     if ($$logPath -and (Test-Path -LiteralPath $$logPath)) { \
       $$events = @(Get-Content -LiteralPath $$logPath -ErrorAction SilentlyContinue | ForEach-Object { try { $$_ | ConvertFrom-Json } catch { $$null } } | Where-Object { $$_ }); \
@@ -62,30 +62,30 @@ Var /GLOBAL AionUiInnerFailureReadResult
 !macroend
 
 !macro AIONUI_REPAIR_INSTALLED_UNINSTALLER
-  Var /GLOBAL AionUiInstalledUninstaller
-  Var /GLOBAL AionUiBundledUninstaller
+  Var /GLOBAL POUNDINGInstalledUninstaller
+  Var /GLOBAL POUNDINGBundledUninstaller
   Var /GLOBAL AionUiRepairLogResult
 
   !insertmacro AIONUI_LOG_UNINSTALLER_REPAIR "before"
-  StrCpy $AionUiInstalledUninstaller "$INSTDIR\${UNINSTALL_FILENAME}"
+  StrCpy $POUNDINGInstalledUninstaller "$INSTDIR\${UNINSTALL_FILENAME}"
 
   InitPluginsDir
-  StrCpy $AionUiBundledUninstaller "$PLUGINSDIR\AionUi-fixed-uninstaller.exe"
+  StrCpy $POUNDINGBundledUninstaller "$PLUGINSDIR\POUNDING-fixed-uninstaller.exe"
   SetOverwrite on
-  File "/oname=$PLUGINSDIR\AionUi-fixed-uninstaller.exe" "${UNINSTALLER_OUT_FILE}"
+  File "/oname=$PLUGINSDIR\POUNDING-fixed-uninstaller.exe" "${UNINSTALLER_OUT_FILE}"
 
-  ${If} ${FileExists} "$AionUiInstalledUninstaller"
+  ${If} ${FileExists} "$POUNDINGInstalledUninstaller"
     ClearErrors
-    CopyFiles /SILENT "$AionUiBundledUninstaller" "$AionUiInstalledUninstaller"
+    CopyFiles /SILENT "$POUNDINGBundledUninstaller" "$POUNDINGInstalledUninstaller"
     ${If} ${Errors}
       !insertmacro AIONUI_LOG_UNINSTALLER_REPAIR "copy-failed-retry"
       !insertmacro AIONUI_STOP_APP_PROCESSES
       Sleep 1000
 
       ClearErrors
-      CopyFiles /SILENT "$AionUiBundledUninstaller" "$AionUiInstalledUninstaller"
+      CopyFiles /SILENT "$POUNDINGBundledUninstaller" "$POUNDINGInstalledUninstaller"
       ${If} ${Errors}
-        ${If} ${FileExists} "$AionUiBundledUninstaller"
+        ${If} ${FileExists} "$POUNDINGBundledUninstaller"
           !insertmacro AIONUI_LOG_UNINSTALLER_REPAIR "copy-failed-using-bundled"
           !insertmacro AIONUI_LOG_EVENT "event=uninstaller-repair phase=copy-failed-using-bundled"
         ${Else}
@@ -99,12 +99,12 @@ Var /GLOBAL AionUiInnerFailureReadResult
     ${EndIf}
   ${Else}
     ClearErrors
-    CopyFiles /SILENT "$AionUiBundledUninstaller" "$AionUiInstalledUninstaller"
+    CopyFiles /SILENT "$POUNDINGBundledUninstaller" "$POUNDINGInstalledUninstaller"
     ${If} ${Errors}
       !insertmacro AIONUI_FAIL_REPORTABLE_BILINGUAL ${AIONUI_E_UNINSTALLER_COPY_OR_REBUILD_FAILED} "uninstaller-repair rebuild-failed" "${AIONUI_MSG_UNINSTALLER_REBUILD_FAILED_EN}" "${AIONUI_MSG_UNINSTALLER_REBUILD_FAILED_ZH}" "${AIONUI_MSG_UNINSTALLER_REPAIR_ACTION_EN}" "${AIONUI_MSG_UNINSTALLER_REPAIR_ACTION_ZH}"
     ${EndIf}
 
-    ${IfNot} ${FileExists} "$AionUiInstalledUninstaller"
+    ${IfNot} ${FileExists} "$POUNDINGInstalledUninstaller"
       !insertmacro AIONUI_FAIL_REPORTABLE_BILINGUAL ${AIONUI_E_UNINSTALLER_COPY_OR_REBUILD_FAILED} "uninstaller-repair rebuild-missing-after-copy" "${AIONUI_MSG_UNINSTALLER_REBUILD_MISSING_EN}" "${AIONUI_MSG_UNINSTALLER_REBUILD_MISSING_ZH}" "${AIONUI_MSG_UNINSTALLER_REPAIR_ACTION_EN}" "${AIONUI_MSG_UNINSTALLER_REPAIR_ACTION_ZH}"
     ${EndIf}
 

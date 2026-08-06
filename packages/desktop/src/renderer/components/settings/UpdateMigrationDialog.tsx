@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2026 AionUi (aionui.com)
+ * Copyright 2026 POUNDING (aionui.com)
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -16,7 +16,7 @@ import { useTranslation } from 'react-i18next';
 // running any version detection.
 export const OPEN_MIGRATION_DIALOG_EVENT = 'aionui-open-migration-dialog';
 
-// Official website users are guided to for the AionUi Pro download. Kept as a
+// Official website users are guided to for the POUNDING Pro download. Kept as a
 // module constant (not i18n) — it is a URL, not translatable copy.
 const AIONUI_WEBSITE_URL = 'https://www.aionui.com/';
 
@@ -97,7 +97,7 @@ const UpdateMigrationDialog: React.FC = () => {
 
   const gotoWebsite = () => {
     void openExternalUrl(AIONUI_WEBSITE_URL).catch((error) => {
-      console.error('Failed to open AionUi Pro website:', error);
+      console.error('Failed to open POUNDING Pro website:', error);
     });
     close();
   };

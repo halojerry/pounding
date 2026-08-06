@@ -2,7 +2,7 @@
  * Prepare poundingcore binary for packaging.
  *
  * Resolution order:
- *  1. GitHub Actions artifact download when AIONUI_BACKEND_RUN_ID is set
+ *  1. GitHub Actions artifact download when POUNDINGCORE_RUN_ID is set
  *  2. GitHub release download (requires version or defaults to "latest")
  *  3. Complete local bundle from AIONUI_BACKEND_LOCAL_BUNDLE_DIR
  *  4. Local binary fallback from AIONUI_BACKEND_LOCAL_BINARY
@@ -203,7 +203,7 @@ function getAssetName(platform, arch, tag) {
   const normalizedPlatform = platformMap[platform];
   if (!normalizedArch || !normalizedPlatform) return null;
   const ext = platform === 'win32' ? '.zip' : '.tar.gz';
-  return `aioncore-${tag}-${normalizedArch}-${normalizedPlatform}${ext}`;
+  return `poundingcore-${tag}-${normalizedArch}-${normalizedPlatform}${ext}`;
 }
 
 function getDownloadUrl(assetName, tag) {
@@ -211,7 +211,7 @@ function getDownloadUrl(assetName, tag) {
 }
 
 function downloadFile(url, outputPath) {
-  console.log(`  Downloading aioncore from ${url}`);
+  console.log(`  Downloading poundingcore from ${url}`);
   if (process.platform === 'win32') {
     const ps = `$ProgressPreference='SilentlyContinue'; Invoke-WebRequest -Uri '${url}' -OutFile '${outputPath.replace(/'/g, "''")}'`;
     execFileSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', ps], {
@@ -363,7 +363,7 @@ function downloadAndExtractActionsArtifact(platform, arch, runId) {
     );
   }
 
-  const tempDir = path.join(os.tmpdir(), 'aioncore-prepare-actions', runId, `${platform}-${arch}`);
+  const tempDir = path.join(os.tmpdir(), 'poundingcore-prepare-actions', runId, `${platform}-${arch}`);
   const artifactZipPath = path.join(tempDir, `${expectedArtifactName}.zip`);
   const artifactExtractDir = path.join(tempDir, 'artifact');
   const binaryExtractDir = path.join(tempDir, 'binary');
@@ -374,13 +374,13 @@ function downloadAndExtractActionsArtifact(platform, arch, runId) {
   const downloadUrl =
     artifact.archive_download_url ||
     `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/actions/artifacts/${artifact.id}/zip`;
-  console.log(`  Downloading aioncore from poundingcore run ${runId} artifact ${expectedArtifactName}`);
+  console.log(`  Downloading poundingcore from poundingcore run ${runId} artifact ${expectedArtifactName}`);
   downloadFileWithAuth(downloadUrl, artifactZipPath);
   extractArchive(artifactZipPath, artifactExtractDir, platform);
 
   const archivePath = findAioncoreArchiveInDir(artifactExtractDir);
   if (!archivePath) {
-    throw new Error(`poundingcore artifact ${expectedArtifactName} from run ${runId} does not contain an aioncore archive`);
+    throw new Error(`poundingcore artifact ${expectedArtifactName} from run ${runId} does not contain a poundingcore archive`);
   }
 
   extractArchive(archivePath, binaryExtractDir, platform);
@@ -403,11 +403,11 @@ function downloadAndExtractActionsArtifact(platform, arch, runId) {
 function downloadAndExtract(platform, arch, tag) {
   const assetName = getAssetName(platform, arch, tag);
   if (!assetName) {
-    throw new Error(`Unsupported aioncore target: ${platform}-${arch}`);
+    throw new Error(`Unsupported poundingcore target: ${platform}-${arch}`);
   }
 
   const url = getDownloadUrl(assetName, tag);
-  const tempDir = path.join(os.tmpdir(), 'aioncore-prepare', tag, `${platform}-${arch}`);
+  const tempDir = path.join(os.tmpdir(), 'poundingcore-prepare', tag, `${platform}-${arch}`);
   const archivePath = path.join(tempDir, assetName);
   const extractDir = path.join(tempDir, 'extracted');
 
@@ -443,7 +443,7 @@ function downloadAndExtract(platform, arch, tag) {
 function preparePoundingcore(options) {
   const { projectRoot, platform, arch, version = 'latest' } = options;
   const runtimeKey = `${platform}-${arch}`;
-  const actionsRunId = (process.env.AIONUI_BACKEND_RUN_ID || '').trim();
+  const actionsRunId = (process.env.POUNDINGCORE_RUN_ID || '').trim();
 
   let tag = null;
   if (!actionsRunId) {
@@ -451,10 +451,10 @@ function preparePoundingcore(options) {
     if (version === 'latest') {
       const resolved = resolveLatestTag();
       if (!resolved) {
-        throw new Error('Failed to resolve latest aioncore release tag from GitHub API');
+        throw new Error('Failed to resolve latest poundingcore release tag from GitHub API');
       }
       tag = resolved;
-      console.log(`Resolved aioncore "latest" → ${tag}`);
+      console.log(`Resolved poundingcore "latest" → ${tag}`);
     } else {
       tag = version.startsWith('v') ? version : `v${version}`;
     }
@@ -465,7 +465,7 @@ function preparePoundingcore(options) {
   const targetBinaryPath = path.join(targetDir, binaryName);
 
   console.log(
-    `Preparing aioncore for ${runtimeKey} (${actionsRunId ? `actions run: ${actionsRunId}` : `version: ${tag}`})`
+    `Preparing poundingcore for ${runtimeKey} (${actionsRunId ? `actions run: ${actionsRunId}` : `version: ${tag}`})`
   );
 
   removeDirectorySafe(targetDir);
@@ -495,10 +495,10 @@ function preparePoundingcore(options) {
       };
       writeJson(path.join(targetDir, 'manifest.json'), manifest);
       verifyPreparedAioncoreBundle(projectRoot, platform, arch);
-      console.log(`  Using local aioncore bundle: ${resolvedLocalBundleDir}`);
+      console.log(`  Using local poundingcore bundle: ${resolvedLocalBundleDir}`);
       return { prepared: true, dir: targetDir, sourceType: 'local-bundle' };
     }
-    console.warn(`  Local aioncore bundle is incomplete or missing: ${resolvedLocalBundleDir}`);
+    console.warn(`  Local poundingcore bundle is incomplete or missing: ${resolvedLocalBundleDir}`);
   }
 
   let sourcePath = null;
@@ -543,7 +543,7 @@ function preparePoundingcore(options) {
         sourcePath = resolvedLocalBinary;
         sourceType = 'local-binary';
         sourceDetail = { path: resolvedLocalBinary };
-        console.log(`  Using local aioncore binary: ${resolvedLocalBinary}`);
+        console.log(`  Using local poundingcore binary: ${resolvedLocalBinary}`);
       } else {
         console.warn(`  Local poundingcore binary not found: ${resolvedLocalBinary}`);
       }
@@ -556,7 +556,7 @@ function preparePoundingcore(options) {
     ensureExecutableMode(targetBinaryPath);
     const bundledManagedResourcesDir = prepareManagedResources(targetBinaryPath, targetDir);
 
-    // The release tag is the authoritative version — the aioncore
+    // The release tag is the authoritative version — the poundingcore
     // binary does not expose a --version flag (it has --app-version which
     // takes a value, not a self-report).
     const manifest = {

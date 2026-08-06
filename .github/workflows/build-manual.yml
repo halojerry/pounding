@@ -30,7 +30,7 @@ on:
         required: false
         type: boolean
         default: false
-      aioncore_run_id:
+      poundingcore_run_id:
         description: 'Optional AionCore Manual Build workflow run id to bundle instead of the pinned release'
         required: false
         type: string
@@ -87,7 +87,7 @@ jobs:
       matrix: ${{ needs.prepare-matrix.outputs.matrix }}
       ref: ${{ inputs.branch }}
       skip_code_quality: ${{ inputs.skip_code_quality }}
-      aioncore_run_id: ${{ inputs.aioncore_run_id }}
+      poundingcore_run_id: ${{ inputs.poundingcore_run_id }}
       append_commit_hash: true
       upload_installers_only: true
     secrets: inherit
